@@ -38,4 +38,23 @@ defmodule Ultistats.TeamsFixtures do
 
     player
   end
+
+  @doc """
+  Generate a line_preset. Creates a team automatically if `team_id` is
+  not given. Accepts an optional `:player_ids` list — players must
+  belong to the same team or they'll be silently dropped (defensive
+  cross-team filter in the context).
+  """
+  def line_preset_fixture(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+
+    attrs =
+      Map.put_new_lazy(attrs, :team_id, fn -> team_fixture().id end)
+
+    attrs = Map.put_new(attrs, :name, "some name")
+
+    {:ok, line_preset} = Ultistats.Teams.create_line_preset(attrs)
+
+    line_preset
+  end
 end

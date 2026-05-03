@@ -194,4 +194,144 @@ defmodule Ultistats.TeamsTest do
       assert Enum.map(players, & &1.id) == [p_low.id, p_high.id]
     end
   end
+
+  describe "line_presets" do
+    alias Ultistats.Teams.LinePreset
+
+    import Ultistats.TeamsFixtures
+
+    @invalid_attrs %{name: nil, team_id: nil}
+
+    test "create_line_preset/1 with valid data creates a line_preset" do
+      team = team_fixture()
+      valid_attrs = %{name: "O-line A", team_id: team.id}
+
+      assert {:ok, %LinePreset{} = line_preset} = Teams.create_line_preset(valid_attrs)
+      assert line_preset.name == "O-line A"
+      assert line_preset.team_id == team.id
+    end
+
+    test "create_line_preset/1 with player_ids attaches the players" do
+      team = team_fixture()
+      p1 = player_fixture(%{team_id: team.id, jersey_number: "1", name: "A"})
+      p2 = player_fixture(%{team_id: team.id, jersey_number: "2", name: "B"})
+
+      assert {:ok, line_preset} =
+               Teams.create_line_preset(%{
+                 name: "Mixed",
+                 team_id: team.id,
+                 player_ids: [p1.id, p2.id]
+               })
+
+      preset = Teams.get_line_preset!(line_preset.id)
+      assert Enum.map(preset.players, & &1.id) |> Enum.sort() == Enum.sort([p1.id, p2.id])
+    end
+
+    test "create_line_preset/1 ignores player_ids that belong to other teams" do
+      team = team_fixture(%{name: "Home"})
+      other_team = team_fixture(%{name: "Away"})
+
+      ours = player_fixture(%{team_id: team.id, jersey_number: "1", name: "Ours"})
+      theirs = player_fixture(%{team_id: other_team.id, jersey_number: "1", name: "Theirs"})
+
+      assert {:ok, line_preset} =
+               Teams.create_line_preset(%{
+                 name: "Sneaky",
+                 team_id: team.id,
+                 player_ids: [ours.id, theirs.id]
+               })
+
+      preset = Teams.get_line_preset!(line_preset.id)
+      assert Enum.map(preset.players, & &1.id) == [ours.id]
+    end
+
+    test "create_line_preset/1 with no player_ids creates an empty preset" do
+      team = team_fixture()
+
+      assert {:ok, line_preset} =
+               Teams.create_line_preset(%{name: "Empty", team_id: team.id})
+
+      preset = Teams.get_line_preset!(line_preset.id)
+      assert preset.players == []
+    end
+
+    test "create_line_preset/1 with invalid data returns error changeset" do
+      assert {:error, %Ecto.Changeset{}} = Teams.create_line_preset(@invalid_attrs)
+    end
+
+    test "update_line_preset/2 with player_ids replaces (not appends) the players" do
+      team = team_fixture()
+      p1 = player_fixture(%{team_id: team.id, jersey_number: "1", name: "A"})
+      p2 = player_fixture(%{team_id: team.id, jersey_number: "2", name: "B"})
+      p3 = player_fixture(%{team_id: team.id, jersey_number: "3", name: "C"})
+
+      {:ok, line_preset} =
+        Teams.create_line_preset(%{
+          name: "Original",
+          team_id: team.id,
+          player_ids: [p1.id, p2.id]
+        })
+
+      assert {:ok, updated} =
+               Teams.update_line_preset(line_preset, %{
+                 name: "Original",
+                 team_id: team.id,
+                 player_ids: [p3.id]
+               })
+
+      reloaded = Teams.get_line_preset!(updated.id)
+      assert Enum.map(reloaded.players, & &1.id) == [p3.id]
+    end
+
+    test "update_line_preset/2 with invalid data returns error changeset" do
+      line_preset = line_preset_fixture()
+      assert {:error, %Ecto.Changeset{}} = Teams.update_line_preset(line_preset, @invalid_attrs)
+    end
+
+    test "delete_line_preset/1 deletes the line_preset and cascades the join table" do
+      team = team_fixture()
+      p1 = player_fixture(%{team_id: team.id, jersey_number: "1"})
+
+      {:ok, line_preset} =
+        Teams.create_line_preset(%{
+          name: "Soon-deleted",
+          team_id: team.id,
+          player_ids: [p1.id]
+        })
+
+      assert {:ok, %LinePreset{}} = Teams.delete_line_preset(line_preset)
+      assert_raise Ecto.NoResultsError, fn -> Teams.get_line_preset!(line_preset.id) end
+
+      # Player is still around (cascade is on the join row only).
+      assert Teams.get_player!(p1.id)
+
+      # No orphan join rows.
+      orphan_count =
+        Ultistats.Repo.aggregate(
+          from(j in "line_preset_players", where: j.line_preset_id == ^line_preset.id),
+          :count
+        )
+
+      assert orphan_count == 0
+    end
+
+    test "list_line_presets_for_team/1 returns presets ordered by name, scoped by team" do
+      team = team_fixture(%{name: "Home"})
+      other = team_fixture(%{name: "Away"})
+
+      _stranger =
+        line_preset_fixture(%{team_id: other.id, name: "Stranger"})
+
+      b = line_preset_fixture(%{team_id: team.id, name: "Bravo"})
+      a = line_preset_fixture(%{team_id: team.id, name: "Alpha"})
+
+      presets = Teams.list_line_presets_for_team(team)
+      assert Enum.map(presets, & &1.id) == [a.id, b.id]
+    end
+
+    test "change_line_preset/1 returns a line_preset changeset" do
+      line_preset = line_preset_fixture()
+      assert %Ecto.Changeset{} = Teams.change_line_preset(line_preset)
+    end
+  end
 end

@@ -28,6 +28,11 @@ defmodule UltistatsWeb.Router do
     live "/players/new", PlayerLive.Form, :new
     live "/players/:id/edit", PlayerLive.Form, :edit
     live "/players/:id", PlayerLive.Show, :show
+
+    live "/line_presets", LinePresetLive.Index, :index
+    live "/line_presets/new", LinePresetLive.Form, :new
+    live "/line_presets/:id/edit", LinePresetLive.Form, :edit
+    live "/line_presets/:id", LinePresetLive.Show, :show
   end
 
   # Other scopes may use custom stacks.

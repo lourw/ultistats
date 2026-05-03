@@ -1,6 +1,8 @@
 defmodule UltistatsWeb.TeamLive.Show do
   use UltistatsWeb, :live_view
 
+  import UltistatsWeb.UIComponents, only: [line_preset_card: 1]
+
   alias Ultistats.Teams
 
   @impl true
@@ -69,6 +71,50 @@ defmodule UltistatsWeb.TeamLive.Show do
           No players yet. Add the first one to start building the roster.
         </p>
       </section>
+
+      <section class="mt-8">
+        <.header>
+          Line presets ({preset_count_label(@line_presets)})
+          <:actions>
+            <.button
+              variant="primary"
+              navigate={~p"/line_presets/new?team_id=#{@team.id}&return_to=team"}
+            >
+              <.icon name="hero-plus" /> Add preset
+            </.button>
+          </:actions>
+        </.header>
+
+        <ul :if={@line_presets != []} id="team-line-presets" class="mt-4 flex flex-col gap-3">
+          <li
+            :for={preset <- @line_presets}
+            id={"line-preset-#{preset.id}"}
+            class="flex items-center gap-3"
+          >
+            <div class="flex-1 min-w-0">
+              <.line_preset_card
+                preset={preset}
+                selected?={false}
+                gender_warning?={false}
+                phx-click={JS.navigate(~p"/line_presets/#{preset}/edit?return_to=team")}
+              />
+            </div>
+            <button
+              type="button"
+              phx-click={JS.push("delete_line_preset", value: %{id: preset.id})}
+              data-confirm={"Delete the \"#{preset.name}\" preset?"}
+              aria-label={"Delete preset #{preset.name}"}
+              class="min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-error active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary shrink-0"
+            >
+              <.icon name="hero-trash" class="size-5" />
+            </button>
+          </li>
+        </ul>
+
+        <p :if={@line_presets == []} class="mt-4 text-base-content/70">
+          No line presets yet. Create your first to set lines quickly mid-game.
+        </p>
+      </section>
     </Layouts.app>
     """
   end
@@ -81,7 +127,8 @@ defmodule UltistatsWeb.TeamLive.Show do
      socket
      |> assign(:page_title, "Show Team")
      |> assign(:team, team)
-     |> assign(:players, Teams.list_players_for_team(team))}
+     |> assign(:players, Teams.list_players_for_team(team))
+     |> assign(:line_presets, Teams.list_line_presets_for_team(team))}
   end
 
   @impl true
@@ -95,8 +142,21 @@ defmodule UltistatsWeb.TeamLive.Show do
      |> assign(:players, Teams.list_players_for_team(socket.assigns.team))}
   end
 
+  def handle_event("delete_line_preset", %{"id" => id}, socket) do
+    preset = Teams.get_line_preset!(id)
+    {:ok, _} = Teams.delete_line_preset(preset)
+
+    {:noreply,
+     socket
+     |> put_flash(:info, "Line preset deleted")
+     |> assign(:line_presets, Teams.list_line_presets_for_team(socket.assigns.team))}
+  end
+
   defp roster_count_label([_]), do: "1 player"
   defp roster_count_label(players), do: "#{length(players)} players"
+
+  defp preset_count_label([_]), do: "1 preset"
+  defp preset_count_label(presets), do: "#{length(presets)} presets"
 
   defp humanize_gender_role(:female_matching), do: "FMP"
   defp humanize_gender_role(:male_matching), do: "MMP"
