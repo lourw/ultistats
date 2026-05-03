@@ -35,7 +35,7 @@ defmodule UltistatsWeb.TeamLive.Index do
         <li :for={%{team: team, stats: s} <- @teams_with_stats} id={"team-#{team.id}"}>
           <.link
             navigate={~p"/teams/#{team}"}
-            class="min-h-9 flex flex-col justify-center px-4 py-1.5 hover:bg-base-200 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            class="min-h-9 flex flex-col justify-center gap-1 px-4 py-2 hover:bg-base-200 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <div class="font-medium text-sm leading-tight">{team.name}</div>
             <div class="text-xs text-base-content/70 flex flex-wrap gap-x-2 gap-y-0.5 tabular-nums leading-tight">

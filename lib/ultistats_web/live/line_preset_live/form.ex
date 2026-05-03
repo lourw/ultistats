@@ -9,24 +9,29 @@ defmodule UltistatsWeb.LinePresetLive.Form do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <.form for={@form} id="line_preset-form" phx-change="validate" phx-submit="save">
-        <label
-          for={@form[:name].id}
-          class="block text-lg font-semibold text-base-content mb-2"
-        >
-          Line name
-        </label>
-        <.input field={@form[:name]} type="text" />
+      <.form
+        for={@form}
+        id="line_preset-form"
+        phx-change="validate"
+        phx-submit="save"
+        class="flex flex-col gap-3"
+      >
+        <div class="flex flex-col gap-1">
+          <label for={@form[:name].id} class="block text-lg font-semibold text-base-content">
+            Line name
+          </label>
+          <.input field={@form[:name]} type="text" />
+        </div>
         <.input field={@form[:team_id]} type="hidden" />
 
-        <section class="mt-6">
+        <section class="flex flex-col gap-3">
           <div :if={@team_members == []} class="text-base-content/70">
             This team has no players yet. Add some to the roster first.
           </div>
 
           <div
             :if={@team_members != []}
-            class="flex items-center gap-2 text-xs text-base-content/60 mb-6"
+            class="flex items-center gap-2 text-xs text-base-content/60"
           >
             <span>Sort:</span>
             <div
@@ -55,7 +60,7 @@ defmodule UltistatsWeb.LinePresetLive.Form do
             </div>
           </div>
 
-          <div :if={@team_members != []} id="preset-roster" class="space-y-6">
+          <div :if={@team_members != []} id="preset-roster" class="flex flex-col gap-6">
             <.preset_roster_section
               :for={role <- [:male_matching, :female_matching]}
               :if={Enum.any?(@team_members, &(&1.user.gender_role == role))}
@@ -70,7 +75,7 @@ defmodule UltistatsWeb.LinePresetLive.Form do
           </div>
         </section>
 
-        <footer class="mt-6 flex gap-2">
+        <footer class="mt-3 flex gap-2">
           <.button phx-disable-with="Saving..." variant="primary">Save</.button>
           <.button navigate={return_path(@return_to, @line_preset)}>Cancel</.button>
         </footer>

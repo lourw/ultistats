@@ -169,7 +169,13 @@ defmodule UltistatsWeb.MemberLive.Form do
         <:subtitle>Edit team-membership fields. The user's profile is theirs to edit.</:subtitle>
       </.header>
 
-      <.form for={@form} id="member-form" phx-change="validate" phx-submit="save" class="space-y-4">
+      <.form
+        for={@form}
+        id="member-form"
+        phx-change="validate"
+        phx-submit="save"
+        class="flex flex-col gap-3"
+      >
         <input type="hidden" name="member[team_id]" value={@membership.team_id} />
 
         <div class="rounded-lg border border-base-200 bg-base-100/60 px-4 py-3">

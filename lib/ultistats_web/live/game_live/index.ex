@@ -9,6 +9,21 @@ defmodule UltistatsWeb.GameLive.Index do
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <.header>
         Games
+        <:actions>
+          <.button :if={@active_tab == :games} variant="primary" navigate={~p"/games/new"}>
+            <.icon name="hero-plus" /> New game
+          </.button>
+          <.button
+            :if={
+              @active_tab == :rulesets && @new_ruleset_team_id &&
+                MapSet.member?(@admin_team_ids, @new_ruleset_team_id)
+            }
+            variant="primary"
+            navigate={~p"/rulesets/new?team_id=#{@new_ruleset_team_id}"}
+          >
+            <.icon name="hero-plus" /> New ruleset
+          </.button>
+        </:actions>
       </.header>
 
       <div
@@ -93,20 +108,25 @@ defmodule UltistatsWeb.GameLive.Index do
       </section>
 
       <section :if={@active_tab == :rulesets} class="mt-4 pb-24" aria-labelledby="tab-rulesets">
-        <div :if={length(@teams) > 1} class="flex items-center gap-2 mb-3">
-          <label for="ruleset-team-select" class="text-sm text-base-content/70">Team</label>
-          <form phx-change="select_ruleset_team">
-            <select
-              id="ruleset-team-select"
-              name="team_id"
-              class="select select-sm select-bordered min-h-11"
-            >
-              <option :for={team <- @teams} value={team.id} selected={team.id == @new_ruleset_team_id}>
-                {team.name}
-              </option>
-            </select>
-          </form>
-        </div>
+        <form
+          :if={length(@teams) > 1}
+          phx-change="select_ruleset_team"
+          class="flex flex-wrap items-center gap-1 mb-3"
+        >
+          <span class="text-[11px] uppercase tracking-wide text-base-content/60 mr-1">
+            Team
+          </span>
+          <button
+            :for={team <- @teams}
+            type="submit"
+            name="team_id"
+            value={team.id}
+            aria-pressed={to_string(team.id == @new_ruleset_team_id)}
+            class={team_filter_chip_classes(team.id == @new_ruleset_team_id)}
+          >
+            {team.name}
+          </button>
+        </form>
 
         <ul
           :if={@rulesets != []}
@@ -146,27 +166,6 @@ defmodule UltistatsWeb.GameLive.Index do
           No rulesets yet. Add a team first.
         </p>
       </section>
-
-      <.link
-        :if={@active_tab == :games}
-        navigate={~p"/games/new"}
-        aria-label="Add game"
-        class="fixed bottom-6 right-6 z-40 size-14 rounded-full bg-primary text-primary-content shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:active:scale-100"
-      >
-        <.icon name="hero-plus" class="size-6" />
-      </.link>
-
-      <.link
-        :if={
-          @active_tab == :rulesets && @new_ruleset_team_id &&
-            MapSet.member?(@admin_team_ids, @new_ruleset_team_id)
-        }
-        navigate={~p"/rulesets/new?team_id=#{@new_ruleset_team_id}"}
-        aria-label="Add ruleset"
-        class="fixed bottom-6 right-6 z-40 size-14 rounded-full bg-primary text-primary-content shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:active:scale-100"
-      >
-        <.icon name="hero-plus" class="size-6" />
-      </.link>
     </Layouts.app>
     """
   end
@@ -255,4 +254,12 @@ defmodule UltistatsWeb.GameLive.Index do
   defp tab_classes(false),
     do:
       "min-h-11 inline-flex items-center pb-3 -mb-px text-sm font-medium text-base-content/60 hover:text-base-content border-b-2 border-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+
+  defp team_filter_chip_classes(true),
+    do:
+      "min-h-9 inline-flex items-center px-2 rounded-md text-xs font-semibold bg-primary text-primary-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+
+  defp team_filter_chip_classes(false),
+    do:
+      "min-h-9 inline-flex items-center px-2 rounded-md text-xs font-semibold border border-base-300 text-base-content/80 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 end

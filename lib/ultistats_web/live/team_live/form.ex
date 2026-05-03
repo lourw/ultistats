@@ -12,7 +12,13 @@ defmodule UltistatsWeb.TeamLive.Form do
         {@page_title}
       </.header>
 
-      <.form for={@form} id="team-form" phx-change="validate" phx-submit="save">
+      <.form
+        for={@form}
+        id="team-form"
+        phx-change="validate"
+        phx-submit="save"
+        class="flex flex-col gap-3"
+      >
         <.input field={@form[:name]} type="text" label="Name" />
         <.input
           field={@form[:division]}

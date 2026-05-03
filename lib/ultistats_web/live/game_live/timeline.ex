@@ -314,8 +314,11 @@ defmodule UltistatsWeb.GameLive.Timeline do
           </button>
         </div>
 
-        <form phx-submit="save_edit" class="p-4 space-y-5 max-h-[70vh] overflow-y-auto">
-          <div class="space-y-1 mb-2">
+        <form
+          phx-submit="save_edit"
+          class="p-4 flex flex-col gap-5 max-h-[70vh] overflow-y-auto"
+        >
+          <div class="flex flex-col gap-1">
             <p class="block text-sm font-medium text-base-content">Type</p>
             <div
               class="grid grid-cols-2 sm:grid-cols-4 gap-2"
@@ -332,7 +335,7 @@ defmodule UltistatsWeb.GameLive.Timeline do
             </div>
           </div>
 
-          <div class="space-y-1 mb-2">
+          <div class="flex flex-col gap-1">
             <p class="block text-sm font-medium text-base-content">Player</p>
             <div class="flex flex-wrap gap-2">
               <button
