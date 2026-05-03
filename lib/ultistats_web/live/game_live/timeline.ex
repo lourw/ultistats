@@ -315,23 +315,25 @@ defmodule UltistatsWeb.GameLive.Timeline do
         </div>
 
         <form phx-submit="save_edit" class="p-4 space-y-5 max-h-[70vh] overflow-y-auto">
-          <fieldset class="space-y-2">
-            <legend class="text-sm font-semibold uppercase tracking-wide text-base-content/70">
-              Type
-            </legend>
-            <div class="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Event type">
-              <.type_radio
+          <div class="space-y-1 mb-2">
+            <p class="block text-sm font-medium text-base-content">Type</p>
+            <div
+              class="grid grid-cols-2 sm:grid-cols-4 gap-2"
+              role="radiogroup"
+              aria-label="Event type"
+            >
+              <.event_type_button
                 :for={type <- [:goal, :catch, :drop, :throwaway, :stall, :block, :pick, :foul]}
                 type={type}
                 selected?={@edit_type == type}
+                phx-click="set_edit_type"
+                phx-value-type={Atom.to_string(type)}
               />
             </div>
-          </fieldset>
+          </div>
 
-          <fieldset class="space-y-2">
-            <legend class="text-sm font-semibold uppercase tracking-wide text-base-content/70">
-              Player
-            </legend>
+          <div class="space-y-1 mb-2">
+            <p class="block text-sm font-medium text-base-content">Player</p>
             <div class="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -358,7 +360,7 @@ defmodule UltistatsWeb.GameLive.Timeline do
                 phx-value-id={player.user_id}
               />
             </div>
-          </fieldset>
+          </div>
 
           <div class="flex items-center gap-2 pt-2">
             <button
@@ -378,35 +380,6 @@ defmodule UltistatsWeb.GameLive.Timeline do
         </form>
       </div>
     </div>
-    """
-  end
-
-  attr :type, :atom, required: true
-  attr :selected?, :boolean, required: true
-
-  defp type_radio(assigns) do
-    assigns = assign(assigns, :meta, type_meta(assigns.type))
-
-    ~H"""
-    <button
-      type="button"
-      phx-click="set_edit_type"
-      phx-value-type={Atom.to_string(@type)}
-      aria-pressed={to_string(@selected?)}
-      class={[
-        "min-h-14 px-3 rounded-xl border-2 inline-flex items-center justify-center gap-2",
-        "text-base font-semibold",
-        "active:scale-[0.99] motion-reduce:active:scale-100 transition-colors motion-reduce:transition-none",
-        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-        if(@selected?,
-          do: "bg-primary text-primary-content border-primary",
-          else: "bg-base-100 text-base-content border-base-300 active:bg-base-200"
-        )
-      ]}
-    >
-      <.icon name={@meta.icon} class="size-5" />
-      <span>{@meta.label}</span>
-    </button>
     """
   end
 
@@ -615,19 +588,4 @@ defmodule UltistatsWeb.GameLive.Timeline do
   defp scoring_badge_label(:ours), do: "We scored"
   defp scoring_badge_label(:theirs), do: "They scored"
   defp scoring_badge_label(_), do: "In progress"
-
-  defp type_meta(:pull), do: %{label: "Pull", icon: "hero-paper-airplane"}
-  defp type_meta(:catch), do: %{label: "Catch", icon: "hero-check"}
-  defp type_meta(:throwaway), do: %{label: "Throwaway", icon: "hero-arrow-path-rounded-square"}
-  defp type_meta(:drop), do: %{label: "Drop", icon: "hero-arrow-down-tray"}
-  defp type_meta(:stall), do: %{label: "Stall", icon: "hero-clock"}
-  defp type_meta(:goal), do: %{label: "Goal", icon: "hero-trophy"}
-  defp type_meta(:block), do: %{label: "Block", icon: "hero-shield-check"}
-
-  defp type_meta(:opponent_turnover),
-    do: %{label: "They turned it over", icon: "hero-arrow-uturn-right"}
-
-  defp type_meta(:opponent_goal), do: %{label: "They scored", icon: "hero-flag"}
-  defp type_meta(:pick), do: %{label: "Pick", icon: "hero-hand-raised"}
-  defp type_meta(:foul), do: %{label: "Foul", icon: "hero-exclamation-triangle"}
 end

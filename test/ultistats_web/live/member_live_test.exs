@@ -314,7 +314,7 @@ defmodule UltistatsWeb.MemberLiveTest do
           "gender_role" => "female_matching",
           "position" => "cutter",
           "is_player" => "true",
-          "is_admin" => "true"
+          "role" => "admin"
         }
       }
 
@@ -347,7 +347,7 @@ defmodule UltistatsWeb.MemberLiveTest do
           "gender_role" => Atom.to_string(m.user.gender_role),
           "position" => Atom.to_string(m.user.position),
           "is_player" => "false",
-          "is_admin" => "false"
+          "role" => "member"
         }
       }
 

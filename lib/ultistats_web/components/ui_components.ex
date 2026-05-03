@@ -10,12 +10,14 @@ defmodule UltistatsWeb.UIComponents do
   Components:
 
     * `action_button/1`        primary in-game action (Goal / Assist / Block / Turn)
+    * `event_type_button/1`    toggleable in-game-action-styled button for the timeline edit modal
     * `player_chip/1`          tappable jersey-and-name pill
     * `score_readout/1`        large tabular-nums score display
     * `line_preset_card/1`     selectable line preset, with ratio warning
     * `timeline_event/1`       one row in the post-game / mid-game timeline
     * `gender_radio/1`         two native radio inputs for the FMP/MMP picker
     * `position_radio/1`       three native radio inputs for handler/cutter/hybrid
+    * `role_radio/1`           two native radio inputs for the membership role (admin/member)
     * `gender_ratio_radio/1`   four radio inputs for the ruleset gender-ratio rule
     * `starting_ratio_radio/1` two radio inputs for the ruleset default starting ratio
 
@@ -104,6 +106,123 @@ defmodule UltistatsWeb.UIComponents do
       label: "Turn",
       icon: "hero-arrow-path-rounded-square",
       color_classes: "bg-error text-error-content active:bg-error/80"
+    }
+
+  ## ---------------------------------------------------------------------
+  ## event_type_button
+  ## ---------------------------------------------------------------------
+
+  @doc """
+  Toggleable, action-styled button for picking an event type in the
+  timeline edit modal. Geometry matches `action_button/1` (icon over
+  label, min 56x56) so the modal speaks the same visual language as
+  the in-game action bar (UI_DESIGN.md §Components — reuse the existing
+  vocabulary instead of inventing a new one for adjacent surfaces).
+
+  When `selected?` is true the button renders in the type's functional
+  color; unselected uses the neutral `base-100` shell with a 2px
+  border so the type icons still read clearly.
+
+  ## Examples
+
+      <.event_type_button
+        type={:goal}
+        selected?={@edit_type == :goal}
+        phx-click="set_edit_type"
+        phx-value-type="goal"
+      />
+  """
+  attr :type, :atom,
+    required: true,
+    values: [:goal, :catch, :drop, :throwaway, :stall, :block, :pick, :foul]
+
+  attr :selected?, :boolean, default: false
+  attr :class, :any, default: nil
+  attr :rest, :global, include: ~w(phx-click phx-value-type phx-target form name value)
+
+  def event_type_button(assigns) do
+    assigns = assign(assigns, :meta, event_type_button_meta(assigns.type))
+
+    ~H"""
+    <button
+      type="button"
+      aria-label={@meta.label}
+      aria-pressed={to_string(@selected?)}
+      class={[
+        "min-h-14 min-w-14 px-4 py-3 rounded-xl",
+        "flex flex-col items-center justify-center gap-1",
+        "text-base font-semibold leading-tight",
+        "transition-colors motion-reduce:transition-none",
+        "active:scale-[0.98] motion-reduce:active:scale-100",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        if(@selected?,
+          do: ["border-2 border-transparent", @meta.selected_classes],
+          else: "border-2 border-base-300 bg-base-100 text-base-content active:bg-base-200"
+        ),
+        @class
+      ]}
+      {@rest}
+    >
+      <.icon name={@meta.icon} class="size-6" />
+      <span>{@meta.label}</span>
+    </button>
+    """
+  end
+
+  defp event_type_button_meta(:goal),
+    do: %{
+      label: "Goal",
+      icon: "hero-trophy",
+      selected_classes: "bg-success text-success-content"
+    }
+
+  defp event_type_button_meta(:catch),
+    do: %{
+      label: "Catch",
+      icon: "hero-hand-raised",
+      selected_classes: "bg-info text-info-content"
+    }
+
+  defp event_type_button_meta(:drop),
+    do: %{
+      label: "Drop",
+      icon: "hero-hand-thumb-down",
+      selected_classes: "bg-warning text-warning-content"
+    }
+
+  defp event_type_button_meta(:throwaway),
+    do: %{
+      label: "Throwaway",
+      icon: "hero-arrow-uturn-left",
+      selected_classes: "bg-error text-error-content"
+    }
+
+  defp event_type_button_meta(:stall),
+    do: %{
+      label: "Stall",
+      icon: "hero-clock",
+      selected_classes: "bg-error text-error-content"
+    }
+
+  defp event_type_button_meta(:block),
+    do: %{
+      label: "Block",
+      icon: "hero-shield-check",
+      selected_classes: "bg-primary text-primary-content"
+    }
+
+  defp event_type_button_meta(:pick),
+    do: %{
+      label: "Pick",
+      icon: "hero-exclamation-triangle",
+      selected_classes: "bg-warning text-warning-content"
+    }
+
+  defp event_type_button_meta(:foul),
+    do: %{
+      label: "Foul",
+      icon: "hero-no-symbol",
+      selected_classes: "bg-warning text-warning-content"
     }
 
   ## ---------------------------------------------------------------------
@@ -659,6 +778,68 @@ defmodule UltistatsWeb.UIComponents do
   defp normalize_position_value(""), do: nil
   defp normalize_position_value(value) when is_atom(value), do: Atom.to_string(value)
   defp normalize_position_value(value) when is_binary(value), do: value
+
+  ## ---------------------------------------------------------------------
+  ## role_radio
+  ## ---------------------------------------------------------------------
+
+  @doc """
+  Two native radio inputs side by side for picking a member's
+  team-membership role (Admin / Member). Mirrors `gender_radio/1` and
+  `position_radio/1`: shared `name`, label-wrapped inputs with min-h-11
+  tap targets, and a `:rest` passthrough for `phx-*` attrs (e.g.
+  `phx-click="set_role"`).
+
+  ## Examples
+
+      <.role_radio field={@form[:role]} phx-click="set_role" />
+  """
+  attr :field, Phoenix.HTML.FormField, required: true
+  attr :class, :any, default: nil
+  attr :rest, :global, include: ~w(phx-change phx-click phx-target form)
+
+  def role_radio(assigns) do
+    value = normalize_role_value(assigns.field.value)
+
+    assigns =
+      assigns
+      |> assign(:value, value)
+      |> assign(:input_name, assigns.field.name)
+      |> assign(:input_id, assigns.field.id)
+      |> assign(:options, [
+        {"admin", "Admin"},
+        {"member", "Member"}
+      ])
+
+    ~H"""
+    <fieldset class={["space-y-1", @class]}>
+      <legend class="sr-only">Role</legend>
+      <div class="inline-flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Role">
+        <label
+          :for={{val, label} <- @options}
+          class={position_radio_label_classes(@value == val)}
+        >
+          <input
+            type="radio"
+            name={@input_name}
+            id={"#{@input_id}_#{val}"}
+            value={val}
+            checked={@value == val}
+            class="accent-primary size-5 shrink-0"
+            {@rest}
+            phx-value-role={val}
+          />
+          <span class="text-sm leading-none">{label}</span>
+        </label>
+      </div>
+    </fieldset>
+    """
+  end
+
+  defp normalize_role_value(nil), do: "member"
+  defp normalize_role_value(""), do: "member"
+  defp normalize_role_value(value) when is_atom(value), do: Atom.to_string(value)
+  defp normalize_role_value(value) when is_binary(value), do: value
 
   ## ---------------------------------------------------------------------
   ## gender_ratio_radio

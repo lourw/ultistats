@@ -7,10 +7,9 @@
 # Auto-runs on `mix phx.server` in dev (see lib/ultistats/application.ex).
 
 alias Ultistats.{Games, Repo, Teams}
-alias Ultistats.Teams.Team
 
-if Repo.get_by(Team, name: "The Misfits") do
-  IO.puts("Seeds: 'The Misfits' already present, skipping")
+if Repo.get_by(Ultistats.Accounts.User, email: "admin@admin.com") do
+  IO.puts("Seeds: admin@admin.com already present, skipping")
 else
   # 1) Admin user — real email/password so dev login works out of the box.
   # We bypass the registration changeset's 12-char password minimum here so

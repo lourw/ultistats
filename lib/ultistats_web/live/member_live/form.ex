@@ -1,7 +1,7 @@
 defmodule UltistatsWeb.MemberLive.Form do
   use UltistatsWeb, :live_view
 
-  import UltistatsWeb.UIComponents, only: [gender_radio: 1, position_radio: 1]
+  import UltistatsWeb.UIComponents, only: [gender_radio: 1, position_radio: 1, role_radio: 1]
 
   alias Ultistats.Teams
   alias Ultistats.Teams.TeamMembership
@@ -169,9 +169,30 @@ defmodule UltistatsWeb.MemberLive.Form do
       </.header>
 
       <.form for={@form} id="member-form" phx-change="validate" phx-submit="save">
-        <.input field={@form[:first_name]} type="text" label="First name" />
-        <.input field={@form[:last_name]} type="text" label="Last name" />
-        <.input field={@form[:jersey_number]} type="text" label="Jersey number" />
+        <input type="hidden" name="member[team_id]" value={@membership.team_id} />
+
+        <div class="space-y-1 mb-2">
+          <p class="block text-sm font-medium text-base-content">Name</p>
+          <div class="flex flex-col sm:flex-row gap-2">
+            <.input
+              field={@form[:first_name]}
+              type="text"
+              placeholder="First"
+              autocomplete="given-name"
+            />
+            <.input
+              field={@form[:last_name]}
+              type="text"
+              placeholder="Last"
+              autocomplete="family-name"
+            />
+          </div>
+        </div>
+
+        <div class="space-y-1 mb-2">
+          <p class="block text-sm font-medium text-base-content">Jersey number</p>
+          <.input field={@form[:jersey_number]} type="text" inputmode="numeric" maxlength="4" />
+        </div>
 
         <div class="space-y-1 mb-2">
           <p class="block text-sm font-medium text-base-content">Gender</p>
@@ -183,7 +204,13 @@ defmodule UltistatsWeb.MemberLive.Form do
           <.position_radio field={@form[:position]} phx-click="set_position_edit" />
         </div>
 
-        <div class="space-y-3 mt-4">
+        <div class="space-y-1 mb-2">
+          <p class="block text-sm font-medium text-base-content">Role</p>
+          <.role_radio field={role_form_field(@form)} phx-click="set_role_edit" />
+        </div>
+
+        <div class="space-y-1 mb-2">
+          <p class="block text-sm font-medium text-base-content">Include in lines</p>
           <label class="inline-flex items-center gap-2 min-h-11 cursor-pointer">
             <input type="hidden" name="member[is_player]" value="false" />
             <input
@@ -193,22 +220,13 @@ defmodule UltistatsWeb.MemberLive.Form do
               checked={@form[:is_player].value in [true, "true"]}
               class="accent-primary size-5"
             />
-            <span class="text-sm">Include in lines</span>
-          </label>
-          <label class="inline-flex items-center gap-2 min-h-11 cursor-pointer">
-            <input type="hidden" name="member[is_admin]" value="false" />
-            <input
-              type="checkbox"
-              name="member[is_admin]"
-              value="true"
-              checked={admin_checked?(@form[:role].value)}
-              class="accent-primary size-5"
-            />
-            <span class="text-sm">Admin</span>
+            <span class="text-sm text-base-content/70">
+              Non-players don't show up in line selection or in line presets.
+            </span>
           </label>
         </div>
 
-        <footer class="mt-4 flex items-center gap-3">
+        <footer class="sticky bottom-0 -mx-4 mt-8 flex items-center gap-3 border-t border-base-300 bg-base-100/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-base-100/80">
           <.button phx-disable-with="Saving..." variant="primary">Save member</.button>
           <.button navigate={return_path(@return_to, @membership)}>Cancel</.button>
         </footer>
@@ -394,6 +412,16 @@ defmodule UltistatsWeb.MemberLive.Form do
     {:noreply, assign(socket, :form, to_form(params, as: "member"))}
   end
 
+  def handle_event("set_role_edit", %{"role" => role}, socket) do
+    role_str = role || ""
+
+    params =
+      (socket.assigns.form.params || %{})
+      |> Map.put("role", role_str)
+
+    {:noreply, assign(socket, :form, to_form(params, as: "member"))}
+  end
+
   # Bulk-add validate (rows) — sync names/jersey numbers/checkbox state into @rows.
   def handle_event("validate", %{"row" => row_params} = _params, socket) do
     rows = sync_rows_from_params(socket.assigns.rows, %{"row" => row_params})
@@ -460,7 +488,6 @@ defmodule UltistatsWeb.MemberLive.Form do
 
   defp build_edit_attrs(member_params) do
     is_player = member_params["is_player"] in [true, "true"]
-    role = if member_params["is_admin"] in [true, "true"], do: :admin, else: :member
 
     %{
       first_name: member_params["first_name"],
@@ -469,12 +496,28 @@ defmodule UltistatsWeb.MemberLive.Form do
       position: parse_position(member_params["position"]),
       jersey_number: nilify(member_params["jersey_number"]),
       is_player: is_player,
-      role: role
+      role: parse_role(member_params)
     }
   end
 
-  defp admin_checked?(value) when value in [:admin, "admin", true, "true"], do: true
-  defp admin_checked?(_), do: false
+  defp parse_role(%{"role" => role}) when role in ["admin", :admin], do: :admin
+  defp parse_role(%{"role" => role}) when role in ["member", :member], do: :member
+  defp parse_role(%{"is_admin" => v}) when v in [true, "true"], do: :admin
+  defp parse_role(_), do: :member
+
+  # Build a `Phoenix.HTML.FormField` for the role pill so the edit form
+  # can drive `<.role_radio>` from either the persisted membership role
+  # (atom) or a transient string value re-stuffed by `set_role_edit`.
+  defp role_form_field(form) do
+    %Phoenix.HTML.FormField{
+      id: "member_role",
+      name: "member[role]",
+      errors: [],
+      field: :role,
+      form: form,
+      value: form[:role].value
+    }
+  end
 
   defp sync_rows_from_params(rows, %{"row" => row_params}) do
     Enum.map(rows, fn r ->

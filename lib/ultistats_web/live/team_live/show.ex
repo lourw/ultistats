@@ -52,7 +52,7 @@ defmodule UltistatsWeb.TeamLive.Show do
               else: "bg-base-200 text-base-content/70"
             )
           ]}>
-            {length(@members)}
+            {length(@players) + length(@non_players)}
           </span>
         </button>
         <button
@@ -78,7 +78,10 @@ defmodule UltistatsWeb.TeamLive.Show do
       </div>
 
       <section :if={@active_tab == :roster} class="mt-4 pb-24" aria-labelledby="tab-roster">
-        <div :if={@members != []} class="flex items-center justify-end gap-1 mb-2">
+        <div
+          :if={@players != [] or @non_players != []}
+          class="flex items-center justify-end gap-1 mb-2"
+        >
           <span class="text-[11px] uppercase tracking-wide text-base-content/60 mr-1">
             Sort
           </span>
@@ -102,13 +105,13 @@ defmodule UltistatsWeb.TeamLive.Show do
           </button>
         </div>
 
-        <div :if={@members != []} id="team-roster" class="space-y-4">
+        <div :if={@players != []} id="team-roster-players" class="space-y-4">
           <.roster_section
             :for={role <- [:male_matching, :female_matching]}
-            :if={Enum.any?(@members, &(&1.user.gender_role == role))}
+            :if={Enum.any?(@players, &(&1.user.gender_role == role))}
             role={role}
             members={
-              @members
+              @players
               |> Enum.filter(&(&1.user.gender_role == role))
               |> sort_members(@member_sort)
             }
@@ -116,7 +119,44 @@ defmodule UltistatsWeb.TeamLive.Show do
           />
         </div>
 
-        <p :if={@members == []} class="mt-4 text-base-content/70">
+        <div :if={@non_players != []} class="mt-8">
+          <h2 class="text-sm font-semibold text-base-content/70 uppercase tracking-wide mb-2">
+            Non-players
+          </h2>
+          <ul
+            id="team-roster-non-players"
+            class="-mx-4 border-y border-base-200 divide-y divide-base-200"
+          >
+            <li
+              :for={membership <- sort_members(@non_players, @member_sort)}
+              id={"member-#{membership.id}"}
+              class="min-h-9 flex items-center gap-2 px-4 py-0.5"
+            >
+              <span class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0">
+                {membership.jersey_number || "—"}
+              </span>
+              <span class="font-medium text-sm truncate flex-1 leading-tight">
+                {User.display_name(membership.user)}
+              </span>
+              <span
+                :if={membership.role == :admin}
+                class="inline-flex items-center rounded-full bg-primary/10 text-primary text-[10px] font-semibold px-1.5 py-0.5 shrink-0"
+              >
+                Admin
+              </span>
+              <.link
+                :if={@is_admin?}
+                navigate={~p"/members/#{membership.id}/edit?return_to=team"}
+                aria-label={"Edit #{User.display_name(membership.user)}"}
+                class="shrink-0 min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                <.icon name="hero-pencil-square" class="size-4" />
+              </.link>
+            </li>
+          </ul>
+        </div>
+
+        <p :if={@players == [] and @non_players == []} class="mt-4 text-base-content/70">
           No members yet. Add the first one to start building the roster.
         </p>
       </section>
@@ -186,6 +226,9 @@ defmodule UltistatsWeb.TeamLive.Show do
     user = socket.assigns.current_scope.user
 
     if Teams.user_member_of?(user, team) do
+      members = Teams.list_team_members_for_team(team)
+      {players, non_players} = Enum.split_with(members, & &1.is_player)
+
       {:ok,
        socket
        |> assign(:page_title, team.name)
@@ -193,7 +236,8 @@ defmodule UltistatsWeb.TeamLive.Show do
        |> assign(:is_admin?, Teams.user_admin_of?(user, team))
        |> assign(:active_tab, :roster)
        |> assign(:member_sort, :jersey)
-       |> assign(:members, Teams.list_team_members_for_team(team))
+       |> assign(:players, players)
+       |> assign(:non_players, non_players)
        |> assign(:line_presets, Teams.list_line_presets_for_team(team))}
     else
       {:ok,
@@ -249,12 +293,6 @@ defmodule UltistatsWeb.TeamLive.Show do
             class="inline-flex items-center rounded-full bg-primary/10 text-primary text-[10px] font-semibold px-1.5 py-0.5 shrink-0"
           >
             Admin
-          </span>
-          <span
-            :if={membership.is_player == false}
-            class="inline-flex items-center rounded-full bg-base-200 text-base-content/70 text-[10px] font-semibold px-1.5 py-0.5 shrink-0"
-          >
-            Non-player
           </span>
           <.link
             :if={@is_admin?}

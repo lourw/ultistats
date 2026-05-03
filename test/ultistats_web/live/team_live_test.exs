@@ -252,7 +252,10 @@ defmodule UltistatsWeb.TeamLiveTest do
       assert html =~ "Carla Coach"
     end
 
-    test "non-player members display the 'Non-player' pill", %{conn: conn, team: team} do
+    test "non-player members render in a dedicated 'Non-players' section", %{
+      conn: conn,
+      team: team
+    } do
       coach =
         team_membership_fixture(%{
           team_id: team.id,
@@ -264,11 +267,13 @@ defmodule UltistatsWeb.TeamLiveTest do
 
       {:ok, view, html} = live(conn, ~p"/teams/#{team.id}")
 
-      assert html =~ "Non-player"
+      # The "Non-players" section heading shows up and the coach's row
+      # sits inside the dedicated list.
+      assert html =~ "Non-players"
 
-      # The pill belongs to that membership's row.
-      row = view |> element("#member-#{coach.id}") |> render()
-      assert row =~ "Non-player"
+      non_players = view |> element("#team-roster-non-players") |> render()
+      assert non_players =~ "Carla Coach"
+      assert non_players =~ "member-#{coach.id}"
     end
 
     test "edit pencil link points at the new /members/:id/edit path", %{conn: conn, team: team} do
