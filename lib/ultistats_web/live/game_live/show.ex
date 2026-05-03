@@ -755,7 +755,7 @@ defmodule UltistatsWeb.GameLive.Show do
         kind: :throwaway,
         icon: "hero-arrow-path-rounded-square",
         letter: "T",
-        label: "Throwaway"
+        label: "Turnover"
       },
       %{kind: :goal, icon: "hero-trophy", letter: "G", label: "Goal"}
     ]
