@@ -426,39 +426,132 @@ defmodule Ultistats.GamesTest do
     end
   end
 
-  describe "record_event/3" do
+  describe "record_throw/4" do
     setup do
       team = team_fixture()
       game = game_fixture(team_id: team.id)
-      player = player_fixture(team_id: team.id)
-      {:ok, point} = Games.start_point(game, [player.id])
-      %{team: team, game: game, player: player, point: point}
+      passer = player_fixture(team_id: team.id, jersey_number: "1")
+      receiver = player_fixture(team_id: team.id, jersey_number: "2")
+      {:ok, point} = Games.start_point(game, [passer.id, receiver.id])
+      %{team: team, game: game, passer: passer, receiver: receiver, point: point}
     end
 
-    test "records a goal pinned to a player", %{point: point, player: player} do
-      assert {:ok, ev} = Games.record_event(point, :goal, player.id)
-      assert ev.type == :goal
-      assert ev.player_id == player.id
+    test "records a :catch with passer + receiver", %{
+      point: point,
+      passer: passer,
+      receiver: receiver
+    } do
+      assert {:ok, ev} = Games.record_throw(point, :catch, passer.id, receiver.id)
+      assert ev.type == :catch
+      assert ev.passer_id == passer.id
+      assert ev.receiver_id == receiver.id
       assert ev.sequence == 1
       assert ev.occurred_at
     end
 
-    test "records an event with no player (player_id=nil)", %{point: point} do
-      assert {:ok, ev} = Games.record_event(point, :turn, nil)
-      assert ev.player_id == nil
+    test "records a :goal with assister + scorer", %{
+      point: point,
+      passer: assister,
+      receiver: scorer
+    } do
+      assert {:ok, ev} = Games.record_throw(point, :goal, assister.id, scorer.id)
+      assert ev.type == :goal
+      assert ev.passer_id == assister.id
+      assert ev.receiver_id == scorer.id
     end
 
-    test "rejects a player not on the team's roster", %{point: point} do
+    test "records a :throwaway with passer only; receiver stays nil", %{
+      point: point,
+      passer: passer
+    } do
+      assert {:ok, ev} = Games.record_throw(point, :throwaway, passer.id, nil)
+      assert ev.type == :throwaway
+      assert ev.passer_id == passer.id
+      assert is_nil(ev.receiver_id)
+    end
+
+    test "records a :pick with both ids nil", %{point: point} do
+      assert {:ok, ev} = Games.record_throw(point, :pick, nil, nil)
+      assert ev.type == :pick
+      assert is_nil(ev.passer_id)
+      assert is_nil(ev.receiver_id)
+    end
+
+    test "records a :foul with both ids nil", %{point: point} do
+      assert {:ok, ev} = Games.record_throw(point, :foul, nil, nil)
+      assert ev.type == :foul
+    end
+
+    test "records an :opponent_turnover with both ids nil", %{point: point} do
+      assert {:ok, ev} = Games.record_throw(point, :opponent_turnover, nil, nil)
+      assert ev.type == :opponent_turnover
+    end
+
+    test "records a :block with blocker as passer; receiver nil", %{
+      point: point,
+      passer: blocker
+    } do
+      assert {:ok, ev} = Games.record_throw(point, :block, blocker.id, nil)
+      assert ev.type == :block
+      assert ev.passer_id == blocker.id
+      assert is_nil(ev.receiver_id)
+    end
+
+    test "accepts passer_id=nil (Unknown) for a :catch", %{point: point, receiver: receiver} do
+      assert {:ok, ev} = Games.record_throw(point, :catch, nil, receiver.id)
+      assert is_nil(ev.passer_id)
+      assert ev.receiver_id == receiver.id
+    end
+
+    test "accepts receiver_id=nil (Unknown) for a :goal", %{point: point, passer: passer} do
+      assert {:ok, ev} = Games.record_throw(point, :goal, passer.id, nil)
+      assert ev.passer_id == passer.id
+      assert is_nil(ev.receiver_id)
+    end
+
+    test "accepts both ids nil (Unknown) for a :catch", %{point: point} do
+      assert {:ok, ev} = Games.record_throw(point, :catch, nil, nil)
+      assert is_nil(ev.passer_id)
+      assert is_nil(ev.receiver_id)
+    end
+
+    test "rejects a passer not on the team", %{point: point} do
       other_team = team_fixture()
-      stranger = player_fixture(team_id: other_team.id)
+      stranger = player_fixture(team_id: other_team.id, jersey_number: "9")
 
       assert {:error, :player_not_on_team} =
-               Games.record_event(point, :goal, stranger.id)
+               Games.record_throw(point, :catch, stranger.id, nil)
     end
 
-    test "auto-increments sequence", %{point: point, player: player} do
-      {:ok, e1} = Games.record_event(point, :block, player.id)
-      {:ok, e2} = Games.record_event(point, :turn, player.id)
+    test "rejects a receiver not on the team", %{point: point, passer: passer} do
+      other_team = team_fixture()
+      stranger = player_fixture(team_id: other_team.id, jersey_number: "9")
+
+      assert {:error, :player_not_on_team} =
+               Games.record_throw(point, :catch, passer.id, stranger.id)
+    end
+
+    test "rejects a :throwaway with a non-nil receiver_id", %{
+      point: point,
+      passer: passer,
+      receiver: receiver
+    } do
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               Games.record_throw(point, :throwaway, passer.id, receiver.id)
+
+      assert %{receiver_id: ["is not allowed for throwaway events"]} = errors_on(changeset)
+    end
+
+    test "rejects a :pick with a non-nil passer_id", %{point: point, passer: passer} do
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               Games.record_throw(point, :pick, passer.id, nil)
+
+      assert %{passer_id: ["is not allowed for pick events"]} = errors_on(changeset)
+    end
+
+    test "auto-increments sequence", %{point: point, passer: passer} do
+      {:ok, e1} = Games.record_throw(point, :block, passer.id, nil)
+      {:ok, e2} = Games.record_throw(point, :pick, nil, nil)
       assert e1.sequence == 1
       assert e2.sequence == 2
     end
@@ -468,15 +561,17 @@ defmodule Ultistats.GamesTest do
     setup do
       team = team_fixture()
       game = game_fixture(team_id: team.id)
-      player = player_fixture(team_id: team.id)
+      passer = player_fixture(team_id: team.id, jersey_number: "1")
+      receiver = player_fixture(team_id: team.id, jersey_number: "2")
       other_player = player_fixture(team_id: team.id, jersey_number: "9")
-      {:ok, point} = Games.start_point(game, [player.id, other_player.id])
-      {:ok, event} = Games.record_event(point, :goal, player.id)
+      {:ok, point} = Games.start_point(game, [passer.id, receiver.id, other_player.id])
+      {:ok, event} = Games.record_throw(point, :goal, passer.id, receiver.id)
 
       %{
         team: team,
         game: game,
-        player: player,
+        passer: passer,
+        receiver: receiver,
         other_player: other_player,
         point: point,
         event: event
@@ -484,27 +579,40 @@ defmodule Ultistats.GamesTest do
     end
 
     test "updates :type", %{event: event} do
-      assert {:ok, updated} = Games.update_event(event, %{type: :turn})
-      assert updated.type == :turn
-      assert Repo.get!(Event, event.id).type == :turn
+      assert {:ok, updated} = Games.update_event(event, %{type: :catch})
+      assert updated.type == :catch
+      assert Repo.get!(Event, event.id).type == :catch
     end
 
-    test "updates :player_id to a same-team player", %{event: event, other_player: other_player} do
-      assert {:ok, updated} = Games.update_event(event, %{player_id: other_player.id})
-      assert updated.player_id == other_player.id
+    test "updates :passer_id to a same-team player", %{event: event, other_player: other} do
+      assert {:ok, updated} = Games.update_event(event, %{passer_id: other.id})
+      assert updated.passer_id == other.id
     end
 
-    test "rejects a :player_id from a different team's roster", %{event: event} do
+    test "updates :receiver_id to a same-team player", %{event: event, other_player: other} do
+      assert {:ok, updated} = Games.update_event(event, %{receiver_id: other.id})
+      assert updated.receiver_id == other.id
+    end
+
+    test "rejects a :passer_id from a different team's roster", %{event: event} do
       other_team = team_fixture()
       stranger = player_fixture(team_id: other_team.id, jersey_number: "99")
 
       assert {:error, :player_not_on_team} =
-               Games.update_event(event, %{player_id: stranger.id})
+               Games.update_event(event, %{passer_id: stranger.id})
 
       # No fields touched.
       reloaded = Repo.get!(Event, event.id)
-      assert reloaded.player_id == event.player_id
+      assert reloaded.passer_id == event.passer_id
       assert reloaded.type == event.type
+    end
+
+    test "rejects a :receiver_id from a different team's roster", %{event: event} do
+      other_team = team_fixture()
+      stranger = player_fixture(team_id: other_team.id, jersey_number: "99")
+
+      assert {:error, :player_not_on_team} =
+               Games.update_event(event, %{receiver_id: stranger.id})
     end
 
     test "does not touch :sequence, :occurred_at, or :deleted_at", %{event: event} do
@@ -513,7 +621,7 @@ defmodule Ultistats.GamesTest do
 
       assert {:ok, updated} =
                Games.update_event(event, %{
-                 type: :assist,
+                 type: :catch,
                  sequence: 99,
                  occurred_at: ~U[2030-01-01 00:00:00Z],
                  deleted_at: ~U[2030-01-01 00:00:00Z]
@@ -524,9 +632,9 @@ defmodule Ultistats.GamesTest do
       assert is_nil(updated.deleted_at)
     end
 
-    test "accepts player_id=nil to clear the attribution", %{event: event} do
-      assert {:ok, updated} = Games.update_event(event, %{player_id: nil})
-      assert is_nil(updated.player_id)
+    test "accepts passer_id=nil to clear the attribution", %{event: event} do
+      assert {:ok, updated} = Games.update_event(event, %{passer_id: nil})
+      assert is_nil(updated.passer_id)
     end
 
     test "validates :type presence — bogus type is rejected", %{event: event} do
@@ -544,8 +652,8 @@ defmodule Ultistats.GamesTest do
     end
 
     test "soft-delete excludes the event from reads", %{point: point, player: player} do
-      {:ok, e1} = Games.record_event(point, :block, player.id)
-      {:ok, e2} = Games.record_event(point, :turn, player.id)
+      {:ok, e1} = Games.record_throw(point, :block, player.id, nil)
+      {:ok, e2} = Games.record_throw(point, :throwaway, player.id, nil)
 
       assert Games.events_for_point(point) |> Enum.map(& &1.id) == [e1.id, e2.id]
 
@@ -557,7 +665,7 @@ defmodule Ultistats.GamesTest do
     end
 
     test "soft-deleted events do not bump next_event_sequence", %{point: point, player: player} do
-      {:ok, e1} = Games.record_event(point, :block, player.id)
+      {:ok, e1} = Games.record_throw(point, :block, player.id, nil)
       {:ok, _} = Games.soft_delete_event(e1)
       # next_event_sequence sees no live events, so it returns 1 again.
       assert Games.next_event_sequence(point) == 1
@@ -571,7 +679,7 @@ defmodule Ultistats.GamesTest do
       # in the helper so Games.score/1 (which counts non-deleted goal
       # events on the `:ours` side) reports correctly.
       if scoring_team == :ours do
-        {:ok, _} = Games.record_event(pt, :goal, player.id)
+        {:ok, _} = Games.record_throw(pt, :goal, player.id, player.id)
       end
 
       {:ok, _} = Games.end_point(pt, scoring_team)
@@ -640,7 +748,7 @@ defmodule Ultistats.GamesTest do
       game = game_fixture(team_id: team.id)
       player = player_fixture(team_id: team.id)
       {:ok, point} = Games.start_point(game, [player.id])
-      {:ok, event} = Games.record_event(point, :goal, player.id)
+      {:ok, event} = Games.record_throw(point, :goal, player.id, player.id)
 
       {:ok, _} = Games.delete_game(game)
 
@@ -648,17 +756,19 @@ defmodule Ultistats.GamesTest do
       refute Repo.get(Event, event.id)
     end
 
-    test "deleting a player nilifies player_id on existing events" do
+    test "deleting a player nilifies passer_id and receiver_id on existing events" do
       team = team_fixture()
       game = game_fixture(team_id: team.id)
       player = player_fixture(team_id: team.id)
-      {:ok, point} = Games.start_point(game, [player.id])
-      {:ok, event} = Games.record_event(point, :goal, player.id)
+      other = player_fixture(team_id: team.id, jersey_number: "9")
+      {:ok, point} = Games.start_point(game, [player.id, other.id])
+      {:ok, event} = Games.record_throw(point, :goal, player.id, other.id)
 
       {:ok, _} = Teams.delete_player(player)
 
       reloaded = Repo.get!(Event, event.id)
-      assert reloaded.player_id == nil
+      assert reloaded.passer_id == nil
+      assert reloaded.receiver_id == other.id
     end
   end
 
@@ -687,15 +797,17 @@ defmodule Ultistats.GamesTest do
       Enum.each(summary.players, fn row ->
         assert row.goals == 0
         assert row.assists == 0
+        assert row.catches == 0
+        assert row.drops == 0
+        assert row.throwaways == 0
         assert row.blocks == 0
-        assert row.turns == 0
         assert row.points_played == 0
       end)
     end
 
-    test "tallies a goal for the scorer and our score", %{game: game, pa: pa, pb: pb} do
+    test "tallies a goal as scorer goal + assister assist", %{game: game, pa: pa, pb: pb} do
       {:ok, point} = Games.start_point(game, [pa.id, pb.id])
-      {:ok, _} = Games.record_event(point, :goal, pa.id)
+      {:ok, _} = Games.record_throw(point, :goal, pb.id, pa.id)
       {:ok, _} = Games.end_point(point, :ours)
 
       summary = Games.summary_for_game(game)
@@ -704,16 +816,85 @@ defmodule Ultistats.GamesTest do
       a_row = Enum.find(summary.players, &(&1.player.id == pa.id))
       b_row = Enum.find(summary.players, &(&1.player.id == pb.id))
 
+      # pa is the scorer (receiver), pb the assister (passer).
       assert a_row.goals == 1
+      assert a_row.assists == 0
       assert b_row.goals == 0
-      # Both played the point.
+      assert b_row.assists == 1
       assert a_row.points_played == 1
       assert b_row.points_played == 1
     end
 
+    test "tallies catches for the receiver of a :catch", %{game: game, pa: pa, pb: pb} do
+      {:ok, point} = Games.start_point(game, [pa.id, pb.id])
+      {:ok, _} = Games.record_throw(point, :catch, pa.id, pb.id)
+      {:ok, _} = Games.end_point(point, :theirs)
+
+      summary = Games.summary_for_game(game)
+      a_row = Enum.find(summary.players, &(&1.player.id == pa.id))
+      b_row = Enum.find(summary.players, &(&1.player.id == pb.id))
+
+      assert b_row.catches == 1
+      assert a_row.catches == 0
+    end
+
+    test "a :drop counts as a drop on the receiver and a throwaway on the passer", %{
+      game: game,
+      pa: pa,
+      pb: pb
+    } do
+      {:ok, point} = Games.start_point(game, [pa.id, pb.id])
+      {:ok, _} = Games.record_throw(point, :drop, pa.id, pb.id)
+      {:ok, _} = Games.end_point(point, :theirs)
+
+      summary = Games.summary_for_game(game)
+      a_row = Enum.find(summary.players, &(&1.player.id == pa.id))
+      b_row = Enum.find(summary.players, &(&1.player.id == pb.id))
+
+      assert b_row.drops == 1
+      assert a_row.throwaways == 1
+    end
+
+    test "a :throwaway counts as a throwaway on the passer", %{game: game, pa: pa} do
+      {:ok, point} = Games.start_point(game, [pa.id])
+      {:ok, _} = Games.record_throw(point, :throwaway, pa.id, nil)
+      {:ok, _} = Games.end_point(point, :theirs)
+
+      summary = Games.summary_for_game(game)
+      a_row = Enum.find(summary.players, &(&1.player.id == pa.id))
+      assert a_row.throwaways == 1
+    end
+
+    test "a :block counts as a block on the blocker", %{game: game, pa: pa} do
+      {:ok, point} = Games.start_point(game, [pa.id])
+      {:ok, _} = Games.record_throw(point, :block, pa.id, nil)
+      {:ok, _} = Games.end_point(point, :ours)
+
+      summary = Games.summary_for_game(game)
+      a_row = Enum.find(summary.players, &(&1.player.id == pa.id))
+      assert a_row.blocks == 1
+    end
+
+    test "calls and opponent events do not move per-player counters", %{game: game, pa: pa} do
+      {:ok, point} = Games.start_point(game, [pa.id])
+      {:ok, _} = Games.record_throw(point, :pick, nil, nil)
+      {:ok, _} = Games.record_throw(point, :foul, nil, nil)
+      {:ok, _} = Games.record_throw(point, :opponent_turnover, nil, nil)
+      {:ok, _} = Games.end_point(point, :theirs)
+
+      summary = Games.summary_for_game(game)
+      a_row = Enum.find(summary.players, &(&1.player.id == pa.id))
+      assert a_row.goals == 0
+      assert a_row.assists == 0
+      assert a_row.catches == 0
+      assert a_row.drops == 0
+      assert a_row.throwaways == 0
+      assert a_row.blocks == 0
+    end
+
     test "soft-deleted events drop out of the tally", %{game: game, pa: pa} do
       {:ok, point} = Games.start_point(game, [pa.id])
-      {:ok, event} = Games.record_event(point, :goal, pa.id)
+      {:ok, event} = Games.record_throw(point, :goal, pa.id, pa.id)
       {:ok, _} = Games.end_point(point, :ours)
       {:ok, _} = Games.soft_delete_event(event)
 

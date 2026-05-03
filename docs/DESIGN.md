@@ -29,7 +29,7 @@ MVP assumes the device has connectivity to the server for the entire game. There
 
 **Connectivity-loss UX (must implement):**
 - Detect LiveView socket disconnect on the client (Phoenix LiveView fires `phx:page-loading-start` / connection events).
-- When disconnected: show a sticky banner at the top of the screen ("Reconnecting…"), and disable all in-game action buttons (`Goal`, `Assist`, `Block`, `Turn`, line-preset selection). This prevents the tracker from tapping into the void and assuming events were recorded.
+- When disconnected: show a sticky banner at the top of the screen ("Reconnecting…"), and disable all in-game action buttons (Catch, Drop, Goal, Throwaway, Stall, Block, line-preset selection). This prevents the tracker from tapping into the void and assuming events were recorded.
 - When reconnected: clear the banner, re-enable buttons. LiveView's normal reconnect flow re-fetches state from the server, so no duplication concerns.
 
 **Future enhancement (post-MVP):** offline-capable mode would require a service worker, local event store, and reconciliation. Explicitly out of scope.
@@ -83,15 +83,38 @@ events
   id (pk)
   point_id (fk → points)
   sequence (integer, not null)       -- ordering within point
-  type (enum: "goal" | "assist" | "block" | "turn")
-  player_id (fk → players, nullable for events that don't pin to a player)
+  type (enum: pull | catch | throwaway | drop | stall | goal
+              | block | opponent_turnover | opponent_goal
+              | pick | foul)
+  passer_id (fk → players, nullable)   -- thrower / puller / blocker; nil = "Unknown"
+  receiver_id (fk → players, nullable) -- catcher / intended catcher / scorer; nil = "Unknown"
   occurred_at (utc_datetime)
   deleted_at (utc_datetime, nullable) -- soft delete; aggregates filter NULL
 ```
 
+**Per-type field shape** (enforced in `Event.changeset/2`; both ids always nullable, where `nil` means "Unknown"):
+
+| type | passer_id | receiver_id | possession after |
+|---|---|---|---|
+| `:pull` | allowed | must be nil | opponent |
+| `:catch` | allowed | allowed | us |
+| `:throwaway` | allowed | must be nil | opponent |
+| `:drop` | allowed | allowed | opponent |
+| `:stall` | allowed | must be nil | opponent |
+| `:goal` | allowed (assister) | allowed (scorer) | (point ends) |
+| `:block` | allowed (blocker) | must be nil | us |
+| `:opponent_turnover` | must be nil | must be nil | us |
+| `:opponent_goal` | must be nil | must be nil | (point ends) |
+| `:pick` | must be nil | must be nil | unchanged |
+| `:foul` | must be nil | must be nil | unchanged |
+
+`:assist` is **derived** from a goal's `passer_id` — there is no `:assist` event type. Earlier `:turn` is replaced by the more specific `:throwaway` / `:drop` / `:stall`.
+
 **Key design choices in the data model:**
 
-- **Events are normalized rows, never blobs.** Every goal, assist, block, turn is one row with `(point_id, type, player_id)`. This keeps future aggregation queries (per-player goals across games, etc.) trivial — even though MVP doesn't expose them.
+- **Events are normalized rows, never blobs.** Every per-throw event is one row with `(point_id, type, passer_id, receiver_id)`. Throw completion %, drop counts per receiver, passing chains, etc. are all just SQL aggregates on this table.
+- **Possession is event-driven.** `Games.starting_possession/2` gives the start-of-point side; `Enum.reduce` over each point's events flips per the table above. No separate possession state on the DB.
+- **`nil` = Unknown** for `passer_id` / `receiver_id` — the tracker can record an event even when they missed who threw or caught it.
 - **Soft delete on events** (`deleted_at`) — the timeline edit feature deletes events, but we want an audit trail. All read paths filter `deleted_at IS NULL`.
 - **`our_line_snapshot` is denormalized on `points`** — captures who was on the field for that point even if rosters/line-presets change later.
 - **No client-side UUIDs.** Server-generated integer ids (or `:binary_id` if Phoenix gen defaults that way).
