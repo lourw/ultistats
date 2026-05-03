@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mix test:*)",
+      "Bash(mix format:*)",
+      "Bash(mix compile:*)",
+      "Bash(mix deps.get:*)",
+      "Bash(mix deps.compile:*)",
+      "Bash(mix help:*)",
+      "Bash(mix phx.routes:*)",
+      "Bash(mix ecto.migrations:*)",
+      "Bash(mix ecto.create:*)",
+      "Bash(mix ecto.migrate:*)",
+      "Bash(mix ecto.gen.migration:*)"
+    ]
+  }
+}
