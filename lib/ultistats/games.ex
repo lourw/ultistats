@@ -210,7 +210,8 @@ defmodule Ultistats.Games do
         game_id: game.id,
         sequence: next_point_sequence(game),
         our_line_snapshot: %{"user_ids" => scoped_ids},
-        scoring_team: nil
+        scoring_team: nil,
+        started_at: now()
       }
 
       %Point{}
@@ -236,7 +237,7 @@ defmodule Ultistats.Games do
 
       true ->
         point
-        |> Point.changeset(%{scoring_team: scoring_team})
+        |> Point.changeset(%{scoring_team: scoring_team, ended_at: now()})
         |> Repo.update()
     end
   end
@@ -248,7 +249,7 @@ defmodule Ultistats.Games do
   """
   def reopen_point(%Point{} = point) do
     point
-    |> Point.changeset(%{scoring_team: nil})
+    |> Point.changeset(%{scoring_team: nil, ended_at: nil})
     |> Repo.update()
   end
 
