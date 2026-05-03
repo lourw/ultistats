@@ -138,6 +138,7 @@ defmodule UltistatsWeb.RulesetLiveTest do
                    score_cap: "13",
                    halftime_target: "7",
                    timeouts_per_half: "1",
+                   line_size: "7",
                    gender_ratio_rule: "alternating",
                    default_starting_ratio: "four_men_three_women"
                  }
@@ -150,6 +151,7 @@ defmodule UltistatsWeb.RulesetLiveTest do
       assert ruleset.score_cap == 13
       assert ruleset.halftime_target == 7
       assert ruleset.timeouts_per_half == 1
+      assert ruleset.line_size == 7
       assert ruleset.gender_ratio_rule == :alternating
     end
 
@@ -207,6 +209,7 @@ defmodule UltistatsWeb.RulesetLiveTest do
                    score_cap: "11",
                    halftime_target: "6",
                    timeouts_per_half: "1",
+                   line_size: "7",
                    gender_ratio_rule: "alternating",
                    default_starting_ratio: "four_men_three_women"
                  }

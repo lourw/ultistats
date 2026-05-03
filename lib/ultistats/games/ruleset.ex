@@ -20,6 +20,7 @@ defmodule Ultistats.Games.Ruleset do
     field :soft_cap_minutes, :integer
     field :hard_cap_minutes, :integer
     field :timeouts_per_half, :integer
+    field :line_size, :integer
     field :gender_ratio_rule, Ecto.Enum, values: @gender_ratio_rules
     field :default_starting_ratio, Ecto.Enum, values: @starting_ratios
     field :division, Ecto.Enum, values: @divisions, default: :open
@@ -74,14 +75,23 @@ defmodule Ultistats.Games.Ruleset do
       :soft_cap_minutes,
       :hard_cap_minutes,
       :timeouts_per_half,
+      :line_size,
       :gender_ratio_rule,
       :default_starting_ratio,
       :division
     ])
-    |> validate_required([:team_id, :kind, :timeouts_per_half, :gender_ratio_rule, :division])
+    |> validate_required([
+      :team_id,
+      :kind,
+      :timeouts_per_half,
+      :line_size,
+      :gender_ratio_rule,
+      :division
+    ])
     |> validate_name_for_kind()
     |> validate_number(:score_cap, greater_than_or_equal_to: 1, less_than_or_equal_to: 30)
     |> validate_number(:timeouts_per_half, greater_than_or_equal_to: 0, less_than_or_equal_to: 5)
+    |> validate_number(:line_size, greater_than_or_equal_to: 1, less_than_or_equal_to: 15)
     |> validate_number(:halftime_cap_minutes,
       greater_than_or_equal_to: 1,
       less_than_or_equal_to: 240

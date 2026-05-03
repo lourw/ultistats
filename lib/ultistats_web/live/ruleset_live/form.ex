@@ -74,6 +74,15 @@ defmodule UltistatsWeb.RulesetLive.Form do
         />
 
         <.input
+          field={@form[:line_size]}
+          type="number"
+          label="Line size (players per point)"
+          min="1"
+          max="15"
+          inputmode="numeric"
+        />
+
+        <.input
           field={@form[:timeouts_per_half]}
           type="number"
           label="Timeouts per half"
@@ -170,6 +179,7 @@ defmodule UltistatsWeb.RulesetLive.Form do
           kind: :template,
           division: team.division || :open,
           timeouts_per_half: 2,
+          line_size: 7,
           gender_ratio_rule: :endzone,
           default_starting_ratio: :four_men_three_women
         }

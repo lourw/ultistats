@@ -27,6 +27,7 @@ defmodule Ultistats.Games do
       soft_cap_minutes: nil,
       hard_cap_minutes: nil,
       timeouts_per_half: 2,
+      line_size: 7,
       gender_ratio_rule: :endzone,
       default_starting_ratio: :four_men_three_women
     }
@@ -201,17 +202,21 @@ defmodule Ultistats.Games do
   def start_point(%Game{} = game, user_ids) when is_list(user_ids) do
     scoped_ids = scope_user_ids_to_team(user_ids, game.team_id)
 
-    attrs = %{
-      game_id: game.id,
-      sequence: next_point_sequence(game),
-      our_line_snapshot: %{"user_ids" => scoped_ids},
-      scoring_team: nil
-    }
+    if length(scoped_ids) != line_size_for(game) do
+      {:error, :wrong_line_size}
+    else
+      attrs = %{
+        game_id: game.id,
+        sequence: next_point_sequence(game),
+        our_line_snapshot: %{"user_ids" => scoped_ids},
+        scoring_team: nil
+      }
 
-    %Point{}
-    |> Point.changeset(attrs)
-    |> validate_non_empty_line(scoped_ids)
-    |> Repo.insert()
+      %Point{}
+      |> Point.changeset(attrs)
+      |> validate_non_empty_line(scoped_ids)
+      |> Repo.insert()
+    end
   end
 
   @doc """
@@ -499,6 +504,18 @@ defmodule Ultistats.Games do
   """
   def hard_cap_threshold(%Game{} = game) do
     fetch_ruleset_field(game, :score_cap)
+  end
+
+  @doc "Resolved line size (players per point) for `game`. Falls back to USAU default 7."
+  def line_size_for(%Game{} = game), do: fetch_ruleset_field(game, :line_size)
+
+  @doc """
+  Returns nil when `line` has exactly `required` players, otherwise
+  `%{actual: integer, required: integer}` for non-blocking display.
+  """
+  def line_size_violation(line, required) when is_integer(required) and is_list(line) do
+    actual = length(line)
+    if actual == required, do: nil, else: %{actual: actual, required: required}
   end
 
   @doc """
@@ -975,6 +992,7 @@ defmodule Ultistats.Games do
     :soft_cap_minutes,
     :hard_cap_minutes,
     :timeouts_per_half,
+    :line_size,
     :gender_ratio_rule,
     :default_starting_ratio
   ]

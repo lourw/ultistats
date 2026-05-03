@@ -135,6 +135,7 @@ defmodule Ultistats.TeamsFixtures do
         soft_cap_minutes: nil,
         hard_cap_minutes: nil,
         timeouts_per_half: 2,
+        line_size: 7,
         gender_ratio_rule: :endzone,
         default_starting_ratio: :four_men_three_women
       })

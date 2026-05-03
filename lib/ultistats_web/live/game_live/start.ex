@@ -14,7 +14,8 @@ defmodule UltistatsWeb.GameLive.Start do
     :halftime_cap_minutes,
     :soft_cap_minutes,
     :hard_cap_minutes,
-    :timeouts_per_half
+    :timeouts_per_half,
+    :line_size
   ]
 
   @rule_atom_fields [:gender_ratio_rule, :default_starting_ratio]
@@ -29,6 +30,7 @@ defmodule UltistatsWeb.GameLive.Start do
     "soft_cap_minutes" => "",
     "hard_cap_minutes" => "",
     "timeouts_per_half" => "2",
+    "line_size" => "7",
     "gender_ratio_rule" => "none",
     "default_starting_ratio" => ""
   }
@@ -187,6 +189,16 @@ defmodule UltistatsWeb.GameLive.Start do
               label="Timeouts per half"
               min="0"
               max="5"
+              inputmode="numeric"
+            />
+            <.input
+              id="game_rule_overrides_line_size"
+              name="rule_overrides[line_size]"
+              value={Map.get(@rule_overrides, "line_size", "")}
+              type="number"
+              label="Line size (players per point)"
+              min="1"
+              max="15"
               inputmode="numeric"
             />
             <.input
@@ -469,6 +481,7 @@ defmodule UltistatsWeb.GameLive.Start do
       "soft_cap_minutes" => stringify(r.soft_cap_minutes),
       "hard_cap_minutes" => stringify(r.hard_cap_minutes),
       "timeouts_per_half" => stringify(r.timeouts_per_half),
+      "line_size" => stringify(r.line_size),
       "gender_ratio_rule" => stringify(r.gender_ratio_rule),
       "default_starting_ratio" => stringify(r.default_starting_ratio)
     }

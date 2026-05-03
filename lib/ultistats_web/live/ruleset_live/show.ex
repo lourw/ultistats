@@ -42,6 +42,7 @@ defmodule UltistatsWeb.RulesetLive.Show do
         </:item>
         <:item title="Soft cap">{minutes_label(@ruleset.soft_cap_minutes)}</:item>
         <:item title="Hard cap">{minutes_label(@ruleset.hard_cap_minutes)}</:item>
+        <:item title="Line size">{@ruleset.line_size}</:item>
         <:item title="Timeouts per half">{@ruleset.timeouts_per_half}</:item>
         <:item title="Gender ratio rule">
           {gender_ratio_label(@ruleset.gender_ratio_rule)}

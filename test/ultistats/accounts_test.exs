@@ -445,7 +445,7 @@ defmodule Ultistats.AccountsTest do
       receiver_member = team_membership_fixture(team_id: team.id)
       receiver = receiver_member.user
 
-      game = game_fixture(team_id: team.id)
+      game = game_fixture(team_id: team.id, line_size: 2)
       {:ok, point} = Games.start_point(game, [stub.id, receiver.id])
       {:ok, ev1} = Games.record_throw(point, :catch, stub.id, receiver.id)
       {:ok, ev2} = Games.record_throw(point, :goal, receiver.id, stub.id)
