@@ -13,30 +13,32 @@ defmodule UltistatsWeb.RulesetLive.Index do
         <:subtitle>Reusable rule templates: caps, halftime, timeouts, gender ratio.</:subtitle>
       </.header>
 
-      <ul :if={@rows != []} id="rulesets-list" class="mt-4 pb-24 divide-y divide-base-300">
+      <ul
+        :if={@rows != []}
+        id="rulesets-list"
+        class="-mx-4 mt-4 pb-24 border-y border-base-200 divide-y divide-base-200"
+      >
         <li
           :for={%{ruleset: r, team: team} <- @rows}
           id={"ruleset-#{r.id}"}
-          class="flex items-center justify-between gap-3 py-3"
+          class="min-h-9 flex items-center gap-2 px-4 py-0.5"
         >
-          <div class="flex items-center gap-3 min-w-0">
-            <span class="inline-flex items-center justify-center min-w-8 h-7 px-2 rounded-full bg-base-200 text-base-content text-sm font-semibold tabular-nums shrink-0">
-              {score_cap_badge(r.score_cap)}
-            </span>
-            <div class="min-w-0">
-              <div class="font-medium truncate">{r.name}</div>
-              <div class="text-xs text-base-content/60 truncate">
-                {team.name} · {summary_line(r)}
-              </div>
+          <span class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0">
+            {score_cap_badge(r.score_cap)}
+          </span>
+          <div class="flex-1 min-w-0">
+            <div class="font-medium text-sm truncate leading-tight">{r.name}</div>
+            <div class="text-[11px] text-base-content/60 truncate leading-tight">
+              {team.name} · {summary_line(r)}
             </div>
           </div>
           <.link
             :if={MapSet.member?(@admin_team_ids, r.team_id)}
             navigate={~p"/rulesets/#{r.id}/edit"}
             aria-label={"Edit #{r.name}"}
-            class="shrink-0 min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            class="shrink-0 min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            <.icon name="hero-pencil-square" class="size-5" />
+            <.icon name="hero-pencil-square" class="size-4" />
           </.link>
         </li>
       </ul>

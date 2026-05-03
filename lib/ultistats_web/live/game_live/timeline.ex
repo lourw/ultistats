@@ -47,6 +47,7 @@ defmodule UltistatsWeb.GameLive.Timeline do
        |> assign(:edit_type, nil)
        |> assign(:edit_user_id, nil)
        |> assign(:confirming_delete_id, nil)
+       |> assign(:sort_order, :newest_first)
        |> reload_timeline()}
     end
   end
@@ -60,7 +61,7 @@ defmodule UltistatsWeb.GameLive.Timeline do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="flex flex-col gap-6 pb-safe">
-        <.timeline_header game={@game} score={@score} />
+        <.timeline_header game={@game} score={@score} sort_order={@sort_order} />
 
         <%= if @timeline == [] do %>
           <.empty_state game={@game} />
@@ -95,6 +96,7 @@ defmodule UltistatsWeb.GameLive.Timeline do
 
   attr :game, :map, required: true
   attr :score, :map, required: true
+  attr :sort_order, :atom, required: true
 
   defp timeline_header(assigns) do
     ~H"""
@@ -116,11 +118,38 @@ defmodule UltistatsWeb.GameLive.Timeline do
             </h1>
             <.score_readout our_score={@score.ours} their_score={@score.theirs} />
           </div>
+
+          <button
+            type="button"
+            phx-click="set_sort"
+            phx-value-order={
+              if @sort_order == :newest_first, do: "oldest_first", else: "newest_first"
+            }
+            aria-label={
+              if @sort_order == :newest_first,
+                do: "Sort oldest first",
+                else: "Sort newest first"
+            }
+            class="min-h-9 inline-flex items-center gap-1 rounded-md border border-base-300 px-2 text-xs font-semibold text-base-content/80 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary shrink-0"
+          >
+            <.icon
+              name={
+                if @sort_order == :newest_first,
+                  do: "hero-bars-arrow-down",
+                  else: "hero-bars-arrow-up"
+              }
+              class="size-4"
+            />
+            <span>{sort_label(@sort_order)}</span>
+          </button>
         </div>
       </div>
     </div>
     """
   end
+
+  defp sort_label(:newest_first), do: "Newest"
+  defp sort_label(:oldest_first), do: "Oldest"
 
   attr :game, :map, required: true
 
@@ -170,7 +199,7 @@ defmodule UltistatsWeb.GameLive.Timeline do
           No events recorded for this point.
         </p>
       <% else %>
-        <ul class="rounded-lg border border-base-200 divide-y divide-base-200 overflow-hidden">
+        <ul class="-mx-4 border-y border-base-200 divide-y divide-base-200">
           <li :for={event <- @section.events}>
             <.timeline_event
               event={event_view(event, @players_by_id, @section.point)}
@@ -196,25 +225,25 @@ defmodule UltistatsWeb.GameLive.Timeline do
 
   defp row_actions(assigns) do
     ~H"""
-    <div class="flex items-center gap-1">
+    <div class="flex items-center gap-0.5">
       <button
         type="button"
         phx-click="open_edit"
         phx-value-id={@event_id}
         aria-label="Edit event"
         aria-pressed={to_string(@editing?)}
-        class="min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
-        <.icon name="hero-pencil-square" class="size-5" />
+        <.icon name="hero-pencil-square" class="size-4" />
       </button>
       <button
         type="button"
         phx-click="ask_delete"
         phx-value-id={@event_id}
         aria-label="Delete event"
-        class="min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-error active:bg-error/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-error active:bg-error/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
-        <.icon name="hero-trash" class="size-5" />
+        <.icon name="hero-trash" class="size-4" />
       </button>
     </div>
     """
@@ -224,16 +253,16 @@ defmodule UltistatsWeb.GameLive.Timeline do
 
   defp delete_confirm(assigns) do
     ~H"""
-    <div class="flex items-center gap-2" role="group" aria-label="Confirm delete">
+    <div class="flex items-center gap-1" role="group" aria-label="Confirm delete">
       <span class="text-xs font-medium text-base-content/80 hidden sm:inline">
-        Delete this event?
+        Delete?
       </span>
       <button
         type="button"
         phx-click="confirm_delete"
         phx-value-id={@event_id}
         aria-label="Confirm delete event"
-        class="min-h-11 px-3 inline-flex items-center justify-center rounded-md text-sm font-semibold bg-error text-error-content active:bg-error/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        class="min-h-9 px-2 inline-flex items-center justify-center rounded-md text-xs font-semibold bg-error text-error-content active:bg-error/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         Delete
       </button>
@@ -241,7 +270,7 @@ defmodule UltistatsWeb.GameLive.Timeline do
         type="button"
         phx-click="cancel_delete"
         aria-label="Cancel delete"
-        class="min-h-11 px-3 inline-flex items-center justify-center rounded-md text-sm font-semibold border-2 border-base-300 text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        class="min-h-9 px-2 inline-flex items-center justify-center rounded-md text-xs font-semibold border border-base-300 text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         Cancel
       </button>
@@ -386,6 +415,14 @@ defmodule UltistatsWeb.GameLive.Timeline do
   ## ---------------------------------------------------------------------
 
   @impl true
+  def handle_event("set_sort", %{"order" => order}, socket)
+      when order in ["newest_first", "oldest_first"] do
+    {:noreply,
+     socket
+     |> assign(:sort_order, String.to_existing_atom(order))
+     |> reload_timeline()}
+  end
+
   def handle_event("open_edit", %{"id" => id}, socket) do
     case find_event(socket.assigns.timeline, id) do
       nil ->
@@ -498,11 +535,23 @@ defmodule UltistatsWeb.GameLive.Timeline do
       Enum.map(game.points, fn point ->
         %{point: point, events: Games.events_for_point(point)}
       end)
+      |> sort_timeline(socket.assigns.sort_order)
 
     socket
     |> assign(:game, game)
     |> assign(:timeline, timeline)
     |> assign(:score, Games.score(game))
+  end
+
+  # `:newest_first` flips both the point order and each point's event
+  # order so the most recent activity surfaces at the top. `:oldest_first`
+  # is the natural sequence order from the DB.
+  defp sort_timeline(timeline, :oldest_first), do: timeline
+
+  defp sort_timeline(timeline, :newest_first) do
+    timeline
+    |> Enum.reverse()
+    |> Enum.map(fn section -> %{section | events: Enum.reverse(section.events)} end)
   end
 
   # Build the map shape consumed by `<.timeline_event>`.

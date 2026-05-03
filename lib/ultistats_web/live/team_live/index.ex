@@ -27,23 +27,24 @@ defmodule UltistatsWeb.TeamLive.Index do
         </div>
       </div>
 
-      <ul :if={@teams_with_stats != []} id="teams-list" class="divide-y divide-base-200">
-        <li :for={%{team: team, stats: s} <- @teams_with_stats} id={"team-#{team.id}"} class="py-3">
+      <ul
+        :if={@teams_with_stats != []}
+        id="teams-list"
+        class="-mx-4 border-y border-base-200 divide-y divide-base-200"
+      >
+        <li :for={%{team: team, stats: s} <- @teams_with_stats} id={"team-#{team.id}"}>
           <.link
             navigate={~p"/teams/#{team}"}
-            class="block hover:bg-base-200 rounded-md px-2 -mx-2 py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            class="min-h-9 flex flex-col justify-center px-4 py-1.5 hover:bg-base-200 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            <div class="font-medium text-base">{team.name}</div>
-            <div class="mt-1 text-sm text-base-content/70 flex flex-wrap gap-x-3 gap-y-1 tabular-nums">
+            <div class="font-medium text-sm leading-tight">{team.name}</div>
+            <div class="text-xs text-base-content/70 flex flex-wrap gap-x-2 gap-y-0.5 tabular-nums leading-tight">
               <span>{s.total_players} players</span>
               <span aria-hidden="true">·</span>
               <span>♂ {s.male_matching}</span>
               <span>♀ {s.female_matching}</span>
               <span aria-hidden="true">·</span>
-              <span>{format_record(s)}</span>
-              <span :if={s.games_in_progress > 0} class="text-info">
-                {s.games_in_progress} in progress
-              </span>
+              <span>{games_label(total_games(s))}</span>
             </div>
           </.link>
         </li>
@@ -62,13 +63,10 @@ defmodule UltistatsWeb.TeamLive.Index do
      |> assign(:teams_with_stats, Teams.list_teams_with_stats_for_user(user))}
   end
 
-  # Record formatting:
-  # - "W–L" (en dash) for the common case of finished wins/losses
-  # - "W–L–T" when ties exist
-  # - "No games yet" when there are zero games at all
-  # - "" when only in-progress games exist (the "in progress" badge carries the info)
-  defp format_record(%{wins: 0, losses: 0, ties: 0, games_in_progress: 0}), do: "No games yet"
-  defp format_record(%{wins: 0, losses: 0, ties: 0}), do: ""
-  defp format_record(%{wins: w, losses: l, ties: 0}), do: "#{w}–#{l}"
-  defp format_record(%{wins: w, losses: l, ties: t}), do: "#{w}–#{l}–#{t}"
+  defp total_games(%{wins: w, losses: l, ties: t, games_in_progress: ip}),
+    do: w + l + t + ip
+
+  defp games_label(0), do: "No games yet"
+  defp games_label(1), do: "1 game"
+  defp games_label(n), do: "#{n} games"
 end

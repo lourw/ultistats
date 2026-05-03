@@ -59,22 +59,26 @@ defmodule UltistatsWeb.GameLive.Index do
       </div>
 
       <section :if={@active_tab == :games} class="mt-4 pb-24" aria-labelledby="tab-games">
-        <ul :if={@games != []} id="games-list" class="divide-y divide-base-300">
-          <li :for={game <- @games} id={"game-#{game.id}"} class="py-3">
+        <ul
+          :if={@games != []}
+          id="games-list"
+          class="-mx-4 border-y border-base-200 divide-y divide-base-200"
+        >
+          <li :for={game <- @games} id={"game-#{game.id}"}>
             <.link
               navigate={~p"/games/#{game.id}"}
-              class="flex items-center justify-between gap-3 min-h-11 -mx-2 px-2 rounded-md hover:bg-base-200 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              class="min-h-9 flex items-center gap-2 px-4 py-1.5 hover:bg-base-200 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
-              <div class="min-w-0">
-                <div class="font-medium truncate">
+              <div class="flex-1 min-w-0">
+                <div class="font-medium text-sm truncate leading-tight">
                   {team_name(game)} vs {game.opponent_name}
                 </div>
-                <div class="text-sm text-base-content/70 tabular-nums">
+                <div class="text-xs text-base-content/70 tabular-nums leading-tight">
                   {format_started_at(game.started_at)}
                 </div>
               </div>
               <span class={[
-                "text-xs font-semibold px-2 py-1 rounded-full shrink-0",
+                "text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0",
                 status_pill_classes(game.status)
               ]}>
                 {status_label(game.status)}
@@ -104,30 +108,32 @@ defmodule UltistatsWeb.GameLive.Index do
           </form>
         </div>
 
-        <ul :if={@rulesets != []} id="rulesets-list" class="divide-y divide-base-300">
+        <ul
+          :if={@rulesets != []}
+          id="rulesets-list"
+          class="-mx-4 border-y border-base-200 divide-y divide-base-200"
+        >
           <li
             :for={r <- @rulesets}
             id={"ruleset-#{r.id}"}
-            class="flex items-center justify-between gap-3 py-3"
+            class="min-h-9 flex items-center gap-2 px-4 py-0.5"
           >
-            <div class="flex items-center gap-3 min-w-0">
-              <span class="inline-flex items-center justify-center min-w-8 h-7 px-2 rounded-full bg-base-200 text-base-content text-sm font-semibold tabular-nums shrink-0">
-                {score_cap_badge(r.score_cap)}
-              </span>
-              <div class="min-w-0">
-                <div class="font-medium truncate">{r.name}</div>
-                <div class="text-xs text-base-content/60 truncate">
-                  {team_label(r)}
-                </div>
+            <span class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0">
+              {score_cap_badge(r.score_cap)}
+            </span>
+            <div class="flex-1 min-w-0">
+              <div class="font-medium text-sm truncate leading-tight">{r.name}</div>
+              <div class="text-[11px] text-base-content/60 truncate leading-tight">
+                {team_label(r)}
               </div>
             </div>
             <.link
               :if={MapSet.member?(@admin_team_ids, r.team_id)}
               navigate={~p"/rulesets/#{r.id}/edit"}
               aria-label={"Edit #{r.name}"}
-              class="shrink-0 min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              class="shrink-0 min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
-              <.icon name="hero-pencil-square" class="size-5" />
+              <.icon name="hero-pencil-square" class="size-4" />
             </.link>
           </li>
         </ul>

@@ -355,47 +355,37 @@ defmodule UltistatsWeb.UIComponents do
 
     ~H"""
     <div
-      class={[
-        "flex items-center gap-3 py-3 px-3 rounded-lg",
-        "border-b border-base-200 last:border-b-0",
-        @class
-      ]}
+      class={["min-h-9 flex items-center gap-2 px-4 py-0.5", @class]}
       data-event-type={@type}
       {@rest}
     >
       <span
         class={[
-          "size-10 shrink-0 rounded-full inline-flex items-center justify-center",
+          "size-6 shrink-0 rounded-full inline-flex items-center justify-center",
           @meta.color_classes
         ]}
         aria-hidden="true"
       >
-        <.icon name={@meta.icon} class="size-5" />
+        <.icon name={@meta.icon} class="size-4" />
       </span>
-      <div class="flex-1 min-w-0">
-        <div class="flex items-center gap-2">
-          <span class="font-semibold text-base">{@meta.label}</span>
-          <span :if={@point_label} class="text-xs text-base-content/60 tabular-nums">
-            {@point_label}
-          </span>
-        </div>
-        <div class="text-sm text-base-content/80 truncate">
-          {@player_label}
-        </div>
-      </div>
-      <time class="text-xs text-base-content/60 tabular-nums shrink-0">
-        {@timestamp}
-      </time>
+      <span class="text-sm font-semibold shrink-0">{@meta.label}</span>
+      <span :if={@point_label} class="text-[11px] text-base-content/60 tabular-nums shrink-0">
+        {@point_label}
+      </span>
+      <span class="flex-1 text-sm text-base-content/80 truncate leading-tight">
+        {@player_label}
+      </span>
+      <time class="text-[11px] text-base-content/60 tabular-nums shrink-0">{@timestamp}</time>
       <div :if={@editable?} class="shrink-0">
         <%= if @actions != [] do %>
           {render_slot(@actions, @event)}
         <% else %>
           <button
             type="button"
-            class="min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             aria-label={"Edit #{@meta.label} event"}
           >
-            <.icon name="hero-ellipsis-horizontal" class="size-5" />
+            <.icon name="hero-ellipsis-horizontal" class="size-4" />
           </button>
         <% end %>
       </div>
@@ -435,6 +425,62 @@ defmodule UltistatsWeb.UIComponents do
     do: %{
       label: "Pull",
       icon: "hero-paper-airplane",
+      color_classes: "bg-base-300 text-base-content"
+    }
+
+  defp timeline_meta(:catch),
+    do: %{
+      label: "Catch",
+      icon: "hero-check",
+      color_classes: "bg-success text-success-content"
+    }
+
+  defp timeline_meta(:drop),
+    do: %{
+      label: "Drop",
+      icon: "hero-arrow-down-tray",
+      color_classes: "bg-error text-error-content"
+    }
+
+  defp timeline_meta(:throwaway),
+    do: %{
+      label: "Throwaway",
+      icon: "hero-arrow-path-rounded-square",
+      color_classes: "bg-error text-error-content"
+    }
+
+  defp timeline_meta(:stall),
+    do: %{
+      label: "Stall",
+      icon: "hero-clock",
+      color_classes: "bg-error text-error-content"
+    }
+
+  defp timeline_meta(:opponent_turnover),
+    do: %{
+      label: "Turnover",
+      icon: "hero-arrow-uturn-right",
+      color_classes: "bg-success text-success-content"
+    }
+
+  defp timeline_meta(:opponent_goal),
+    do: %{
+      label: "They scored",
+      icon: "hero-flag",
+      color_classes: "bg-error text-error-content"
+    }
+
+  defp timeline_meta(:pick),
+    do: %{
+      label: "Pick",
+      icon: "hero-hand-raised",
+      color_classes: "bg-base-300 text-base-content"
+    }
+
+  defp timeline_meta(:foul),
+    do: %{
+      label: "Foul",
+      icon: "hero-exclamation-triangle",
       color_classes: "bg-base-300 text-base-content"
     }
 
