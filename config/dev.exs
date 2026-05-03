@@ -5,11 +5,34 @@ import Config
 config :ultistats, :seed_on_start, true
 
 # Configure your database
+#
+# `POSTGRES_PORT` is set per-worktree by `bin/db` (see docker-compose.yml) so
+# multiple worktrees can run their own Postgres in parallel without colliding
+# on 5432. The port is pinned in .env; load it here so `mix phx.server` picks
+# up the right port without needing the shell to source .env first.
+postgres_port =
+  System.get_env("POSTGRES_PORT") ||
+    case File.read(Path.expand("../.env", __DIR__)) do
+      {:ok, contents} ->
+        Regex.run(~r/^POSTGRES_PORT=(\d+)/m, contents, capture: :all_but_first)
+        |> case do
+          [port] -> port
+          _ -> "5432"
+        end
+
+      _ ->
+        "5432"
+    end
+
 config :ultistats, Ultistats.Repo,
-  database: Path.expand("../ultistats_dev.db", __DIR__),
-  pool_size: 5,
+  username: "postgres",
+  password: "postgres",
+  hostname: "localhost",
+  port: String.to_integer(postgres_port),
+  database: "ultistats_dev",
   stacktrace: true,
-  show_sensitive_data_on_connection_error: true
+  show_sensitive_data_on_connection_error: true,
+  pool_size: 10
 
 # For development, we disable any cache and enable
 # debugging and code reloading.

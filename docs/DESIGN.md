@@ -5,23 +5,11 @@ How we build what `MVP_SPEC.md` describes.
 ## Stack decisions
 
 - **Phoenix LiveView** for the entire UI. Server-driven; no JS-driven SPA. Components are colocated `Phoenix.Component`s where reuse is meaningful (per `docs/UI_DESIGN.md`).
-- **Ecto** with two adapters wired by environment:
-  - dev / test → `Ecto.Adapters.SQLite3`
-  - prod → `Ecto.Adapters.Postgres`
+- **Ecto + Postgres** for every environment (dev, test, prod). Dev/test run a containerized Postgres via `docker-compose.yml` and `bin/db`; prod runs against Supabase.
   - Configured in `config/dev.exs`, `config/test.exs`, `config/runtime.exs`.
+  - Each git worktree gets its own Postgres container on a port derived from the worktree path (written to `.env` by `bin/db`), so multiple worktrees coexist without 5432 collisions.
 - **Tailwind + ESBuild** via Phoenix's standard installer.
 - **No PWA, no service worker, no IndexedDB.** Always-online assumption (see below).
-
-### Adapter portability rules
-
-Because we run Ecto on both SQLite and Postgres, migrations and schemas must work on both:
-
-- No Postgres-only types: avoid `:jsonb`, `:tsvector`, arrays, `:citext`, `:uuid` (use `:binary_id` or `:string` UUIDs explicitly), `:inet`, etc.
-- Use `:map` columns + `JSON.encode!/1` in app code, not `:jsonb`.
-- Use string-typed enums (`Ecto.Enum` with explicit `values:`) — they work on both adapters.
-- No `CREATE INDEX CONCURRENTLY` (Postgres-only); plain `create index/2` is fine.
-- No partial indexes with Postgres-specific predicate syntax.
-- Validate every new migration runs cleanly against both adapters before merging.
 
 ## Always-online assumption
 
@@ -155,7 +143,7 @@ assets/
 
 ## Open questions
 
-- ~~**Gender role values**~~ — resolved: `:female_matching` and `:male_matching` (USAU FMP/MMP terminology), enforced via `Ecto.Enum` at the application layer (no DB CHECK constraint, to keep migrations portable across SQLite/Postgres).
+- ~~**Gender role values**~~ — resolved: `:female_matching` and `:male_matching` (USAU FMP/MMP terminology), enforced via `Ecto.Enum` at the application layer.
 - **Soft-cap timer source** — whose clock drives soft cap? Server time? Tracker-tapped "soft cap reached" button? MVP can ship with a manual button. Resolve before implementing the cap UX.
 - **Assist UX detail** — is assist captured *before* tapping goal, or as a follow-up after? Both are common in stat apps. Default: tap goal, then prompted "who threw it?" with a skip option. Confirm during first game-flow ticket.
 - **Game ID for URLs** — integer ids are leaky for sharing; consider `:binary_id` from the start to future-proof. Decide before first migration.

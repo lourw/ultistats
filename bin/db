@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Wrapper around `docker compose` for the per-worktree Postgres instance.
+#
+# Each worktree gets its own Postgres container (Compose project name comes
+# from the directory) on its own host port (derived once from the worktree
+# path and pinned in .env so reruns are stable).
+#
+# Usage:
+#   bin/db up        # start postgres in the background
+#   bin/db down      # stop postgres
+#   bin/db psql      # open psql to the dev database
+#   bin/db <args>    # forward anything else to `docker compose`
+
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+# OrbStack ships docker at this path even before its PATH shims are installed.
+if ! command -v docker >/dev/null 2>&1 && [ -x /Applications/OrbStack.app/Contents/MacOS/xbin/docker ]; then
+  export PATH="/Applications/OrbStack.app/Contents/MacOS/xbin:$PATH"
+fi
+
+# OrbStack must be running to serve the docker socket. Launch it (no-op if up).
+if [ -d /Applications/OrbStack.app ]; then
+  open -ga OrbStack
+fi
+
+if [ ! -f .env ]; then
+  # Hash worktree path to a port in [54320, 54820). Stable per worktree, so
+  # multiple worktrees coexist on different ports without collisions.
+  hash=$(printf '%s' "$PWD" | shasum -a 256 | cut -c1-8)
+  port=$(( 54320 + 0x$hash % 500 ))
+  echo "POSTGRES_PORT=$port" > .env
+  echo "wrote .env (POSTGRES_PORT=$port)"
+fi
+
+# shellcheck disable=SC1091
+set -a; . ./.env; set +a
+
+cmd="${1:-up}"
+shift || true
+
+case "$cmd" in
+  up)
+    docker compose up -d "$@"
+    docker compose exec -T postgres bash -c 'until pg_isready -U postgres >/dev/null 2>&1; do sleep 0.2; done'
+    echo "postgres ready on localhost:${POSTGRES_PORT}"
+    ;;
+  down)
+    docker compose down "$@"
+    ;;
+  psql)
+    docker compose exec postgres psql -U postgres "$@"
+    ;;
+  *)
+    docker compose "$cmd" "$@"
+    ;;
+esac

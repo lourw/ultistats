@@ -18,7 +18,7 @@ This is currently a plain `mix new` project. **Phoenix has not been added yet.**
 
 - Elixir ~> 1.18
 - Phoenix LiveView (server-driven; no offline / no PWA in MVP)
-- Ecto — `Ecto.Adapters.SQLite3` for dev/test, `Ecto.Adapters.Postgres` for prod
+- Ecto — `Ecto.Adapters.Postgres` for dev/test/prod. Run dev/test Postgres via `bin/db up` (per-worktree container on a path-derived port; see `docker-compose.yml`).
 - Tailwind + ESBuild (Phoenix defaults)
 
 ## Common commands
@@ -61,7 +61,6 @@ Three project sub-agents live in `.claude/agents/`. Delegate to them rather than
 Conventions:
 - Always run `mix format` before committing.
 - Tests hit a real Ecto sandbox — do not mock the database.
-- Keep migrations adapter-portable (no Postgres-only types) so SQLite dev/test stays valid.
 
 ## Commits
 
