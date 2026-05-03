@@ -79,7 +79,10 @@ defmodule UltistatsWeb.TeamLiveTest do
   describe "Show" do
     setup [:create_team]
 
-    test "delete affordance lives on the edit page and removes the team", %{conn: conn, team: team} do
+    test "delete affordance lives on the edit page and removes the team", %{
+      conn: conn,
+      team: team
+    } do
       {:ok, edit_live, _html} = live(conn, ~p"/teams/#{team}/edit")
 
       assert has_element?(edit_live, "#delete-team")

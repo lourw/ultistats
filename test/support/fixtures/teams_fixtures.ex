@@ -35,6 +35,7 @@ defmodule Ultistats.TeamsFixtures do
       attrs
       |> Enum.into(%{
         gender_role: :female_matching,
+        position: :cutter,
         jersey_number: "7",
         first_name: "Some",
         last_name: "Player"

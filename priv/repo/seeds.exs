@@ -13,32 +13,33 @@ if Repo.aggregate(Team, :count, :id) == 0 do
   # 6 female-matching, 8 male-matching = 14 total.
   player_specs = [
     # FMP (6)
-    {"Avery", "Stone", "1", :female_matching},
-    {"Brooke", "Lee", "2", :female_matching},
-    {"Casey", "Park", "3", :female_matching},
-    {"Devon", "Reed", "4", :female_matching},
-    {"Emery", "Vance", "5", :female_matching},
-    {"Frankie", "Holt", "6", :female_matching},
+    {"Avery", "Stone", "1", :female_matching, :handler},
+    {"Brooke", "Lee", "2", :female_matching, :cutter},
+    {"Casey", "Park", "3", :female_matching, :cutter},
+    {"Devon", "Reed", "4", :female_matching, :hybrid},
+    {"Emery", "Vance", "5", :female_matching, :handler},
+    {"Frankie", "Holt", "6", :female_matching, :cutter},
     # MMP (8)
-    {"Gabe", "Quinn", "7", :male_matching},
-    {"Hayden", "Cole", "8", :male_matching},
-    {"Ira", "Bell", "9", :male_matching},
-    {"Jordan", "Diaz", "10", :male_matching},
-    {"Kit", "Ng", "11", :male_matching},
-    {"Logan", "West", "12", :male_matching},
-    {"Marlowe", "Hart", "13", :male_matching},
-    {"Niko", "Pham", "14", :male_matching}
+    {"Gabe", "Quinn", "7", :male_matching, :handler},
+    {"Hayden", "Cole", "8", :male_matching, :cutter},
+    {"Ira", "Bell", "9", :male_matching, :hybrid},
+    {"Jordan", "Diaz", "10", :male_matching, :handler},
+    {"Kit", "Ng", "11", :male_matching, :cutter},
+    {"Logan", "West", "12", :male_matching, :cutter},
+    {"Marlowe", "Hart", "13", :male_matching, :handler},
+    {"Niko", "Pham", "14", :male_matching, :hybrid}
   ]
 
   players =
-    Enum.map(player_specs, fn {first, last, jersey, gender} ->
+    Enum.map(player_specs, fn {first, last, jersey, gender, position} ->
       {:ok, p} =
         Teams.create_player(%{
           team_id: team.id,
           first_name: first,
           last_name: last,
           jersey_number: jersey,
-          gender_role: gender
+          gender_role: gender,
+          position: position
         })
 
       p

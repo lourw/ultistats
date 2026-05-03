@@ -95,31 +95,22 @@ defmodule UltistatsWeb.PlayerLiveTest do
   end
 
   describe "Bulk add (/players/new?team_id=ID)" do
-    test "add_row appends a fourth row", %{conn: conn} do
+    test "add_row appends a second row", %{conn: conn} do
       team = team_fixture()
       {:ok, view, _html} = live(conn, ~p"/players/new?team_id=#{team.id}")
 
       view |> element("button", "Add row") |> render_click()
 
-      assert has_element?(view, "#player-row-3")
+      assert has_element?(view, "#player-row-1")
     end
 
-    test "remove_row drops a row but won't go below one", %{conn: conn} do
+    test "remove_row won't go below one row", %{conn: conn} do
       team = team_fixture()
       {:ok, view, _html} = live(conn, ~p"/players/new?team_id=#{team.id}")
 
-      # Drop rows 0 and 1 — leaves row 2 alone.
-      view |> element("#player-row-0 button[aria-label='Remove row']") |> render_click()
-      refute has_element?(view, "#player-row-0")
-
-      view |> element("#player-row-1 button[aria-label='Remove row']") |> render_click()
-      refute has_element?(view, "#player-row-1")
-
-      assert has_element?(view, "#player-row-2")
-
-      # Last remaining row's remove button is disabled — clicking is a no-op.
+      # Sole remaining row's remove button is disabled — clicking is a no-op.
       assert view
-             |> element("#player-row-2 button[aria-label='Remove row']")
+             |> element("#player-row-0 button[aria-label='Remove row']")
              |> render() =~ "disabled"
     end
 
@@ -127,9 +118,10 @@ defmodule UltistatsWeb.PlayerLiveTest do
       team = team_fixture()
       {:ok, view, _html} = live(conn, ~p"/players/new?team_id=#{team.id}")
 
-      # Initially no radio is checked on row 0.
+      # Initially neither gender radio is checked on row 0.
       row0_html = view |> element("#player-row-0") |> render()
-      refute row0_html =~ ~s(checked)
+      refute row0_html =~ ~r/<input[^>]*value="female_matching"[^>]*\schecked\b/
+      refute row0_html =~ ~r/<input[^>]*value="male_matching"[^>]*\schecked\b/
 
       # Click the female-matching radio on row 0.
       view
@@ -145,7 +137,8 @@ defmodule UltistatsWeb.PlayerLiveTest do
       team = team_fixture()
       {:ok, view, _html} = live(conn, ~p"/players/new?team_id=#{team.id}")
 
-      # Set gender on rows 0 and 1.
+      view |> element("button", "Add row") |> render_click()
+
       view
       |> element("#player-row-0 input[value='female_matching']")
       |> render_click()
@@ -154,12 +147,10 @@ defmodule UltistatsWeb.PlayerLiveTest do
       |> element("#player-row-1 input[value='male_matching']")
       |> render_click()
 
-      # Submit names + jersey via the form. Row 2 stays blank — it should be dropped.
       params = %{
         "row" => %{
           "0" => %{"first_name" => "Alice", "last_name" => "Aaron", "jersey_number" => "1"},
-          "1" => %{"first_name" => "Bob", "last_name" => "Brown", "jersey_number" => ""},
-          "2" => %{"first_name" => "", "last_name" => "", "jersey_number" => ""}
+          "1" => %{"first_name" => "Bob", "last_name" => "Brown", "jersey_number" => ""}
         }
       }
 
@@ -182,9 +173,7 @@ defmodule UltistatsWeb.PlayerLiveTest do
 
       params = %{
         "row" => %{
-          "0" => %{"first_name" => "", "last_name" => "", "jersey_number" => ""},
-          "1" => %{"first_name" => "", "last_name" => "", "jersey_number" => ""},
-          "2" => %{"first_name" => "", "last_name" => "", "jersey_number" => ""}
+          "0" => %{"first_name" => "", "last_name" => "", "jersey_number" => ""}
         }
       }
 
@@ -200,6 +189,8 @@ defmodule UltistatsWeb.PlayerLiveTest do
       team = team_fixture()
       {:ok, view, _html} = live(conn, ~p"/players/new?team_id=#{team.id}")
 
+      view |> element("button", "Add row") |> render_click()
+
       # Row 0 gets names + gender. Row 1 gets names but no gender.
       view
       |> element("#player-row-0 input[value='female_matching']")
@@ -208,8 +199,7 @@ defmodule UltistatsWeb.PlayerLiveTest do
       params = %{
         "row" => %{
           "0" => %{"first_name" => "Alice", "last_name" => "Aaron", "jersey_number" => "1"},
-          "1" => %{"first_name" => "Bob", "last_name" => "Brown", "jersey_number" => ""},
-          "2" => %{"first_name" => "", "last_name" => "", "jersey_number" => ""}
+          "1" => %{"first_name" => "Bob", "last_name" => "Brown", "jersey_number" => ""}
         }
       }
 
@@ -230,9 +220,7 @@ defmodule UltistatsWeb.PlayerLiveTest do
 
       params = %{
         "row" => %{
-          "0" => %{"first_name" => "Jersey", "last_name" => "Less", "jersey_number" => ""},
-          "1" => %{"first_name" => "", "last_name" => "", "jersey_number" => ""},
-          "2" => %{"first_name" => "", "last_name" => "", "jersey_number" => ""}
+          "0" => %{"first_name" => "Jersey", "last_name" => "Less", "jersey_number" => ""}
         }
       }
 

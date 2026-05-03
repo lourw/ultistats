@@ -25,6 +25,7 @@ defmodule UltistatsWeb.PlayerLive.Show do
         <:item title="Name">{Player.display_name(@player)}</:item>
         <:item title="Jersey number">{@player.jersey_number}</:item>
         <:item title="Gender role">{humanize_gender_role(@player.gender_role)}</:item>
+        <:item title="Position">{humanize_position(@player.position)}</:item>
       </.list>
     </Layouts.app>
     """
@@ -41,4 +42,9 @@ defmodule UltistatsWeb.PlayerLive.Show do
   defp humanize_gender_role(:female_matching), do: "Female-matching (FMP)"
   defp humanize_gender_role(:male_matching), do: "Male-matching (MMP)"
   defp humanize_gender_role(other), do: to_string(other)
+
+  defp humanize_position(:handler), do: "Handler"
+  defp humanize_position(:cutter), do: "Cutter"
+  defp humanize_position(:hybrid), do: "Hybrid"
+  defp humanize_position(other), do: to_string(other)
 end

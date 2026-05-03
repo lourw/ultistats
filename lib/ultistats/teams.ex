@@ -360,7 +360,8 @@ defmodule Ultistats.Teams do
       first_name: fetch_row(row, :first_name) || "",
       last_name: fetch_row(row, :last_name) || "",
       jersey_number: fetch_row(row, :jersey_number),
-      gender_role: fetch_row(row, :gender_role)
+      gender_role: fetch_row(row, :gender_role),
+      position: fetch_row(row, :position)
     }
   end
 

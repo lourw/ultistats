@@ -25,6 +25,7 @@ defmodule UltistatsWeb.PlayerLive.Index do
         <:col :let={{_id, player}} label="Gender role">
           {humanize_gender_role(player.gender_role)}
         </:col>
+        <:col :let={{_id, player}} label="Position">{humanize_position(player.position)}</:col>
         <:col :let={{_id, player}} label="Team">{team_name(player.team)}</:col>
         <:action :let={{_id, player}}>
           <div class="sr-only">
@@ -68,6 +69,11 @@ defmodule UltistatsWeb.PlayerLive.Index do
   defp humanize_gender_role(:female_matching), do: "Female-matching"
   defp humanize_gender_role(:male_matching), do: "Male-matching"
   defp humanize_gender_role(other), do: to_string(other)
+
+  defp humanize_position(:handler), do: "Handler"
+  defp humanize_position(:cutter), do: "Cutter"
+  defp humanize_position(:hybrid), do: "Hybrid"
+  defp humanize_position(other), do: to_string(other)
 
   defp team_name(%Ultistats.Teams.Team{name: name}), do: name
   defp team_name(_), do: "—"

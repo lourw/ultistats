@@ -536,6 +536,82 @@ defmodule UltistatsWeb.UIComponents do
   defp normalize_gender_value(value) when is_binary(value), do: value
 
   ## ---------------------------------------------------------------------
+  ## position_radio
+  ## ---------------------------------------------------------------------
+
+  @doc """
+  Three native radio inputs side by side for picking a player's
+  position (Handler / Cutter / Hybrid). Mirrors `gender_radio/1`:
+  shared `name`, label-wrapped inputs with min-h-11 tap targets, and a
+  `:rest` passthrough for `phx-*` attrs (e.g. `phx-click="set_position"`
+  with `phx-value-row` for bulk forms).
+
+  ## Examples
+
+      <.position_radio field={@form[:position]} phx-click="set_position_edit" />
+      <.position_radio field={f[:position]} phx-click="set_position" phx-value-row={row.key} />
+  """
+  attr :field, Phoenix.HTML.FormField, required: true
+  attr :class, :any, default: nil
+  attr :rest, :global, include: ~w(phx-change phx-click phx-target form)
+
+  def position_radio(assigns) do
+    value = normalize_position_value(assigns.field.value)
+
+    assigns =
+      assigns
+      |> assign(:value, value)
+      |> assign(:input_name, assigns.field.name)
+      |> assign(:input_id, assigns.field.id)
+      |> assign(:options, [
+        {"handler", "Handler"},
+        {"cutter", "Cutter"},
+        {"hybrid", "Hybrid"}
+      ])
+
+    ~H"""
+    <fieldset class={["space-y-1", @class]}>
+      <legend class="sr-only">Position</legend>
+      <div class="inline-flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Position">
+        <label
+          :for={{val, label} <- @options}
+          class={position_radio_label_classes(@value == val)}
+        >
+          <input
+            type="radio"
+            name={@input_name}
+            id={"#{@input_id}_#{val}"}
+            value={val}
+            checked={@value == val}
+            class="accent-primary size-5 shrink-0"
+            {@rest}
+            phx-value-position={val}
+          />
+          <span class="text-sm leading-none">{label}</span>
+        </label>
+      </div>
+    </fieldset>
+    """
+  end
+
+  defp position_radio_label_classes(selected?) do
+    [
+      "min-h-11 inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium",
+      "border border-base-300 cursor-pointer select-none",
+      "focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary",
+      if(selected?,
+        do: "bg-primary/10 border-primary text-base-content",
+        else: "bg-base-100 text-base-content active:bg-base-200"
+      )
+    ]
+  end
+
+  defp normalize_position_value(nil), do: nil
+  defp normalize_position_value(""), do: nil
+  defp normalize_position_value(value) when is_atom(value), do: Atom.to_string(value)
+  defp normalize_position_value(value) when is_binary(value), do: value
+
+  ## ---------------------------------------------------------------------
   ## helpers
   ## ---------------------------------------------------------------------
 

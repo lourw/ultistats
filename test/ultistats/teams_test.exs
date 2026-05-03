@@ -74,6 +74,7 @@ defmodule Ultistats.TeamsTest do
         last_name: "Player",
         jersey_number: "00",
         gender_role: :female_matching,
+        position: :cutter,
         team_id: team.id
       }
 
@@ -238,10 +239,23 @@ defmodule Ultistats.TeamsTest do
           first_name: "Alice",
           last_name: "Aaron",
           jersey_number: "1",
-          gender_role: :female_matching
+          gender_role: :female_matching,
+          position: :cutter
         },
-        %{first_name: "Bob", last_name: "Brown", jersey_number: "2", gender_role: :male_matching},
-        %{first_name: "Cam", last_name: "Cole", jersey_number: nil, gender_role: :female_matching}
+        %{
+          first_name: "Bob",
+          last_name: "Brown",
+          jersey_number: "2",
+          gender_role: :male_matching,
+          position: :handler
+        },
+        %{
+          first_name: "Cam",
+          last_name: "Cole",
+          jersey_number: nil,
+          gender_role: :female_matching,
+          position: :hybrid
+        }
       ]
 
       assert {:ok, players} = Teams.bulk_create_players(team, rows)
@@ -262,10 +276,17 @@ defmodule Ultistats.TeamsTest do
           first_name: "Alice",
           last_name: "Aaron",
           jersey_number: "1",
-          gender_role: :female_matching
+          gender_role: :female_matching,
+          position: :cutter
         },
         # missing gender_role
-        %{first_name: "Bob", last_name: "Brown", jersey_number: "2", gender_role: nil}
+        %{
+          first_name: "Bob",
+          last_name: "Brown",
+          jersey_number: "2",
+          gender_role: nil,
+          position: :cutter
+        }
       ]
 
       assert {:error, {idx, %Ecto.Changeset{} = changeset}} =
@@ -280,15 +301,34 @@ defmodule Ultistats.TeamsTest do
       team = team_fixture()
 
       rows = [
-        %{first_name: "", last_name: "", jersey_number: "1", gender_role: :female_matching},
+        %{
+          first_name: "",
+          last_name: "",
+          jersey_number: "1",
+          gender_role: :female_matching,
+          position: :cutter
+        },
         %{
           first_name: "Alice",
           last_name: "Aaron",
           jersey_number: "1",
-          gender_role: :female_matching
+          gender_role: :female_matching,
+          position: :cutter
         },
-        %{first_name: "   ", last_name: "  ", jersey_number: "2", gender_role: :male_matching},
-        %{first_name: nil, last_name: nil, jersey_number: "3", gender_role: :female_matching}
+        %{
+          first_name: "   ",
+          last_name: "  ",
+          jersey_number: "2",
+          gender_role: :male_matching,
+          position: :cutter
+        },
+        %{
+          first_name: nil,
+          last_name: nil,
+          jersey_number: "3",
+          gender_role: :female_matching,
+          position: :cutter
+        }
       ]
 
       assert {:ok, [player]} = Teams.bulk_create_players(team, rows)
@@ -307,6 +347,7 @@ defmodule Ultistats.TeamsTest do
           last_name: "Aaron",
           jersey_number: "1",
           gender_role: :female_matching,
+          position: :cutter,
           team_id: sneaky.id
         }
       ]
@@ -324,7 +365,8 @@ defmodule Ultistats.TeamsTest do
           "first_name" => "Alice",
           "last_name" => "Aaron",
           "jersey_number" => "7",
-          "gender_role" => :female_matching
+          "gender_role" => :female_matching,
+          "position" => :cutter
         }
       ]
 

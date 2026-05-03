@@ -3,6 +3,7 @@ defmodule Ultistats.Teams.Player do
   import Ecto.Changeset
 
   @gender_roles [:female_matching, :male_matching]
+  @positions [:handler, :cutter, :hybrid]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -11,6 +12,7 @@ defmodule Ultistats.Teams.Player do
     field :last_name, :string
     field :jersey_number, :string
     field :gender_role, Ecto.Enum, values: @gender_roles
+    field :position, Ecto.Enum, values: @positions
 
     belongs_to :team, Ultistats.Teams.Team
 
@@ -22,6 +24,11 @@ defmodule Ultistats.Teams.Player do
   prevailing-gender rule (USAU FMP/MMP).
   """
   def gender_roles, do: @gender_roles
+
+  @doc """
+  Returns the list of valid on-field positions.
+  """
+  def positions, do: @positions
 
   @doc """
   Returns the player's display name — `"First Last"`. Used everywhere
@@ -36,8 +43,8 @@ defmodule Ultistats.Teams.Player do
   @doc false
   def changeset(player, attrs) do
     player
-    |> cast(attrs, [:first_name, :last_name, :jersey_number, :gender_role, :team_id])
-    |> validate_required([:first_name, :last_name, :gender_role, :team_id])
+    |> cast(attrs, [:first_name, :last_name, :jersey_number, :gender_role, :position, :team_id])
+    |> validate_required([:first_name, :last_name, :gender_role, :position, :team_id])
     |> validate_length(:first_name, min: 1, max: 40)
     |> validate_length(:last_name, min: 1, max: 40)
     |> validate_length(:jersey_number, max: 4)
