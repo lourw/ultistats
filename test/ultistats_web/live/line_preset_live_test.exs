@@ -56,6 +56,7 @@ defmodule UltistatsWeb.LinePresetLiveTest do
       assert html =~ Player.display_name(p1)
       assert html =~ Player.display_name(p2)
       assert html =~ Player.display_name(p3)
+
       # Section starts with 0 selected of 3 (all 3 fixture players are female-matching by default).
       assert html =~ "0 of 3"
     end

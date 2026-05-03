@@ -37,22 +37,25 @@ defmodule UltistatsWeb.RulesetLiveTest do
       {:ok, live, _html} = live(conn, ~p"/rulesets")
 
       assert live
-             |> element("a[href='/rulesets/#{ruleset.id}/edit']", "Edit")
+             |> element("a[href='/rulesets/#{ruleset.id}/edit']")
              |> has_element?()
     end
 
-    test "Delete removes the ruleset when no games reference it", %{conn: conn} do
+    test "Delete from the show page removes the ruleset when no games reference it", %{
+      conn: conn
+    } do
       team = team_fixture()
       ruleset = ruleset_fixture(%{team_id: team.id, name: "Hat League"})
 
-      {:ok, live, _html} = live(conn, ~p"/rulesets")
+      {:ok, live, _html} = live(conn, ~p"/rulesets/#{ruleset.id}")
 
-      live
-      |> element("#ruleset-#{ruleset.id} a", "Delete")
-      |> render_click()
+      assert {:ok, _games_live, _html} =
+               live
+               |> element("button", "Delete")
+               |> render_click()
+               |> follow_redirect(conn, ~p"/games")
 
       assert Games.list_rulesets_for_team(team) == []
-      refute render(live) =~ "Hat League"
     end
 
     test "Delete falls back to archive when games reference the ruleset", %{conn: conn} do
@@ -60,17 +63,16 @@ defmodule UltistatsWeb.RulesetLiveTest do
       ruleset = ruleset_fixture(%{team_id: team.id, name: "Hat League"})
       _game = game_fixture(%{team_id: team.id, ruleset_id: ruleset.id})
 
-      {:ok, live, _html} = live(conn, ~p"/rulesets")
+      {:ok, live, _html} = live(conn, ~p"/rulesets/#{ruleset.id}")
 
-      html =
-        live
-        |> element("#ruleset-#{ruleset.id} a", "Delete")
-        |> render_click()
+      assert {:ok, _games_live, html} =
+               live
+               |> element("button", "Delete")
+               |> render_click()
+               |> follow_redirect(conn, ~p"/games")
 
-      assert html =~ "archived"
-      # Row gone from the index (filter excludes archived templates).
-      refute html =~ "Hat League"
-      # But the row still exists in the DB.
+      assert html =~ "Archived because games reference it."
+      # Row still exists in the DB but is archived.
       assert Games.get_ruleset!(ruleset.id).archived_at
     end
   end

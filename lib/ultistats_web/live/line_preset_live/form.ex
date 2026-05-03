@@ -24,9 +24,16 @@ defmodule UltistatsWeb.LinePresetLive.Form do
             This team has no players yet. Add some to the roster first.
           </div>
 
-          <div :if={@team_players != []} class="flex items-center gap-2 text-xs text-base-content/60 mb-6">
+          <div
+            :if={@team_players != []}
+            class="flex items-center gap-2 text-xs text-base-content/60 mb-6"
+          >
             <span>Sort:</span>
-            <div role="group" aria-label="Sort players" class="inline-flex rounded-md border border-base-300 overflow-hidden">
+            <div
+              role="group"
+              aria-label="Sort players"
+              class="inline-flex rounded-md border border-base-300 overflow-hidden"
+            >
               <button
                 type="button"
                 phx-click="set_sort"

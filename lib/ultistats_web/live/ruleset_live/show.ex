@@ -12,11 +12,18 @@ defmodule UltistatsWeb.RulesetLive.Show do
         Ruleset {humanized_name(@ruleset)}
         <:subtitle>{kind_subtitle(@ruleset)}</:subtitle>
         <:actions>
-          <.button navigate={~p"/rulesets"}>
+          <.button navigate={~p"/games"} aria-label="Back to games">
             <.icon name="hero-arrow-left" />
           </.button>
           <.button variant="primary" navigate={~p"/rulesets/#{@ruleset}/edit?return_to=show"}>
             <.icon name="hero-pencil-square" /> Edit ruleset
+          </.button>
+          <.button
+            phx-click={JS.push("delete_or_archive")}
+            data-confirm={"Delete the \"#{humanized_name(@ruleset)}\" ruleset?"}
+            class="btn-error"
+          >
+            <.icon name="hero-trash" /> Delete
           </.button>
         </:actions>
       </.header>
@@ -50,6 +57,26 @@ defmodule UltistatsWeb.RulesetLive.Show do
      socket
      |> assign(:page_title, "Show Ruleset")
      |> assign(:ruleset, ruleset)}
+  end
+
+  @impl true
+  def handle_event("delete_or_archive", _params, socket) do
+    ruleset = socket.assigns.ruleset
+
+    flash_msg =
+      case Games.delete_ruleset(ruleset) do
+        {:ok, _} ->
+          "Ruleset deleted"
+
+        {:error, :referenced_by_games} ->
+          {:ok, _} = Games.archive_ruleset(ruleset)
+          "Archived because games reference it."
+      end
+
+    {:noreply,
+     socket
+     |> put_flash(:info, flash_msg)
+     |> push_navigate(to: ~p"/games")}
   end
 
   defp humanized_name(%Ruleset{name: nil, kind: :game_instance}), do: "(per-game instance)"

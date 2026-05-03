@@ -9,25 +9,12 @@ defmodule UltistatsWeb.GameLive.Index do
     <Layouts.app flash={@flash}>
       <.header>
         Games
-        <:subtitle>Most-recent first.</:subtitle>
-        <:actions>
-          <.button :if={@active_tab == :games} variant="primary" navigate={~p"/games/new"}>
-            <.icon name="hero-plus" /> New game
-          </.button>
-          <.button
-            :if={@active_tab == :rulesets and @new_ruleset_team_id}
-            variant="primary"
-            navigate={~p"/rulesets/new?team_id=#{@new_ruleset_team_id}"}
-          >
-            <.icon name="hero-plus" /> New ruleset
-          </.button>
-        </:actions>
       </.header>
 
       <div
         role="tablist"
         aria-label="Games sections"
-        class="mt-2 inline-flex rounded-md border border-base-300 p-1 bg-base-100"
+        class="mt-4 flex gap-6 border-b border-base-200"
       >
         <button
           type="button"
@@ -38,7 +25,16 @@ defmodule UltistatsWeb.GameLive.Index do
           phx-value-tab="games"
           class={tab_classes(@active_tab == :games)}
         >
-          Games · <span class="tabular-nums">{length(@games)}</span>
+          Games
+          <span class={[
+            "ml-1.5 tabular-nums text-xs px-1.5 py-0.5 rounded-full",
+            if(@active_tab == :games,
+              do: "bg-primary/10 text-primary",
+              else: "bg-base-200 text-base-content/70"
+            )
+          ]}>
+            {length(@games)}
+          </span>
         </button>
         <button
           type="button"
@@ -49,27 +45,32 @@ defmodule UltistatsWeb.GameLive.Index do
           phx-value-tab="rulesets"
           class={tab_classes(@active_tab == :rulesets)}
         >
-          Rulesets · <span class="tabular-nums">{length(@rulesets)}</span>
+          Rulesets
+          <span class={[
+            "ml-1.5 tabular-nums text-xs px-1.5 py-0.5 rounded-full",
+            if(@active_tab == :rulesets,
+              do: "bg-primary/10 text-primary",
+              else: "bg-base-200 text-base-content/70"
+            )
+          ]}>
+            {length(@rulesets)}
+          </span>
         </button>
       </div>
 
-      <section :if={@active_tab == :games} class="mt-4" aria-labelledby="tab-games">
-        <p :if={@games == []} class="text-base-content/70">
-          No games yet. <.link navigate={~p"/games/new"} class="underline">Start one</.link>.
-        </p>
-
-        <ul :if={@games != []} id="games-list" class="divide-y divide-base-200">
+      <section :if={@active_tab == :games} class="mt-4 pb-24" aria-labelledby="tab-games">
+        <ul :if={@games != []} id="games-list" class="divide-y divide-base-300">
           <li :for={game <- @games} id={"game-#{game.id}"} class="py-3">
             <.link
               navigate={~p"/games/#{game.id}"}
-              class="flex items-center justify-between gap-3 hover:bg-base-200 rounded-md px-2 -mx-2 py-1"
+              class="flex items-center justify-between gap-3 min-h-11 -mx-2 px-2 rounded-md hover:bg-base-200 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               <div class="min-w-0">
                 <div class="font-medium truncate">
                   {team_name(game)} vs {game.opponent_name}
                 </div>
                 <div class="text-sm text-base-content/70 tabular-nums">
-                  {format_started_at(game.started_at)} · {status_label(game.status)}
+                  {format_started_at(game.started_at)}
                 </div>
               </div>
               <span class={[
@@ -81,16 +82,20 @@ defmodule UltistatsWeb.GameLive.Index do
             </.link>
           </li>
         </ul>
+
+        <p :if={@games == []} class="mt-4 text-base-content/70">
+          No games yet. Tap the + button to start one.
+        </p>
       </section>
 
-      <section :if={@active_tab == :rulesets} class="mt-4" aria-labelledby="tab-rulesets">
+      <section :if={@active_tab == :rulesets} class="mt-4 pb-24" aria-labelledby="tab-rulesets">
         <div :if={length(@teams) > 1} class="flex items-center gap-2 mb-3">
           <label for="ruleset-team-select" class="text-sm text-base-content/70">Team</label>
           <form phx-change="select_ruleset_team">
             <select
               id="ruleset-team-select"
               name="team_id"
-              class="select select-sm select-bordered"
+              class="select select-sm select-bordered min-h-11"
             >
               <option :for={team <- @teams} value={team.id} selected={team.id == @new_ruleset_team_id}>
                 {team.name}
@@ -105,36 +110,53 @@ defmodule UltistatsWeb.GameLive.Index do
             id={"ruleset-#{r.id}"}
             class="flex items-center justify-between gap-3 py-3"
           >
-            <div class="min-w-0 flex-1">
-              <.link
-                navigate={~p"/rulesets/#{r.id}"}
-                class="font-medium text-base hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              >
-                {r.name}
-              </.link>
-              <div class="text-sm text-base-content/70 tabular-nums">
-                {team_label(r)}
+            <div class="flex items-center gap-3 min-w-0">
+              <span class="inline-flex items-center justify-center min-w-8 h-7 px-2 rounded-full bg-base-200 text-base-content text-sm font-semibold tabular-nums shrink-0">
+                {score_cap_badge(r.score_cap)}
+              </span>
+              <div class="min-w-0">
+                <div class="font-medium truncate">{r.name}</div>
+                <div class="text-xs text-base-content/60 truncate">
+                  {team_label(r)}
+                </div>
               </div>
             </div>
-            <div class="flex items-center gap-3 shrink-0">
-              <.link navigate={~p"/rulesets/#{r.id}/edit"} class="link link-hover">
-                Edit
-              </.link>
-              <.link
-                phx-click={JS.push("delete_or_archive_ruleset", value: %{id: r.id})}
-                data-confirm={"Delete the \"#{r.name}\" ruleset?"}
-                class="link link-hover text-error"
-              >
-                Delete
-              </.link>
-            </div>
+            <.link
+              navigate={~p"/rulesets/#{r.id}/edit"}
+              aria-label={"Edit #{r.name}"}
+              class="shrink-0 min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              <.icon name="hero-pencil-square" class="size-5" />
+            </.link>
           </li>
         </ul>
 
-        <p :if={@rulesets == []} class="mt-4 text-base-content/70">
+        <p :if={@rulesets == [] and @new_ruleset_team_id} class="mt-4 text-base-content/70">
           No rulesets yet. Save one as a reusable template for future games.
         </p>
+
+        <p :if={@rulesets == [] and is_nil(@new_ruleset_team_id)} class="mt-4 text-base-content/70">
+          No rulesets yet. Add a team first.
+        </p>
       </section>
+
+      <.link
+        :if={@active_tab == :games}
+        navigate={~p"/games/new"}
+        aria-label="Add game"
+        class="fixed bottom-6 right-6 z-40 size-14 rounded-full bg-primary text-primary-content shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:active:scale-100"
+      >
+        <.icon name="hero-plus" class="size-6" />
+      </.link>
+
+      <.link
+        :if={@active_tab == :rulesets and @new_ruleset_team_id}
+        navigate={~p"/rulesets/new?team_id=#{@new_ruleset_team_id}"}
+        aria-label="Add ruleset"
+        class="fixed bottom-6 right-6 z-40 size-14 rounded-full bg-primary text-primary-content shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:active:scale-100"
+      >
+        <.icon name="hero-plus" class="size-6" />
+      </.link>
     </Layouts.app>
     """
   end
@@ -166,25 +188,6 @@ defmodule UltistatsWeb.GameLive.Index do
     {:noreply, assign(socket, :new_ruleset_team_id, team_id)}
   end
 
-  def handle_event("delete_or_archive_ruleset", %{"id" => id}, socket) do
-    ruleset = Games.get_ruleset!(id)
-
-    flash_msg =
-      case Games.delete_ruleset(ruleset) do
-        {:ok, _} ->
-          "Ruleset deleted"
-
-        {:error, :referenced_by_games} ->
-          {:ok, _} = Games.archive_ruleset(ruleset)
-          "Ruleset has games attached, archived instead"
-      end
-
-    {:noreply,
-     socket
-     |> put_flash(:info, flash_msg)
-     |> assign(:rulesets, Games.list_rulesets_across_teams())}
-  end
-
   defp list_games do
     Games.list_games()
     |> Repo.preload(:team)
@@ -199,6 +202,9 @@ defmodule UltistatsWeb.GameLive.Index do
 
   defp team_label(%{team: %{name: name}}) when is_binary(name), do: name
   defp team_label(_), do: "—"
+
+  defp score_cap_badge(nil), do: "—"
+  defp score_cap_badge(n) when is_integer(n), do: Integer.to_string(n)
 
   defp status_label(:in_progress), do: "In progress"
   defp status_label(:finished), do: "Final"
@@ -218,9 +224,9 @@ defmodule UltistatsWeb.GameLive.Index do
 
   defp tab_classes(true),
     do:
-      "min-h-11 inline-flex items-center px-4 py-1.5 rounded text-sm font-medium bg-primary text-primary-content"
+      "min-h-11 inline-flex items-center pb-3 -mb-px text-sm font-medium text-primary border-b-2 border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 
   defp tab_classes(false),
     do:
-      "min-h-11 inline-flex items-center px-4 py-1.5 rounded text-sm font-medium text-base-content/70 hover:text-base-content"
+      "min-h-11 inline-flex items-center pb-3 -mb-px text-sm font-medium text-base-content/60 hover:text-base-content border-b-2 border-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 end
