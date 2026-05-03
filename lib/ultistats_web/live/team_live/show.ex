@@ -11,29 +11,61 @@ defmodule UltistatsWeb.TeamLive.Show do
     ~H"""
     <Layouts.app flash={@flash}>
       <.header>
-        {@team.name}
+        <span class="inline-flex items-center gap-3">
+          <.link
+            navigate={~p"/teams"}
+            aria-label="Back to teams"
+            class="min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <.icon name="hero-arrow-left" class="size-5" />
+          </.link>
+          {@team.name}
+        </span>
         <:actions>
-          <.button navigate={~p"/teams"}>
-            <.icon name="hero-arrow-left" />
-          </.button>
           <.button variant="primary" navigate={~p"/teams/#{@team}/edit?return_to=show"}>
             <.icon name="hero-pencil-square" /> Edit team
           </.button>
         </:actions>
       </.header>
 
-      <section class="mt-8">
-        <.header>
-          Roster ({roster_count_label(@players)})
-          <:actions>
-            <.button
-              variant="primary"
-              navigate={~p"/players/new?team_id=#{@team.id}&return_to=team"}
-            >
-              <.icon name="hero-plus" /> Add player
-            </.button>
-          </:actions>
-        </.header>
+      <div
+        role="tablist"
+        aria-label="Team sections"
+        class="mt-2 inline-flex rounded-md border border-base-300 p-1 bg-base-100"
+      >
+        <button
+          type="button"
+          role="tab"
+          id="tab-roster"
+          aria-selected={to_string(@active_tab == :roster)}
+          phx-click="set_tab"
+          phx-value-tab="roster"
+          class={tab_classes(@active_tab == :roster)}
+        >
+          Roster · <span class="tabular-nums">{length(@players)}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="tab-presets"
+          aria-selected={to_string(@active_tab == :presets)}
+          phx-click="set_tab"
+          phx-value-tab="presets"
+          class={tab_classes(@active_tab == :presets)}
+        >
+          Line presets · <span class="tabular-nums">{length(@line_presets)}</span>
+        </button>
+      </div>
+
+      <section :if={@active_tab == :roster} class="mt-4" aria-labelledby="tab-roster">
+        <div class="flex items-center justify-end mb-3">
+          <.button
+            variant="primary"
+            navigate={~p"/players/new?team_id=#{@team.id}&return_to=team"}
+          >
+            <.icon name="hero-plus" /> Add player
+          </.button>
+        </div>
 
         <ul :if={@players != []} id="team-roster" class="divide-y divide-base-300">
           <li
@@ -74,20 +106,17 @@ defmodule UltistatsWeb.TeamLive.Show do
         </p>
       </section>
 
-      <section class="mt-8">
-        <.header>
-          Line presets ({preset_count_label(@line_presets)})
-          <:actions>
-            <.button
-              variant="primary"
-              navigate={~p"/line_presets/new?team_id=#{@team.id}&return_to=team"}
-            >
-              <.icon name="hero-plus" /> Add preset
-            </.button>
-          </:actions>
-        </.header>
+      <section :if={@active_tab == :presets} class="mt-4" aria-labelledby="tab-presets">
+        <div class="flex items-center justify-end mb-3">
+          <.button
+            variant="primary"
+            navigate={~p"/line_presets/new?team_id=#{@team.id}&return_to=team"}
+          >
+            <.icon name="hero-plus" /> Add preset
+          </.button>
+        </div>
 
-        <ul :if={@line_presets != []} id="team-line-presets" class="mt-4 flex flex-col gap-3">
+        <ul :if={@line_presets != []} id="team-line-presets" class="flex flex-col gap-3">
           <li
             :for={preset <- @line_presets}
             id={"line-preset-#{preset.id}"}
@@ -117,18 +146,6 @@ defmodule UltistatsWeb.TeamLive.Show do
           No line presets yet. Create your first to set lines quickly mid-game.
         </p>
       </section>
-
-      <section class="mt-12">
-        <button
-          type="button"
-          id="delete-team"
-          phx-click={JS.push("delete_team", value: %{id: @team.id})}
-          data-confirm="Delete this team and all its players, presets, and games?"
-          class="text-sm text-error link link-hover"
-        >
-          Delete team
-        </button>
-      </section>
     </Layouts.app>
     """
   end
@@ -141,19 +158,18 @@ defmodule UltistatsWeb.TeamLive.Show do
      socket
      |> assign(:page_title, team.name)
      |> assign(:team, team)
+     |> assign(:active_tab, :roster)
      |> assign(:players, Teams.list_players_for_team(team))
      |> assign(:line_presets, Teams.list_line_presets_for_team(team))}
   end
 
   @impl true
-  def handle_event("delete_team", %{"id" => id}, socket) do
-    team = Teams.get_team!(id)
-    {:ok, _} = Teams.delete_team(team)
+  def handle_event("set_tab", %{"tab" => "roster"}, socket) do
+    {:noreply, assign(socket, :active_tab, :roster)}
+  end
 
-    {:noreply,
-     socket
-     |> put_flash(:info, "Team deleted")
-     |> push_navigate(to: ~p"/teams")}
+  def handle_event("set_tab", %{"tab" => "presets"}, socket) do
+    {:noreply, assign(socket, :active_tab, :presets)}
   end
 
   def handle_event("delete_player", %{"id" => id}, socket) do
@@ -176,11 +192,13 @@ defmodule UltistatsWeb.TeamLive.Show do
      |> assign(:line_presets, Teams.list_line_presets_for_team(socket.assigns.team))}
   end
 
-  defp roster_count_label([_]), do: "1 player"
-  defp roster_count_label(players), do: "#{length(players)} players"
+  defp tab_classes(true),
+    do:
+      "min-h-11 inline-flex items-center px-4 py-1.5 rounded text-sm font-medium bg-primary text-primary-content"
 
-  defp preset_count_label([_]), do: "1 preset"
-  defp preset_count_label(presets), do: "#{length(presets)} presets"
+  defp tab_classes(false),
+    do:
+      "min-h-11 inline-flex items-center px-4 py-1.5 rounded text-sm font-medium text-base-content/70 hover:text-base-content"
 
   defp gender_glyph(:female_matching), do: "♀"
   defp gender_glyph(:male_matching), do: "♂"

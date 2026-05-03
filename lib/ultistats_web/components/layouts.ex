@@ -23,20 +23,12 @@ defmodule UltistatsWeb.Layouts do
         <.link navigate={~p"/"} class="font-semibold text-base-content">
           Ultistats
         </.link>
-        <ul class="flex items-center gap-3 text-sm">
+        <ul class="flex items-center gap-4 text-sm">
           <li>
             <.link navigate={~p"/teams"} class="hover:underline">Teams</.link>
           </li>
           <li>
             <.link navigate={~p"/games"} class="hover:underline">Games</.link>
-          </li>
-          <li>
-            <.link
-              navigate={~p"/games/new"}
-              class="inline-flex items-center gap-1 min-h-11 px-3 py-1.5 rounded-md bg-primary text-primary-content font-medium hover:bg-primary/90 active:bg-primary/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            >
-              <.icon name="hero-plus" class="size-4" /> Game
-            </.link>
           </li>
         </ul>
       </nav>

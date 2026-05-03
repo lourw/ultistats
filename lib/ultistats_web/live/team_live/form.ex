@@ -19,6 +19,22 @@ defmodule UltistatsWeb.TeamLive.Form do
           <.button navigate={return_path(@return_to, @team)}>Cancel</.button>
         </footer>
       </.form>
+
+      <section :if={@live_action == :edit} class="mt-12 pt-6 border-t border-base-300">
+        <h2 class="text-sm font-semibold text-base-content">Danger zone</h2>
+        <p class="mt-1 text-sm text-base-content/70">
+          Deleting a team also removes all of its players, line presets, and games.
+        </p>
+        <button
+          type="button"
+          id="delete-team"
+          phx-click={JS.push("delete_team", value: %{id: @team.id})}
+          data-confirm="Delete this team and all of its data? This cannot be undone."
+          class="mt-3 min-h-11 inline-flex items-center px-4 rounded-md text-sm font-medium border border-error text-error hover:bg-error/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-error"
+        >
+          Delete team
+        </button>
+      </section>
     </Layouts.app>
     """
   end
@@ -60,6 +76,16 @@ defmodule UltistatsWeb.TeamLive.Form do
 
   def handle_event("save", %{"team" => team_params}, socket) do
     save_team(socket, socket.assigns.live_action, team_params)
+  end
+
+  def handle_event("delete_team", %{"id" => id}, socket) do
+    team = Teams.get_team!(id)
+    {:ok, _} = Teams.delete_team(team)
+
+    {:noreply,
+     socket
+     |> put_flash(:info, "Team deleted")
+     |> push_navigate(to: ~p"/teams")}
   end
 
   defp save_team(socket, :edit, team_params) do

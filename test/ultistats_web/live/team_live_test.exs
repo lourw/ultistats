@@ -79,16 +79,16 @@ defmodule UltistatsWeb.TeamLiveTest do
   describe "Show" do
     setup [:create_team]
 
-    test "exposes a delete affordance and clicking it deletes the team", %{conn: conn, team: team} do
-      {:ok, show_live, _html} = live(conn, ~p"/teams/#{team}")
+    test "delete affordance lives on the edit page and removes the team", %{conn: conn, team: team} do
+      {:ok, edit_live, _html} = live(conn, ~p"/teams/#{team}/edit")
 
-      assert has_element?(show_live, "#delete-team")
+      assert has_element?(edit_live, "#delete-team")
 
-      assert show_live
-             |> element("#delete-team")
-             |> render_click()
+      edit_live
+      |> element("#delete-team")
+      |> render_click()
 
-      assert_redirect(show_live, ~p"/teams")
+      assert_redirect(edit_live, ~p"/teams")
 
       assert_raise Ecto.NoResultsError, fn -> Ultistats.Teams.get_team!(team.id) end
     end
