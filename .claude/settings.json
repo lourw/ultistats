@@ -11,7 +11,8 @@
       "Bash(mix ecto.migrations:*)",
       "Bash(mix ecto.create:*)",
       "Bash(mix ecto.migrate:*)",
-      "Bash(mix ecto.gen.migration:*)"
+      "Bash(mix ecto.gen.migration:*)",
+      "Bash(mix phx.gen.*:*)"
     ]
   }
 }

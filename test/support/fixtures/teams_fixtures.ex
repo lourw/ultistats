@@ -17,4 +17,25 @@ defmodule Ultistats.TeamsFixtures do
 
     team
   end
+
+  @doc """
+  Generate a player. Creates a team automatically if `team_id` is not given.
+  """
+  def player_fixture(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+
+    attrs =
+      Map.put_new_lazy(attrs, :team_id, fn -> team_fixture().id end)
+
+    {:ok, player} =
+      attrs
+      |> Enum.into(%{
+        gender_role: :female_matching,
+        jersey_number: "7",
+        name: "some name"
+      })
+      |> Ultistats.Teams.create_player()
+
+    player
+  end
 end

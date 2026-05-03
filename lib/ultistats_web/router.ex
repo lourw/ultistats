@@ -23,6 +23,11 @@ defmodule UltistatsWeb.Router do
     live "/teams/new", TeamLive.Form, :new
     live "/teams/:id", TeamLive.Show, :show
     live "/teams/:id/edit", TeamLive.Form, :edit
+
+    live "/players", PlayerLive.Index, :index
+    live "/players/new", PlayerLive.Form, :new
+    live "/players/:id/edit", PlayerLive.Form, :edit
+    live "/players/:id", PlayerLive.Show, :show
   end
 
   # Other scopes may use custom stacks.

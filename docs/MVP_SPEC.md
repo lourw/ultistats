@@ -12,7 +12,7 @@ Single-game live stat tracking for ultimate frisbee. The whole MVP is one tracke
 
 1. **Team & roster setup** (one-time per team)
    - Create a team (name).
-   - Add players: name, jersey number, gender role (`match` / `prevailing`-style label, exact wording TBD — see `docs/DESIGN.md` open questions).
+   - Add players: name, jersey number, gender role (`:female_matching` / `:male_matching` — USAU FMP/MMP).
    - Edit/remove players as the roster changes.
 
 2. **Line presets** (one-time per team, editable any time)

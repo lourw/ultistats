@@ -48,7 +48,7 @@ players
   team_id (fk → teams)
   name (string, not null)
   jersey_number (string, nullable — string not int because some leagues allow "00")
-  gender_role (enum: e.g. "match" | "prevailing"; exact values TBD — see open questions)
+  gender_role (enum: :female_matching | :male_matching — USAU FMP/MMP)
 
 line_presets
   id (pk)
@@ -132,7 +132,7 @@ assets/
 
 ## Open questions
 
-- **Gender role values** — exact strings to use in the enum (`match` / `prevailing` vs. `male-matching` / `female-matching` etc.). Pick during first roster-CRUD ticket.
+- ~~**Gender role values**~~ — resolved: `:female_matching` and `:male_matching` (USAU FMP/MMP terminology), enforced via `Ecto.Enum` at the application layer (no DB CHECK constraint, to keep migrations portable across SQLite/Postgres).
 - **Soft-cap timer source** — whose clock drives soft cap? Server time? Tracker-tapped "soft cap reached" button? MVP can ship with a manual button. Resolve before implementing the cap UX.
 - **Assist UX detail** — is assist captured *before* tapping goal, or as a follow-up after? Both are common in stat apps. Default: tap goal, then prompted "who threw it?" with a skip option. Confirm during first game-flow ticket.
 - **Game ID for URLs** — integer ids are leaky for sharing; consider `:binary_id` from the start to future-proof. Decide before first migration.
