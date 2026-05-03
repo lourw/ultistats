@@ -47,11 +47,17 @@ defmodule UltistatsWeb.TeamLive.Show do
             class="flex items-center justify-between gap-3 py-3"
           >
             <div class="flex items-center gap-3 min-w-0">
-              <span class="badge badge-neutral font-mono shrink-0">#{player.jersey_number}</span>
-              <span class="font-medium truncate">{Player.display_name(player)}</span>
-              <span class={["badge badge-sm", gender_badge_class(player.gender_role)]}>
-                {humanize_gender_role(player.gender_role)}
+              <span
+                :if={player.jersey_number}
+                class="inline-flex items-center justify-center w-8 h-7 px-1 rounded-full bg-base-200 text-base-content text-sm font-semibold tabular-nums shrink-0"
+              >
+                {player.jersey_number}
               </span>
+              <span class="font-medium truncate">{Player.display_name(player)}</span>
+              <span class="text-lg leading-none shrink-0" aria-hidden="true">
+                {gender_glyph(player.gender_role)}
+              </span>
+              <span class="sr-only">{humanize_gender_role(player.gender_role)}</span>
             </div>
             <div class="flex items-center gap-3 shrink-0">
               <.link navigate={~p"/players/#{player}/edit?return_to=team"} class="link link-hover">
@@ -159,11 +165,11 @@ defmodule UltistatsWeb.TeamLive.Show do
   defp preset_count_label([_]), do: "1 preset"
   defp preset_count_label(presets), do: "#{length(presets)} presets"
 
-  defp humanize_gender_role(:female_matching), do: "FMP"
-  defp humanize_gender_role(:male_matching), do: "MMP"
-  defp humanize_gender_role(other), do: to_string(other)
+  defp gender_glyph(:female_matching), do: "♀"
+  defp gender_glyph(:male_matching), do: "♂"
+  defp gender_glyph(_), do: ""
 
-  defp gender_badge_class(:female_matching), do: "badge-secondary"
-  defp gender_badge_class(:male_matching), do: "badge-primary"
-  defp gender_badge_class(_), do: "badge-ghost"
+  defp humanize_gender_role(:female_matching), do: "Female-matching"
+  defp humanize_gender_role(:male_matching), do: "Male-matching"
+  defp humanize_gender_role(other), do: to_string(other)
 end
