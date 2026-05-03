@@ -59,6 +59,7 @@ defmodule UltistatsWeb.GameLive.Show do
        |> assign(:selected_preset_id, nil)
        |> assign(:current_passer_id, nil)
        |> assign(:selected_receiver_id, nil)
+       |> assign(:defense_kind, :block)
        |> assign(:halftime_dismissed?, false)
        # Disconnect-driven button-disable is wired via JS hook in a later
        # task; assigns stays at false until the hook lands. The flash
@@ -86,22 +87,17 @@ defmodule UltistatsWeb.GameLive.Show do
     ~H"""
     <Layouts.app flash={@flash}>
       <div class="flex flex-col min-h-[calc(100vh-3rem)]">
-        <div class="sticky top-14 z-20 -mx-4 px-4 bg-base-100/95 backdrop-blur border-b border-base-200">
-          <.score_header
+        <div
+          class="sticky z-20 -mx-4 px-4 bg-base-100/95 backdrop-blur border-b border-base-200 transition-[top] duration-200 motion-reduce:transition-none"
+          style="top: var(--nav-offset, 3.5rem)"
+        >
+          <.compact_header
             game={@game}
             score={@score}
             current_point={@current_point}
+            possession={@possession}
             halftime?={Games.halftime?(@game) and not @halftime_dismissed?}
-            disconnected?={@disconnected?}
-            finished?={@game.status == :finished}
           />
-
-          <.phase_stepper
-            phase={phase(@game.status == :finished, @current_point)}
-            events={@events}
-          />
-
-          <.possession_banner :if={@current_point} possession={@possession} />
         </div>
 
         <%= cond do %>
@@ -114,6 +110,7 @@ defmodule UltistatsWeb.GameLive.Show do
               current_passer_id={@current_passer_id}
               selected_receiver_id={@selected_receiver_id}
               disconnected?={@disconnected?}
+              defense_kind={@defense_kind}
             />
           <% true -> %>
             <.between_points_view
@@ -132,6 +129,13 @@ defmodule UltistatsWeb.GameLive.Show do
           team_players={@team_players}
           disconnected?={@disconnected?}
         />
+
+        <div
+          :if={@current_point}
+          class="sticky bottom-0 -mx-4 px-4 pb-safe bg-base-100/95 backdrop-blur border-t border-base-200"
+        >
+          <.calls_bar disconnected?={@disconnected?} />
+        </div>
       </div>
     </Layouts.app>
     """
@@ -141,61 +145,97 @@ defmodule UltistatsWeb.GameLive.Show do
   ## sub-renderers
   ## ---------------------------------------------------------------------
 
-  # Sticky top header per UI_DESIGN.md §Layout. Safe-area inset top
-  # respected via pt-safe.
+  # Compact sticky header — single row carrying score + opponent +
+  # possession pill + nav icons, with a discrete back-to-lineup chip
+  # when in a point. Halftime banner stays as a one-time strip above it.
   attr :game, :map, required: true
   attr :score, :map, required: true
   attr :current_point, :any, required: true
+  attr :possession, :any, required: true
   attr :halftime?, :boolean, required: true
-  attr :disconnected?, :boolean, required: true
-  attr :finished?, :boolean, required: true
 
-  defp score_header(assigns) do
+  defp compact_header(assigns) do
     ~H"""
-    <div>
-      <div :if={@halftime?} class="mb-2">
-        <div
-          role="status"
-          class="flex items-center gap-2 rounded-lg bg-warning text-warning-content px-3 py-2 text-sm"
+    <div :if={@halftime?} class="pt-2">
+      <div
+        role="status"
+        class="flex items-center gap-2 rounded-md bg-warning text-warning-content px-2 py-1.5 text-xs"
+      >
+        <.icon name="hero-flag-solid" class="size-4 shrink-0" />
+        <span class="flex-1 font-semibold tabular-nums">
+          Halftime — {@score.ours}–{@score.theirs}
+        </span>
+        <button
+          type="button"
+          phx-click="dismiss_halftime"
+          aria-label="Dismiss halftime banner"
+          class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md active:bg-warning-content/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
-          <.icon name="hero-flag-solid" class="size-5 shrink-0" />
-          <span class="flex-1 font-semibold tabular-nums">
-            Halftime — score is {@score.ours}–{@score.theirs}
-          </span>
-          <button
-            type="button"
-            phx-click="dismiss_halftime"
-            aria-label="Dismiss halftime banner"
-            class="min-h-11 min-w-11 inline-flex items-center justify-center rounded-md active:bg-warning-content/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            <.icon name="hero-x-mark" class="size-5" />
-          </button>
-        </div>
+          <.icon name="hero-x-mark" class="size-4" />
+        </button>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between gap-2 py-2">
+      <button
+        :if={@current_point}
+        type="button"
+        phx-click="cancel_current_point"
+        data-confirm="You will lose all progress for this point if you go back."
+        aria-label="Back to lineup (cancel point)"
+        class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary shrink-0"
+      >
+        <.icon name="hero-arrow-uturn-left" class="size-4" />
+      </button>
+
+      <div class="flex items-baseline gap-1.5 min-w-0 flex-1">
+        <span
+          class="tabular-nums font-bold text-2xl leading-none"
+          aria-label={"Our score #{@score.ours}"}
+        >
+          {@score.ours}
+        </span>
+        <span class="text-base text-base-content/40 leading-none" aria-hidden="true">–</span>
+        <span
+          class="tabular-nums font-bold text-2xl leading-none"
+          aria-label={"Opponent score #{@score.theirs}"}
+        >
+          {@score.theirs}
+        </span>
+        <span class="text-xs text-base-content/60 truncate ml-1">vs {@game.opponent_name}</span>
       </div>
 
-      <div class="flex items-start justify-between gap-3 py-3">
-        <div class="flex flex-col gap-1 min-w-0">
-          <.score_readout our_score={@score.ours} their_score={@score.theirs} />
-          <p class="text-xs text-base-content/70 truncate">
-            vs {@game.opponent_name}
-          </p>
-        </div>
-        <div class="flex items-center gap-2 shrink-0">
-          <.link
-            navigate={~p"/games/#{@game.id}/summary"}
-            aria-label="Open game summary"
-            class="min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg border-2 border-base-300 bg-base-100 text-base-content active:bg-base-200 transition-colors motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            <.icon name="hero-chart-bar" class="size-5" />
-          </.link>
-          <.link
-            navigate={~p"/games/#{@game.id}/timeline"}
-            aria-label="Open timeline"
-            class="min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg border-2 border-base-300 bg-base-100 text-base-content active:bg-base-200 transition-colors motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            <.icon name="hero-list-bullet" class="size-5" />
-          </.link>
-        </div>
+      <span
+        :if={@current_point}
+        class={[
+          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold shrink-0",
+          case @possession do
+            :ours -> "bg-success/15 text-success"
+            :theirs -> "bg-error/10 text-error"
+            _ -> "bg-base-200 text-base-content/70"
+          end
+        ]}
+        aria-label={possession_label(@possession)}
+      >
+        <span aria-hidden="true">🥏</span>
+        <span>{possession_short_label(@possession)}</span>
+      </span>
+
+      <div class="flex items-center gap-1 shrink-0">
+        <.link
+          navigate={~p"/games/#{@game.id}/summary"}
+          aria-label="Open game summary"
+          class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <.icon name="hero-chart-bar" class="size-4" />
+        </.link>
+        <.link
+          navigate={~p"/games/#{@game.id}/timeline"}
+          aria-label="Open timeline"
+          class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <.icon name="hero-list-bullet" class="size-4" />
+        </.link>
       </div>
     </div>
     """
@@ -271,21 +311,20 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :current_passer_id, :any, required: true
   attr :selected_receiver_id, :any, required: true
   attr :disconnected?, :boolean, required: true
+  attr :defense_kind, :atom, required: true, values: [:block, :catch]
 
   defp in_point_view(assigns) do
     line_player_ids = line_player_ids(assigns.current_point)
     on_field = Enum.filter(assigns.team_players, &(&1.id in line_player_ids))
     player_lookup = Map.new(assigns.team_players, &{&1.id, &1})
-    recent = assigns.events |> Enum.reverse() |> Enum.take(5)
 
     assigns =
       assigns
       |> assign(:on_field, on_field)
       |> assign(:player_lookup, player_lookup)
-      |> assign(:recent_events, recent)
 
     ~H"""
-    <section class="flex-1 py-4 space-y-6" aria-label="Current point">
+    <section class="flex-1 py-2 space-y-3" aria-label="Current point">
       <%= if @possession == :ours do %>
         <.our_possession_view
           on_field={@on_field}
@@ -298,15 +337,9 @@ defmodule UltistatsWeb.GameLive.Show do
         <.their_possession_view
           on_field={@on_field}
           disconnected?={@disconnected?}
+          defense_kind={@defense_kind}
         />
       <% end %>
-
-      <.calls_bar disconnected?={@disconnected?} />
-
-      <.recent_events_list
-        recent_events={@recent_events}
-        player_lookup={@player_lookup}
-      />
     </section>
     """
   end
@@ -327,21 +360,19 @@ defmodule UltistatsWeb.GameLive.Show do
       |> assign(:receiver_set?, receiver_set?)
 
     ~H"""
-    <div class="space-y-4">
+    <div class="space-y-2">
       <.current_passer_card
         current_passer_id={@current_passer_id}
         player_lookup={@player_lookup}
       />
 
-      <%= if @passer_set? do %>
-        <p class="text-xs text-base-content/70" aria-live="polite">
+      <p class="text-xs text-base-content/70" aria-live="polite">
+        <%= if @passer_set? do %>
           Tap who caught (or attempted to catch) the throw.
-        </p>
-      <% else %>
-        <p class="text-sm font-medium text-base-content" aria-live="polite">
+        <% else %>
           Tap who has the disc.
-        </p>
-      <% end %>
+        <% end %>
+      </p>
 
       <.receiver_grid
         on_field={@on_field}
@@ -369,28 +400,28 @@ defmodule UltistatsWeb.GameLive.Show do
     ~H"""
     <div
       :if={is_nil(@current_passer_id)}
-      class="rounded-xl border-2 border-dashed border-base-300 px-4 py-3 text-center"
+      class="rounded-lg border-2 border-dashed border-base-300 px-3 py-2 text-center"
       aria-label="No current passer"
     >
-      <p class="text-sm text-base-content/70 italic">Tap who has the disc</p>
+      <p class="text-xs text-base-content/70 italic">Tap who has the disc</p>
     </div>
 
     <div
       :if={not is_nil(@current_passer_id)}
-      class="rounded-xl bg-success/15 ring-2 ring-success px-4 py-3"
+      class="rounded-lg bg-success/15 ring-2 ring-success px-3 py-2"
       aria-label={"Current passer: #{@label}"}
       data-current-passer={passer_data_id(@current_passer_id)}
     >
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2">
         <span
-          class="tabular-nums font-semibold inline-flex items-center justify-center size-10 rounded-full bg-success text-success-content"
+          class="tabular-nums font-semibold inline-flex items-center justify-center size-8 rounded-full bg-success text-success-content text-sm"
           aria-hidden="true"
         >
           {passer_card_number(@current_passer_id, @player_lookup)}
         </span>
         <div class="flex-1 min-w-0">
-          <p class="text-base font-semibold truncate">{@label}</p>
-          <p class="text-xs text-base-content/70">has the disc</p>
+          <p class="text-sm font-semibold truncate leading-tight">{@label}</p>
+          <p class="text-[11px] text-base-content/70 leading-tight">has the disc</p>
         </div>
       </div>
     </div>
@@ -407,90 +438,87 @@ defmodule UltistatsWeb.GameLive.Show do
     assigns = assign(assigns, :event_name, event_name)
 
     ~H"""
-    <div>
-      <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/70 mb-2">
-        On the field
-      </h3>
-      <ul
-        class="rounded-lg border border-base-200 divide-y divide-base-200"
-        role="list"
-        aria-label="On-field players"
-      >
-        <li :for={player <- @on_field}>
-          <button
-            type="button"
-            phx-click={@event_name}
-            phx-value-id={player.id}
-            aria-pressed={
-              to_string(
-                receiver_active?(player.id, @passer_set?, @current_passer_id, @selected_receiver_id)
-              )
-            }
-            disabled={receiver_disabled?(player.id, @passer_set?, @current_passer_id)}
+    <ul
+      class="rounded-lg border border-base-200 divide-y divide-base-200"
+      role="list"
+      aria-label="On-field players"
+    >
+      <li :for={player <- @on_field}>
+        <button
+          type="button"
+          phx-click={@event_name}
+          phx-value-id={player.id}
+          aria-pressed={
+            to_string(
+              receiver_active?(player.id, @passer_set?, @current_passer_id, @selected_receiver_id)
+            )
+          }
+          disabled={receiver_disabled?(player.id, @passer_set?, @current_passer_id)}
+          class={[
+            "w-full min-h-9 px-2 py-0.5 flex items-center gap-2 text-left",
+            "transition-colors motion-reduce:transition-none active:bg-base-200",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+            "disabled:opacity-50 disabled:cursor-not-allowed",
+            receiver_row_classes(player.id, @passer_set?, @current_passer_id, @selected_receiver_id)
+          ]}
+        >
+          <span
             class={[
-              "w-full min-h-14 px-3 py-2 flex items-center gap-3 text-left",
-              "transition-colors motion-reduce:transition-none active:bg-base-200",
-              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-              "disabled:opacity-50 disabled:cursor-not-allowed",
-              receiver_row_classes(player.id, @passer_set?, @current_passer_id, @selected_receiver_id)
+              "tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full text-[11px] shrink-0",
+              if(player.id == @selected_receiver_id,
+                do: "bg-primary text-primary-content",
+                else: "bg-base-200 text-base-content"
+              )
             ]}
+            aria-hidden="true"
           >
-            <span
-              class={[
-                "tabular-nums font-semibold inline-flex items-center justify-center size-9 rounded-full text-sm shrink-0",
-                if(player.id == @selected_receiver_id,
-                  do: "bg-primary text-primary-content",
-                  else: "bg-base-200 text-base-content"
-                )
-              ]}
-              aria-hidden="true"
-            >
-              {player.jersey_number}
-            </span>
-            <span class="font-medium truncate flex-1">{Player.display_name(player)}</span>
-            <.icon
-              :if={player.id == @selected_receiver_id}
-              name="hero-check-circle-solid"
-              class="size-5 text-primary shrink-0"
-            />
-          </button>
-        </li>
+            {player.jersey_number}
+          </span>
+          <span class="font-medium text-sm truncate flex-1 leading-tight">
+            {Player.display_name(player)}
+          </span>
+          <.icon
+            :if={player.id == @selected_receiver_id}
+            name="hero-check-circle-solid"
+            class="size-4 text-primary shrink-0"
+          />
+        </button>
+      </li>
 
-        <%!-- Unknown chip — for when the tracker missed who threw or caught. --%>
-        <li>
-          <button
-            type="button"
-            phx-click={@event_name}
-            phx-value-id="unknown"
-            aria-pressed={
-              to_string(
-                receiver_active?(:unknown, @passer_set?, @current_passer_id, @selected_receiver_id)
-              )
-            }
-            class={[
-              "w-full min-h-14 px-3 py-2 flex items-center gap-3 text-left italic",
-              "border-t-2 border-dashed border-base-300",
-              "transition-colors motion-reduce:transition-none active:bg-base-200",
-              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-              receiver_row_classes(:unknown, @passer_set?, @current_passer_id, @selected_receiver_id)
-            ]}
+      <%!-- Unknown chip — for when the tracker missed who threw or caught. --%>
+      <li>
+        <button
+          type="button"
+          phx-click={@event_name}
+          phx-value-id="unknown"
+          aria-pressed={
+            to_string(
+              receiver_active?(:unknown, @passer_set?, @current_passer_id, @selected_receiver_id)
+            )
+          }
+          class={[
+            "w-full min-h-9 px-2 py-0.5 flex items-center gap-2 text-left italic",
+            "border-t-2 border-dashed border-base-300",
+            "transition-colors motion-reduce:transition-none active:bg-base-200",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+            receiver_row_classes(:unknown, @passer_set?, @current_passer_id, @selected_receiver_id)
+          ]}
+        >
+          <span
+            class="inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-xs shrink-0"
+            aria-hidden="true"
           >
-            <span
-              class="inline-flex items-center justify-center size-9 rounded-full bg-base-200 text-base-content text-base shrink-0"
-              aria-hidden="true"
-            >
-              ?
-            </span>
-            <span class="font-medium flex-1">Unknown</span>
-            <.icon
-              :if={@selected_receiver_id == :unknown}
-              name="hero-check-circle-solid"
-              class="size-5 text-primary shrink-0"
-            />
-          </button>
-        </li>
-      </ul>
-    </div>
+            ?
+          </span>
+          <span class="font-medium text-sm flex-1 leading-tight">Unknown</span>
+          <.icon
+            :if={@selected_receiver_id == :unknown}
+            name="hero-check-circle-solid"
+            class="size-4 text-primary shrink-0"
+          />
+        </button>
+      </li>
+    </ul>
     """
   end
 
@@ -610,6 +638,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
   attr :on_field, :list, required: true
   attr :disconnected?, :boolean, required: true
+  attr :defense_kind, :atom, required: true, values: [:block, :catch]
 
   defp their_possession_view(assigns) do
     ~H"""
@@ -619,44 +648,75 @@ defmodule UltistatsWeb.GameLive.Show do
       </div>
 
       <div>
+        <div
+          role="tablist"
+          aria-label="Defensive play type"
+          class="flex gap-6 border-b border-base-200 mb-2"
+        >
+          <button
+            type="button"
+            role="tab"
+            id="defense-tab-block"
+            aria-selected={to_string(@defense_kind == :block)}
+            phx-click="set_defense_kind"
+            phx-value-kind="block"
+            class={defense_tab_classes(@defense_kind == :block)}
+          >
+            Block
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="defense-tab-catch"
+            aria-selected={to_string(@defense_kind == :catch)}
+            phx-click="set_defense_kind"
+            phx-value-kind="catch"
+            class={defense_tab_classes(@defense_kind == :catch)}
+          >
+            Catch
+          </button>
+        </div>
+
         <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/70 mb-2">
-          Tap to record a block
+          {defense_picker_label(@defense_kind)}
         </h3>
         <ul class="rounded-lg border border-base-200 divide-y divide-base-200" role="list">
           <li :for={player <- @on_field}>
             <button
               type="button"
-              phx-click="pick_block"
+              phx-click="pick_defense_player"
               phx-value-id={player.id}
               disabled={@disconnected?}
-              aria-label={"Block by #{Player.display_name(player)}"}
+              aria-label={defense_aria_label(@defense_kind, Player.display_name(player))}
               class={[
-                "w-full min-h-14 px-3 py-2 flex items-center gap-3 text-left",
+                "w-full min-h-9 px-2 py-0.5 flex items-center gap-2 text-left",
                 "transition-colors motion-reduce:transition-none active:bg-base-200",
                 "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                 "disabled:opacity-50 disabled:cursor-not-allowed"
               ]}
             >
               <span
-                class="tabular-nums font-semibold inline-flex items-center justify-center size-9 rounded-full bg-base-200 text-base-content text-sm shrink-0"
+                class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0"
                 aria-hidden="true"
               >
                 {player.jersey_number}
               </span>
-              <span class="font-medium truncate flex-1">{Player.display_name(player)}</span>
-              <.icon name="hero-shield-check" class="size-5 text-primary shrink-0" />
+              <span class="font-medium text-sm truncate flex-1 leading-tight">
+                {Player.display_name(player)}
+              </span>
+              <.icon name={defense_kind_icon(@defense_kind)} class="size-4 text-primary shrink-0" />
             </button>
           </li>
 
           <li>
             <button
               type="button"
-              phx-click="pick_block"
+              phx-click="pick_defense_player"
               phx-value-id="unknown"
               disabled={@disconnected?}
-              aria-label="Block by an unknown player"
+              aria-label={defense_aria_label(@defense_kind, "Unknown")}
               class={[
-                "w-full min-h-14 px-3 py-2 flex items-center gap-3 text-left italic",
+                "w-full min-h-9 px-2 py-0.5 flex items-center gap-2 text-left italic",
                 "border-t-2 border-dashed border-base-300",
                 "transition-colors motion-reduce:transition-none active:bg-base-200",
                 "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
@@ -664,12 +724,12 @@ defmodule UltistatsWeb.GameLive.Show do
               ]}
             >
               <span
-                class="inline-flex items-center justify-center size-9 rounded-full bg-base-200 text-base-content text-base shrink-0"
+                class="inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-xs shrink-0"
                 aria-hidden="true"
               >
                 ?
               </span>
-              <span class="font-medium flex-1">Unknown</span>
+              <span class="font-medium text-sm flex-1 leading-tight">Unknown</span>
             </button>
           </li>
         </ul>
@@ -721,12 +781,9 @@ defmodule UltistatsWeb.GameLive.Show do
 
   defp calls_bar(assigns) do
     ~H"""
-    <div
-      class="rounded-lg border border-base-200 px-3 py-2 flex items-center gap-3"
-      aria-label="Calls"
-    >
-      <span class="text-xs uppercase tracking-wide text-base-content/60 shrink-0">Calls</span>
-      <div class="flex-1 grid grid-cols-2 gap-3">
+    <div class="py-2 flex items-center gap-2" aria-label="Calls">
+      <span class="text-[11px] uppercase tracking-wide text-base-content/60 shrink-0">Calls</span>
+      <div class="flex-1 grid grid-cols-2 gap-2">
         <button
           type="button"
           phx-click="record_call"
@@ -734,7 +791,7 @@ defmodule UltistatsWeb.GameLive.Show do
           disabled={@disconnected?}
           aria-label="Record a pick call"
           class={[
-            "min-h-14 px-3 py-2 rounded-md border border-base-300",
+            "min-h-9 px-2 py-1 rounded-md border border-base-300",
             "inline-flex items-center justify-center gap-1.5",
             "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
             "transition-colors motion-reduce:transition-none",
@@ -752,7 +809,7 @@ defmodule UltistatsWeb.GameLive.Show do
           disabled={@disconnected?}
           aria-label="Record a foul call"
           class={[
-            "min-h-14 px-3 py-2 rounded-md border border-base-300",
+            "min-h-9 px-2 py-1 rounded-md border border-base-300",
             "inline-flex items-center justify-center gap-1.5",
             "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
             "transition-colors motion-reduce:transition-none",
@@ -764,40 +821,6 @@ defmodule UltistatsWeb.GameLive.Show do
           <span>Foul</span>
         </button>
       </div>
-    </div>
-    """
-  end
-
-  attr :recent_events, :list, required: true
-  attr :player_lookup, :map, required: true
-
-  defp recent_events_list(assigns) do
-    ~H"""
-    <div class="space-y-2">
-      <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/70">
-        Recent events
-      </h3>
-      <%= if @recent_events == [] do %>
-        <p class="text-sm text-base-content/70 italic">
-          No events yet — tap an action below.
-        </p>
-      <% else %>
-        <ul class="divide-y divide-base-200 rounded-lg border border-base-200">
-          <li :for={ev <- @recent_events} class="flex items-center gap-3 px-3 py-2">
-            <.icon
-              name={event_icon(ev.type)}
-              class={["size-5 shrink-0", event_icon_class(ev.type)]}
-            />
-            <span class="font-semibold capitalize text-sm shrink-0">{event_label(ev.type)}</span>
-            <span class="flex-1 text-sm truncate text-base-content/80">
-              {event_player_label(ev, @player_lookup)}
-            </span>
-            <time class="tabular-nums text-xs text-base-content/60 shrink-0">
-              {format_time(ev.occurred_at)}
-            </time>
-          </li>
-        </ul>
-      <% end %>
     </div>
     """
   end
@@ -966,12 +989,28 @@ defmodule UltistatsWeb.GameLive.Show do
     end
   end
 
-  def handle_event("pick_block", %{"id" => raw_id}, socket) do
-    point = socket.assigns.current_point
-    blocker_token = parse_player_token(raw_id)
-    blocker_id = id_or_nil(blocker_token)
+  def handle_event("set_defense_kind", %{"kind" => kind}, socket)
+      when kind in ["block", "catch"] do
+    {:noreply, assign(socket, :defense_kind, String.to_existing_atom(kind))}
+  end
 
-    case Games.record_throw(point, :block, blocker_id, nil) do
+  # Branches on `@defense_kind`:
+  #   :block  → record :block (passer = our defender)
+  #   :catch  → record :catch (passer = nil, receiver = our interceptor)
+  # In both cases the picked player becomes the new current passer and
+  # possession derives back to :ours.
+  def handle_event("pick_defense_player", %{"id" => raw_id}, socket) do
+    point = socket.assigns.current_point
+    picked_token = parse_player_token(raw_id)
+    picked_id = id_or_nil(picked_token)
+
+    {type, passer_id, receiver_id} =
+      case socket.assigns.defense_kind do
+        :block -> {:block, picked_id, nil}
+        :catch -> {:catch, nil, picked_id}
+      end
+
+    case Games.record_throw(point, type, passer_id, receiver_id) do
       {:ok, _event} ->
         events = Games.events_for_point(point)
 
@@ -979,11 +1018,11 @@ defmodule UltistatsWeb.GameLive.Show do
          socket
          |> assign(:events, events)
          |> assign(:possession, derive_possession(socket.assigns.game, point, events))
-         |> assign(:current_passer_id, blocker_token)
+         |> assign(:current_passer_id, picked_token)
          |> assign(:selected_receiver_id, nil)}
 
       {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Could not record block.")}
+        {:noreply, put_flash(socket, :error, "Could not record event.")}
     end
   end
 
@@ -1194,60 +1233,22 @@ defmodule UltistatsWeb.GameLive.Show do
   defp line_player_ids(%{our_line_snapshot: %{"player_ids" => ids}}) when is_list(ids), do: ids
   defp line_player_ids(_), do: []
 
-  defp event_icon(:catch), do: "hero-check"
-  defp event_icon(:goal), do: "hero-trophy"
-  defp event_icon(:block), do: "hero-shield-check"
-  defp event_icon(:throwaway), do: "hero-arrow-path-rounded-square"
-  defp event_icon(:drop), do: "hero-arrow-down-tray"
-  defp event_icon(:stall), do: "hero-clock"
-  defp event_icon(:pull), do: "hero-paper-airplane"
-  defp event_icon(:opponent_turnover), do: "hero-arrow-uturn-right"
-  defp event_icon(:opponent_goal), do: "hero-flag"
-  defp event_icon(:pick), do: "hero-hand-raised"
-  defp event_icon(:foul), do: "hero-exclamation-triangle"
-  defp event_icon(_), do: "hero-bolt"
+  defp defense_tab_classes(true),
+    do:
+      "min-h-11 inline-flex items-center pb-2 -mb-px text-sm font-semibold text-primary border-b-2 border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 
-  defp event_icon_class(:goal), do: "text-success"
-  defp event_icon_class(:catch), do: "text-success"
-  defp event_icon_class(:block), do: "text-primary"
-  defp event_icon_class(:throwaway), do: "text-error"
-  defp event_icon_class(:drop), do: "text-error"
-  defp event_icon_class(:stall), do: "text-error"
-  defp event_icon_class(:opponent_turnover), do: "text-success"
-  defp event_icon_class(:opponent_goal), do: "text-error"
-  defp event_icon_class(_), do: "text-base-content"
+  defp defense_tab_classes(false),
+    do:
+      "min-h-11 inline-flex items-center pb-2 -mb-px text-sm font-medium text-base-content/60 hover:text-base-content border-b-2 border-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 
-  defp event_label(:opponent_turnover), do: "They turned"
-  defp event_label(:opponent_goal), do: "They scored"
-  defp event_label(type), do: type |> Atom.to_string() |> String.capitalize()
+  defp defense_picker_label(:block), do: "Tap who blocked it"
+  defp defense_picker_label(:catch), do: "Tap who caught it"
 
-  # Recent-events row label. Shows passer → receiver for catches/goals/drops;
-  # passer-only for pull/throwaway/stall/block; "—" for calls and opponent
-  # events.
-  defp event_player_label(%{type: type, passer_id: passer_id, receiver_id: receiver_id}, lookup)
-       when type in [:catch, :goal, :drop] do
-    "#{player_label(lookup, passer_id)} → #{player_label(lookup, receiver_id)}"
-  end
+  defp defense_kind_icon(:block), do: "hero-shield-check"
+  defp defense_kind_icon(:catch), do: "hero-check"
 
-  defp event_player_label(%{passer_id: nil, receiver_id: nil}, _lookup), do: "—"
-
-  defp event_player_label(%{passer_id: passer_id}, lookup) when not is_nil(passer_id) do
-    player_label(lookup, passer_id)
-  end
-
-  defp event_player_label(_, _), do: "—"
-
-  defp player_label(_lookup, nil), do: "Unknown"
-
-  defp player_label(lookup, player_id) do
-    case Map.get(lookup, player_id) do
-      nil -> "Unknown"
-      player -> "##{player.jersey_number} #{Player.display_name(player)}"
-    end
-  end
-
-  defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%H:%M")
-  defp format_time(_), do: ""
+  defp defense_aria_label(:block, name), do: "Record block by #{name}"
+  defp defense_aria_label(:catch, name), do: "Record interception by #{name}"
 
   defp gender_glyph(:female_matching), do: "♀"
   defp gender_glyph(:male_matching), do: "♂"
@@ -1257,25 +1258,9 @@ defmodule UltistatsWeb.GameLive.Show do
   defp possession_label(:theirs), do: "They have the disc"
   defp possession_label(_), do: "Possession unknown"
 
-  attr :possession, :atom, default: nil
-
-  defp possession_banner(assigns) do
-    ~H"""
-    <div class="pb-3 flex justify-center">
-      <div class={[
-        "inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold",
-        case @possession do
-          :ours -> "bg-success/15 text-success"
-          :theirs -> "bg-error/10 text-error"
-          _ -> "bg-base-200 text-base-content/70"
-        end
-      ]}>
-        <span class="text-base leading-none" aria-hidden="true">🥏</span>
-        <span>{possession_label(@possession)}</span>
-      </div>
-    </div>
-    """
-  end
+  defp possession_short_label(:ours), do: "Ours"
+  defp possession_short_label(:theirs), do: "Theirs"
+  defp possession_short_label(_), do: "—"
 
   # Possession at the start of the point comes from the pull/receive rules
   # (`Games.starting_possession/2`); per-throw events flip per the table
@@ -1298,63 +1283,6 @@ defmodule UltistatsWeb.GameLive.Show do
       end
     end)
   end
-
-  # ---- phase tracker (Lineup / In point / Final) -----------------------
-
-  defp phase(_finished?, nil), do: :pre_pull
-  defp phase(_finished?, _current_point), do: :in_point
-
-  defp phase_label(:pre_pull), do: "Pre-pull"
-  defp phase_label(:in_point), do: "In point"
-
-  attr :phase, :atom, required: true, values: [:pre_pull, :in_point]
-  attr :events, :list, default: []
-
-  defp phase_stepper(assigns) do
-    ~H"""
-    <div class="my-3 flex items-center justify-center">
-      <div class="relative">
-        <button
-          :if={@phase == :in_point}
-          type="button"
-          phx-click="cancel_current_point"
-          data-confirm="You will lose all progress for this point if you go back."
-          aria-label="Back to pre-pull (cancel point)"
-          class="absolute right-full top-1/2 -translate-y-1/2 mr-2 min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          <.icon name="hero-arrow-uturn-left" class="size-4" />
-        </button>
-
-        <ol
-          role="list"
-          aria-label="Game phase"
-          class="flex items-center justify-center gap-2 text-xs font-medium text-base-content/60 bg-base-200 rounded-lg px-3 py-2"
-        >
-          <li
-            :for={{step, idx} <- Enum.with_index([:pre_pull, :in_point])}
-            class="flex items-center gap-2"
-          >
-            <span class={[
-              "inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-semibold tabular-nums",
-              if(@phase == step,
-                do: "bg-primary text-primary-content",
-                else: "bg-base-200 text-base-content/60"
-              )
-            ]}>
-              {idx + 1}
-            </span>
-            <span class={if(@phase == step, do: "text-base-content", else: "")}>
-              {phase_label(step)}
-            </span>
-            <span :if={idx < 1} aria-hidden="true" class="w-6 h-px bg-base-300"></span>
-          </li>
-        </ol>
-      </div>
-    </div>
-    """
-  end
-
-  # ---- end phase tracker ------------------------------------------------
 
   defp role_label(:male_matching), do: "Male-matching"
   defp role_label(:female_matching), do: "Female-matching"

@@ -319,7 +319,6 @@ defmodule UltistatsWeb.GameLiveTest do
       live |> element("button[phx-click='start_point']") |> render_click()
 
       html = render(live)
-      assert html =~ "Recent events"
       # The starting-possession label renders. game_fixture defaults
       # first_pull: :ours, so the receiving side is :theirs at point start.
       assert html =~ "They have the disc"
@@ -461,9 +460,8 @@ defmodule UltistatsWeb.GameLiveTest do
       render_hook(live, "set_passer", %{"id" => a.id})
       render_hook(live, "record_throw_outcome", %{"type" => "throwaway"})
 
-      live
-      |> element("button[phx-click='pick_block'][phx-value-id='#{blocker.id}']")
-      |> render_click()
+      # Default `defense_kind` is :block; pick the blocker.
+      render_hook(live, "pick_defense_player", %{"id" => blocker.id})
 
       events = Games.events_for_point(point)
       assert Enum.any?(events, &(&1.type == :block and &1.passer_id == blocker.id))
@@ -475,6 +473,31 @@ defmodule UltistatsWeb.GameLiveTest do
       assert html =~ "We have the disc"
       # Blocker is now the current passer.
       assert html =~ "data-current-passer=\"#{blocker.id}\""
+    end
+
+    test "Catch (interception) records a :catch with passer=nil and the catcher as receiver",
+         %{conn: conn, game: game, players: players, point: point} do
+      {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
+
+      # Flip to :theirs via a throwaway from one of our players.
+      [a, catcher | _] = players
+      render_hook(live, "set_passer", %{"id" => a.id})
+      render_hook(live, "record_throw_outcome", %{"type" => "throwaway"})
+
+      # Switch defense kind to :catch (interception) and pick the catcher.
+      render_hook(live, "set_defense_kind", %{"kind" => "catch"})
+      render_hook(live, "pick_defense_player", %{"id" => catcher.id})
+
+      events = Games.events_for_point(point)
+
+      assert Enum.any?(
+               events,
+               &(&1.type == :catch and is_nil(&1.passer_id) and &1.receiver_id == catcher.id)
+             )
+
+      html = render(live)
+      assert html =~ "We have the disc"
+      assert html =~ "data-current-passer=\"#{catcher.id}\""
     end
 
     test "They turned it over flips possession to :ours, clears passer", %{

@@ -25,11 +25,56 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/ultistats"
 import topbar from "../vendor/topbar"
 
+// Hide the top navbar while scrolling down; reveal it on any upward
+// scroll. The hook also publishes a `--nav-offset` custom property on
+// <html> so other sticky-headers (e.g. the live-game score header) can
+// follow the navbar's visibility without a separate listener.
+const NAV_HEIGHT = "3.5rem" // matches Tailwind h-14 on the navbar
+const ScrollAwareNav = {
+  mounted() {
+    this._lastY = window.scrollY
+    this._ticking = false
+    this._setHidden(false)
+
+    this._onScroll = () => {
+      if (this._ticking) return
+      this._ticking = true
+      requestAnimationFrame(() => {
+        const y = Math.max(window.scrollY, 0)
+        const delta = y - this._lastY
+        if (y <= 8) {
+          this._setHidden(false)
+        } else if (delta > 4) {
+          this._setHidden(true)
+        } else if (delta < -4) {
+          this._setHidden(false)
+        }
+        this._lastY = y
+        this._ticking = false
+      })
+    }
+    window.addEventListener("scroll", this._onScroll, {passive: true})
+  },
+  destroyed() {
+    window.removeEventListener("scroll", this._onScroll)
+    document.documentElement.style.setProperty("--nav-offset", NAV_HEIGHT)
+  },
+  _setHidden(hidden) {
+    if (this._hidden === hidden) return
+    this._hidden = hidden
+    this.el.classList.toggle("-translate-y-full", hidden)
+    document.documentElement.style.setProperty(
+      "--nav-offset",
+      hidden ? "0px" : NAV_HEIGHT,
+    )
+  },
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks},
+  hooks: {...colocatedHooks, ScrollAwareNav},
 })
 
 // Show progress bar on live navigation and form submits
