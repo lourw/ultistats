@@ -73,139 +73,141 @@ defmodule UltistatsWeb.GameLive.Start do
         phx-change="validate"
         phx-submit="save"
       >
-        <.input
-          :if={length(@teams) > 1}
-          field={@form[:team_id]}
-          type="select"
-          label="Team"
-          prompt="Select team"
-          options={team_options(@teams)}
-        />
-        <.input :if={length(@teams) == 1} field={@form[:team_id]} type="hidden" />
-
-        <.input field={@form[:opponent_name]} type="text" label="Opponent" maxlength="80" />
-
-        <fieldset class="mt-2">
-          <legend class="block text-sm font-medium text-base-content mb-2">Division</legend>
-          <div role="radiogroup" aria-label="Division" class="grid grid-cols-3 gap-2">
-            <button
-              :for={{value, label} <- division_options()}
-              type="button"
-              role="radio"
-              aria-checked={to_string(@division == value)}
-              phx-click="set_division"
-              phx-value-division={value}
-              class={division_chip_classes(@division == value)}
-            >
-              {label}
-            </button>
-          </div>
-        </fieldset>
-
-        <.input
-          field={@form[:first_pull]}
-          type="select"
-          label="First pull"
-          options={first_pull_options()}
-        />
-
-        <.input field={@form[:format]} type="hidden" />
-
-        <.input
-          field={@form[:ruleset_id]}
-          type="select"
-          label="Ruleset"
-          prompt="USAU standard (no template)"
-          options={ruleset_options(@team_rulesets)}
-        />
-
-        <p :if={@ruleset_error} class="text-sm text-error">{@ruleset_error}</p>
-
-        <fieldset class="mt-2 space-y-0">
-          <legend class="block text-sm font-medium text-base-content mb-2">
-            Rules for this game
-          </legend>
-
+        <div class="flex flex-col gap-3">
           <.input
-            id="game_rule_overrides_score_cap"
-            name="rule_overrides[score_cap]"
-            value={Map.get(@rule_overrides, "score_cap", "")}
-            type="number"
-            label="Score cap"
-            min="1"
-            max="30"
-            inputmode="numeric"
-            placeholder="leave blank for no score cap"
-          />
-          <.input
-            id="game_rule_overrides_halftime_target"
-            name="rule_overrides[halftime_target]"
-            value={Map.get(@rule_overrides, "halftime_target", "")}
-            type="number"
-            label="Halftime target"
-            min="1"
-            inputmode="numeric"
-            placeholder="leave blank for no halftime by score"
-          />
-          <.input
-            id="game_rule_overrides_halftime_cap_minutes"
-            name="rule_overrides[halftime_cap_minutes]"
-            value={Map.get(@rule_overrides, "halftime_cap_minutes", "")}
-            type="number"
-            label="Halftime cap (minutes)"
-            min="1"
-            max="240"
-            inputmode="numeric"
-            placeholder="leave blank for no timed halftime"
-          />
-          <.input
-            id="game_rule_overrides_soft_cap_minutes"
-            name="rule_overrides[soft_cap_minutes]"
-            value={Map.get(@rule_overrides, "soft_cap_minutes", "")}
-            type="number"
-            label="Soft cap (minutes)"
-            min="1"
-            inputmode="numeric"
-            placeholder="leave blank for no soft cap"
-          />
-          <.input
-            id="game_rule_overrides_hard_cap_minutes"
-            name="rule_overrides[hard_cap_minutes]"
-            value={Map.get(@rule_overrides, "hard_cap_minutes", "")}
-            type="number"
-            label="Hard cap (minutes)"
-            min="1"
-            inputmode="numeric"
-            placeholder="leave blank for no hard cap"
-          />
-          <.input
-            id="game_rule_overrides_timeouts_per_half"
-            name="rule_overrides[timeouts_per_half]"
-            value={Map.get(@rule_overrides, "timeouts_per_half", "")}
-            type="number"
-            label="Timeouts per half"
-            min="0"
-            max="5"
-            inputmode="numeric"
-          />
-          <.input
-            id="game_rule_overrides_gender_ratio_rule"
-            name="rule_overrides[gender_ratio_rule]"
-            value={Map.get(@rule_overrides, "gender_ratio_rule", "")}
+            :if={length(@teams) > 1}
+            field={@form[:team_id]}
             type="select"
-            label="Gender ratio rule"
-            options={ratio_rule_options()}
+            label="Team"
+            prompt="Select team"
+            options={team_options(@teams)}
           />
+          <.input :if={length(@teams) == 1} field={@form[:team_id]} type="hidden" />
+
+          <.input field={@form[:opponent_name]} type="text" label="Opponent" maxlength="80" />
+
+          <fieldset>
+            <legend class="block text-sm font-medium text-base-content mb-2">Division</legend>
+            <div role="radiogroup" aria-label="Division" class="grid grid-cols-3 gap-2">
+              <button
+                :for={{value, label} <- division_options()}
+                type="button"
+                role="radio"
+                aria-checked={to_string(@division == value)}
+                phx-click="set_division"
+                phx-value-division={value}
+                class={division_chip_classes(@division == value)}
+              >
+                {label}
+              </button>
+            </div>
+          </fieldset>
+
           <.input
-            :if={Map.get(@rule_overrides, "gender_ratio_rule") != "none"}
-            id="game_rule_overrides_default_starting_ratio"
-            name="rule_overrides[default_starting_ratio]"
-            value={Map.get(@rule_overrides, "default_starting_ratio", "")}
+            field={@form[:first_pull]}
             type="select"
-            label="Default starting ratio"
-            options={starting_ratio_options()}
+            label="First pull"
+            options={first_pull_options()}
           />
-        </fieldset>
+
+          <.input field={@form[:format]} type="hidden" />
+
+          <.input
+            field={@form[:ruleset_id]}
+            type="select"
+            label="Ruleset"
+            prompt="USAU standard (no template)"
+            options={ruleset_options(@team_rulesets)}
+          />
+
+          <p :if={@ruleset_error} class="text-sm text-error">{@ruleset_error}</p>
+
+          <fieldset class="flex flex-col gap-3">
+            <legend class="block text-sm font-medium text-base-content">
+              Rules for this game
+            </legend>
+
+            <.input
+              id="game_rule_overrides_score_cap"
+              name="rule_overrides[score_cap]"
+              value={Map.get(@rule_overrides, "score_cap", "")}
+              type="number"
+              label="Score cap"
+              min="1"
+              max="30"
+              inputmode="numeric"
+              placeholder="leave blank for no score cap"
+            />
+            <.input
+              id="game_rule_overrides_halftime_target"
+              name="rule_overrides[halftime_target]"
+              value={Map.get(@rule_overrides, "halftime_target", "")}
+              type="number"
+              label="Halftime target"
+              min="1"
+              inputmode="numeric"
+              placeholder="leave blank for no halftime by score"
+            />
+            <.input
+              id="game_rule_overrides_halftime_cap_minutes"
+              name="rule_overrides[halftime_cap_minutes]"
+              value={Map.get(@rule_overrides, "halftime_cap_minutes", "")}
+              type="number"
+              label="Halftime cap (minutes)"
+              min="1"
+              max="240"
+              inputmode="numeric"
+              placeholder="leave blank for no timed halftime"
+            />
+            <.input
+              id="game_rule_overrides_soft_cap_minutes"
+              name="rule_overrides[soft_cap_minutes]"
+              value={Map.get(@rule_overrides, "soft_cap_minutes", "")}
+              type="number"
+              label="Soft cap (minutes)"
+              min="1"
+              inputmode="numeric"
+              placeholder="leave blank for no soft cap"
+            />
+            <.input
+              id="game_rule_overrides_hard_cap_minutes"
+              name="rule_overrides[hard_cap_minutes]"
+              value={Map.get(@rule_overrides, "hard_cap_minutes", "")}
+              type="number"
+              label="Hard cap (minutes)"
+              min="1"
+              inputmode="numeric"
+              placeholder="leave blank for no hard cap"
+            />
+            <.input
+              id="game_rule_overrides_timeouts_per_half"
+              name="rule_overrides[timeouts_per_half]"
+              value={Map.get(@rule_overrides, "timeouts_per_half", "")}
+              type="number"
+              label="Timeouts per half"
+              min="0"
+              max="5"
+              inputmode="numeric"
+            />
+            <.input
+              id="game_rule_overrides_gender_ratio_rule"
+              name="rule_overrides[gender_ratio_rule]"
+              value={Map.get(@rule_overrides, "gender_ratio_rule", "")}
+              type="select"
+              label="Gender ratio rule"
+              options={ratio_rule_options()}
+            />
+            <.input
+              :if={Map.get(@rule_overrides, "gender_ratio_rule") != "none"}
+              id="game_rule_overrides_default_starting_ratio"
+              name="rule_overrides[default_starting_ratio]"
+              value={Map.get(@rule_overrides, "default_starting_ratio", "")}
+              type="select"
+              label="Default starting ratio"
+              options={starting_ratio_options()}
+            />
+          </fieldset>
+        </div>
 
         <footer class="sticky bottom-0 -mx-4 mt-8 flex items-center gap-3 border-t border-base-300 bg-base-100/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-base-100/80">
           <.button phx-disable-with="Starting..." variant="primary">Start game</.button>
