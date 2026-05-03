@@ -17,7 +17,13 @@ defmodule UltistatsWeb.RulesetLive.Form do
         </:subtitle>
       </.header>
 
-      <.form for={@form} id="ruleset-form" phx-change="validate" phx-submit="save">
+      <.form
+        for={@form}
+        id="ruleset-form"
+        phx-change="validate"
+        phx-submit="save"
+        class="flex flex-col gap-3"
+      >
         <.input field={@form[:name]} type="text" label="Name" />
 
         <.input
@@ -83,12 +89,12 @@ defmodule UltistatsWeb.RulesetLive.Form do
           options={division_options()}
         />
 
-        <div class="space-y-1 mb-2">
+        <div class="space-y-1">
           <p class="block text-sm font-medium text-base-content">Gender ratio rule</p>
           <.gender_ratio_radio field={@form[:gender_ratio_rule]} phx-click="set_ratio_rule" />
         </div>
 
-        <div :if={ratio_rule(@form) != "none"} class="space-y-1 mb-2">
+        <div :if={ratio_rule(@form) != "none"} class="space-y-1">
           <p class="block text-sm font-medium text-base-content">Default starting ratio</p>
           <.starting_ratio_radio
             field={@form[:default_starting_ratio]}

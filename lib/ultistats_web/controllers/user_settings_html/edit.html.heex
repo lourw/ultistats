@@ -37,7 +37,7 @@
       for={@profile_changeset}
       action={~p"/users/settings"}
       id="update_profile"
-      class="space-y-4"
+      class="flex flex-col gap-3"
     >
       <input type="hidden" name="action" value="update_profile" />
 
@@ -51,12 +51,12 @@
         inputmode="numeric"
       />
 
-      <div class="space-y-1">
+      <div class="flex flex-col gap-1">
         <p class="block text-sm font-medium text-base-content">Gender</p>
         <.gender_radio field={f[:gender_role]} />
       </div>
 
-      <div class="space-y-1">
+      <div class="flex flex-col gap-1">
         <p class="block text-sm font-medium text-base-content">Position</p>
         <.position_radio field={f[:position]} />
       </div>
@@ -65,26 +65,24 @@
     </.form>
   </section>
 
-  <section :if={@active_tab == :auth} class="mt-4 space-y-4" aria-labelledby="tab-auth">
+  <section :if={@active_tab == :auth} class="mt-4 flex flex-col gap-4" aria-labelledby="tab-auth">
     <.form
       :let={f}
       for={@email_changeset}
       action={~p"/users/settings?tab=auth"}
       id="update_email"
-      class="space-y-6"
+      class="flex flex-col gap-3"
     >
       <input type="hidden" name="action" value="update_email" />
 
-      <div class="space-y-4">
-        <.input
-          field={f[:email]}
-          type="email"
-          label="Email"
-          autocomplete="username"
-          spellcheck="false"
-          required
-        />
-      </div>
+      <.input
+        field={f[:email]}
+        type="email"
+        label="Email"
+        autocomplete="username"
+        spellcheck="false"
+        required
+      />
 
       <.button variant="primary" phx-disable-with="Changing...">Change Email</.button>
     </.form>
@@ -96,35 +94,33 @@
       for={@password_changeset}
       action={~p"/users/settings?tab=auth"}
       id="update_password"
-      class="space-y-6"
+      class="flex flex-col gap-3"
     >
       <input type="hidden" name="action" value="update_password" />
 
-      <div class="space-y-4">
-        <.input
-          field={f[:password]}
-          type="password"
-          label="New password"
-          autocomplete="new-password"
-          spellcheck="false"
-          required
-        />
-        <.input
-          field={f[:password_confirmation]}
-          type="password"
-          label="Confirm new password"
-          autocomplete="new-password"
-          spellcheck="false"
-          required
-        />
-      </div>
+      <.input
+        field={f[:password]}
+        type="password"
+        label="New password"
+        autocomplete="new-password"
+        spellcheck="false"
+        required
+      />
+      <.input
+        field={f[:password_confirmation]}
+        type="password"
+        label="Confirm new password"
+        autocomplete="new-password"
+        spellcheck="false"
+        required
+      />
 
       <.button variant="primary" phx-disable-with="Changing...">
         Save Password
       </.button>
     </.form>
 
-    <section class="pt-4 border-t border-base-200 space-y-2">
+    <section class="pt-4 border-t border-base-200 flex flex-col gap-2">
       <h2 class="text-sm font-semibold text-base-content/70 uppercase tracking-wide">
         Sign out
       </h2>

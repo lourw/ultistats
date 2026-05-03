@@ -27,15 +27,44 @@ defmodule UltistatsWeb.TeamLive.Index do
         </div>
       </div>
 
+      <form
+        :if={length(@teams_with_stats) > 1}
+        phx-change="set_division_filter"
+        class="flex flex-col gap-1 mt-4 mb-3"
+      >
+        <label
+          for="teams-division-filter"
+          class="text-[11px] uppercase tracking-wide text-base-content/60"
+        >
+          Division
+        </label>
+        <select
+          id="teams-division-filter"
+          name="division"
+          class="block w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content min-h-11 focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+        >
+          <option
+            :for={{label, value} <- division_filter_options()}
+            value={value}
+            selected={value == @division_filter}
+          >
+            {label}
+          </option>
+        </select>
+      </form>
+
       <ul
         :if={@teams_with_stats != []}
         id="teams-list"
         class="-mx-4 border-y border-base-200 divide-y divide-base-200"
       >
-        <li :for={%{team: team, stats: s} <- @teams_with_stats} id={"team-#{team.id}"}>
+        <li
+          :for={%{team: team, stats: s} <- visible_teams(@teams_with_stats, @division_filter)}
+          id={"team-#{team.id}"}
+        >
           <.link
             navigate={~p"/teams/#{team}"}
-            class="min-h-9 flex flex-col justify-center px-4 py-1.5 hover:bg-base-200 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            class="min-h-9 flex flex-col justify-center gap-1 px-4 py-2 hover:bg-base-200 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <div class="font-medium text-sm leading-tight">{team.name}</div>
             <div class="text-xs text-base-content/70 flex flex-wrap gap-x-2 gap-y-0.5 tabular-nums leading-tight">
@@ -60,7 +89,14 @@ defmodule UltistatsWeb.TeamLive.Index do
     {:ok,
      socket
      |> assign(:page_title, "Teams")
+     |> assign(:division_filter, "all")
      |> assign(:teams_with_stats, Teams.list_teams_with_stats_for_user(user))}
+  end
+
+  @impl true
+  def handle_event("set_division_filter", %{"division" => division}, socket)
+      when division in ["all", "open", "mixed", "womens"] do
+    {:noreply, assign(socket, :division_filter, division)}
   end
 
   defp total_games(%{wins: w, losses: l, ties: t, games_in_progress: ip}),
@@ -69,4 +105,16 @@ defmodule UltistatsWeb.TeamLive.Index do
   defp games_label(0), do: "No games yet"
   defp games_label(1), do: "1 game"
   defp games_label(n), do: "#{n} games"
+
+  defp division_filter_options do
+    [{"All divisions", "all"}, {"Open", "open"}, {"Women's", "womens"}, {"Mixed", "mixed"}]
+  end
+
+  defp visible_teams(teams_with_stats, "all"), do: teams_with_stats
+
+  defp visible_teams(teams_with_stats, division)
+       when division in ["open", "womens", "mixed"] do
+    atom = String.to_existing_atom(division)
+    Enum.filter(teams_with_stats, fn %{team: team} -> team.division == atom end)
+  end
 end

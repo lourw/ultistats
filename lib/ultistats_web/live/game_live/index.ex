@@ -9,6 +9,21 @@ defmodule UltistatsWeb.GameLive.Index do
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <.header>
         Games
+        <:actions>
+          <.button :if={@active_tab == :games} variant="primary" navigate={~p"/games/new"}>
+            <.icon name="hero-plus" /> New game
+          </.button>
+          <.button
+            :if={
+              @active_tab == :rulesets && @new_ruleset_team_id &&
+                MapSet.member?(@admin_team_ids, @new_ruleset_team_id)
+            }
+            variant="primary"
+            navigate={~p"/rulesets/new?team_id=#{@new_ruleset_team_id}"}
+          >
+            <.icon name="hero-plus" /> New ruleset
+          </.button>
+        </:actions>
       </.header>
 
       <div
@@ -93,15 +108,46 @@ defmodule UltistatsWeb.GameLive.Index do
       </section>
 
       <section :if={@active_tab == :rulesets} class="mt-4 pb-24" aria-labelledby="tab-rulesets">
-        <div :if={length(@teams) > 1} class="flex items-center gap-2 mb-3">
-          <label for="ruleset-team-select" class="text-sm text-base-content/70">Team</label>
-          <form phx-change="select_ruleset_team">
+        <div :if={length(@teams) > 1} class="flex flex-col gap-3 mb-3">
+          <form phx-change="set_division_filter" class="flex flex-col gap-1">
+            <label
+              for="ruleset-division-filter"
+              class="text-[11px] uppercase tracking-wide text-base-content/60"
+            >
+              Division
+            </label>
+            <select
+              id="ruleset-division-filter"
+              name="division"
+              class="block w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content min-h-11 focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+            >
+              <option
+                :for={{label, value} <- division_filter_options()}
+                value={value}
+                selected={value == @division_filter}
+              >
+                {label}
+              </option>
+            </select>
+          </form>
+
+          <form phx-change="select_ruleset_team" class="flex flex-col gap-1">
+            <label
+              for="ruleset-team-select"
+              class="text-[11px] uppercase tracking-wide text-base-content/60"
+            >
+              Team
+            </label>
             <select
               id="ruleset-team-select"
               name="team_id"
-              class="select select-sm select-bordered min-h-11"
+              class="block w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content min-h-11 focus:outline-2 focus:outline-offset-2 focus:outline-primary"
             >
-              <option :for={team <- @teams} value={team.id} selected={team.id == @new_ruleset_team_id}>
+              <option
+                :for={team <- filter_teams_by_division(@teams, @division_filter)}
+                value={team.id}
+                selected={team.id == @new_ruleset_team_id}
+              >
                 {team.name}
               </option>
             </select>
@@ -146,27 +192,6 @@ defmodule UltistatsWeb.GameLive.Index do
           No rulesets yet. Add a team first.
         </p>
       </section>
-
-      <.link
-        :if={@active_tab == :games}
-        navigate={~p"/games/new"}
-        aria-label="Add game"
-        class="fixed bottom-6 right-6 z-40 size-14 rounded-full bg-primary text-primary-content shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:active:scale-100"
-      >
-        <.icon name="hero-plus" class="size-6" />
-      </.link>
-
-      <.link
-        :if={
-          @active_tab == :rulesets && @new_ruleset_team_id &&
-            MapSet.member?(@admin_team_ids, @new_ruleset_team_id)
-        }
-        navigate={~p"/rulesets/new?team_id=#{@new_ruleset_team_id}"}
-        aria-label="Add ruleset"
-        class="fixed bottom-6 right-6 z-40 size-14 rounded-full bg-primary text-primary-content shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:active:scale-100"
-      >
-        <.icon name="hero-plus" class="size-6" />
-      </.link>
     </Layouts.app>
     """
   end
@@ -184,6 +209,7 @@ defmodule UltistatsWeb.GameLive.Index do
      |> assign(:teams, teams)
      |> assign(:admin_team_ids, admin_team_ids)
      |> assign(:new_ruleset_team_id, new_ruleset_team_id)
+     |> assign(:division_filter, "all")
      |> assign(:games, list_games_for_user(user))
      |> assign(:rulesets, Games.list_rulesets_for_user(user))}
   end
@@ -205,6 +231,26 @@ defmodule UltistatsWeb.GameLive.Index do
 
   def handle_event("select_ruleset_team", %{"team_id" => team_id}, socket) do
     {:noreply, assign(socket, :new_ruleset_team_id, team_id)}
+  end
+
+  def handle_event("set_division_filter", %{"division" => division}, socket)
+      when division in ["all", "open", "mixed", "womens"] do
+    filtered = filter_teams_by_division(socket.assigns.teams, division)
+
+    new_team_id =
+      if Enum.any?(filtered, &(&1.id == socket.assigns.new_ruleset_team_id)) do
+        socket.assigns.new_ruleset_team_id
+      else
+        case filtered do
+          [first | _] -> first.id
+          [] -> nil
+        end
+      end
+
+    {:noreply,
+     socket
+     |> assign(:division_filter, division)
+     |> assign(:new_ruleset_team_id, new_team_id)}
   end
 
   defp list_games_for_user(user) do
@@ -255,4 +301,16 @@ defmodule UltistatsWeb.GameLive.Index do
   defp tab_classes(false),
     do:
       "min-h-11 inline-flex items-center pb-3 -mb-px text-sm font-medium text-base-content/60 hover:text-base-content border-b-2 border-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+
+  defp division_filter_options do
+    [{"All divisions", "all"}, {"Open", "open"}, {"Women's", "womens"}, {"Mixed", "mixed"}]
+  end
+
+  defp filter_teams_by_division(teams, "all"), do: teams
+
+  defp filter_teams_by_division(teams, division)
+       when division in ["open", "womens", "mixed"] do
+    atom = String.to_existing_atom(division)
+    Enum.filter(teams, &(&1.division == atom))
+  end
 end
