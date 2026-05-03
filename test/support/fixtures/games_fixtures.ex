@@ -67,8 +67,7 @@ defmodule Ultistats.GamesFixtures do
         halftime_target: 8,
         timeouts_per_half: 2,
         line_size: line_size,
-        gender_ratio_rule: :endzone,
-        default_starting_ratio: :four_men_three_women
+        gender_ratio_rule: :none
       })
 
     ruleset

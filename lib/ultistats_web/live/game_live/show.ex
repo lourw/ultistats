@@ -90,7 +90,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
   # Refreshes everything the between-points line picker reads:
   #   * `:next_point_sequence`            — 1-based number of the upcoming point.
-  #   * `:required_ratio`                 — atom or nil from the ruleset.
+  #   * `:required_ratio`                 — %{m, f} map or nil from the ruleset.
   #   * `:starting_possession_preview`    — :ours / :theirs (O-line vs D-line).
   #   * `:ratio_violation`                — nil, or %{actual:, required:} on mismatch.
   # Called from mount + every state transition that flips between

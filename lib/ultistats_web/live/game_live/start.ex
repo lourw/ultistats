@@ -15,10 +15,12 @@ defmodule UltistatsWeb.GameLive.Start do
     :soft_cap_minutes,
     :hard_cap_minutes,
     :timeouts_per_half,
-    :line_size
+    :line_size,
+    :starting_male_count,
+    :starting_female_count
   ]
 
-  @rule_atom_fields [:gender_ratio_rule, :default_starting_ratio]
+  @rule_atom_fields [:gender_ratio_rule]
 
   # Form-level defaults. Single-gender (open / women's) is the most
   # common case so the form starts with `gender_ratio_rule: "none"`. The
@@ -32,12 +34,14 @@ defmodule UltistatsWeb.GameLive.Start do
     "timeouts_per_half" => "2",
     "line_size" => "7",
     "gender_ratio_rule" => "none",
-    "default_starting_ratio" => ""
+    "starting_male_count" => "",
+    "starting_female_count" => ""
   }
 
   @mixed_overrides %{
     "gender_ratio_rule" => "endzone",
-    "default_starting_ratio" => "four_men_three_women"
+    "starting_male_count" => "4",
+    "starting_female_count" => "3"
   }
 
   # `@usau_defaults` is the legacy alias other clauses still reference;
@@ -202,6 +206,7 @@ defmodule UltistatsWeb.GameLive.Start do
               inputmode="numeric"
             />
             <.input
+              :if={@division == "mixed"}
               id="game_rule_overrides_gender_ratio_rule"
               name="rule_overrides[gender_ratio_rule]"
               value={Map.get(@rule_overrides, "gender_ratio_rule", "")}
@@ -209,15 +214,31 @@ defmodule UltistatsWeb.GameLive.Start do
               label="Gender ratio rule"
               options={ratio_rule_options()}
             />
-            <.input
-              :if={Map.get(@rule_overrides, "gender_ratio_rule") != "none"}
-              id="game_rule_overrides_default_starting_ratio"
-              name="rule_overrides[default_starting_ratio]"
-              value={Map.get(@rule_overrides, "default_starting_ratio", "")}
-              type="select"
-              label="Default starting ratio"
-              options={starting_ratio_options()}
-            />
+            <div
+              :if={@division == "mixed" and Map.get(@rule_overrides, "gender_ratio_rule") != "none"}
+              class="grid grid-cols-2 gap-3"
+            >
+              <.input
+                id="game_rule_overrides_starting_male_count"
+                name="rule_overrides[starting_male_count]"
+                value={Map.get(@rule_overrides, "starting_male_count", "")}
+                type="number"
+                label="Starting M"
+                min="0"
+                max="15"
+                inputmode="numeric"
+              />
+              <.input
+                id="game_rule_overrides_starting_female_count"
+                name="rule_overrides[starting_female_count]"
+                value={Map.get(@rule_overrides, "starting_female_count", "")}
+                type="number"
+                label="Starting F"
+                min="0"
+                max="15"
+                inputmode="numeric"
+              />
+            </div>
           </fieldset>
         </div>
 
@@ -362,7 +383,8 @@ defmodule UltistatsWeb.GameLive.Start do
         true ->
           socket.assigns.rule_overrides
           |> Map.put("gender_ratio_rule", "none")
-          |> Map.put("default_starting_ratio", "")
+          |> Map.put("starting_male_count", "")
+          |> Map.put("starting_female_count", "")
       end
 
     team_rulesets = list_rulesets(socket.assigns.cancel_team_id, division)
@@ -431,10 +453,6 @@ defmodule UltistatsWeb.GameLive.Start do
     ]
   end
 
-  defp starting_ratio_options do
-    [{"4M / 3F", "four_men_three_women"}, {"3M / 4F", "three_men_four_women"}]
-  end
-
   defp list_rulesets(nil), do: []
   defp list_rulesets(team_id) when is_binary(team_id), do: Games.list_rulesets_for_team(team_id)
 
@@ -483,7 +501,8 @@ defmodule UltistatsWeb.GameLive.Start do
       "timeouts_per_half" => stringify(r.timeouts_per_half),
       "line_size" => stringify(r.line_size),
       "gender_ratio_rule" => stringify(r.gender_ratio_rule),
-      "default_starting_ratio" => stringify(r.default_starting_ratio)
+      "starting_male_count" => stringify(r.starting_male_count),
+      "starting_female_count" => stringify(r.starting_female_count)
     }
   end
 

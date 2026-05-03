@@ -125,7 +125,7 @@ defmodule UltistatsWeb.RulesetLiveTest do
     setup :register_and_log_in_user
 
     test "happy-path: creates a ruleset and redirects to the index", %{conn: conn, user: user} do
-      team = team_fixture()
+      team = team_fixture(%{division: :mixed})
       add_to_team(team, user)
 
       {:ok, live, _html} = live(conn, ~p"/rulesets/new?team_id=#{team.id}")
@@ -140,7 +140,8 @@ defmodule UltistatsWeb.RulesetLiveTest do
                    timeouts_per_half: "1",
                    line_size: "7",
                    gender_ratio_rule: "alternating",
-                   default_starting_ratio: "four_men_three_women"
+                   starting_male_count: "4",
+                   starting_female_count: "3"
                  }
                )
                |> render_submit()
@@ -153,6 +154,8 @@ defmodule UltistatsWeb.RulesetLiveTest do
       assert ruleset.timeouts_per_half == 1
       assert ruleset.line_size == 7
       assert ruleset.gender_ratio_rule == :alternating
+      assert ruleset.starting_male_count == 4
+      assert ruleset.starting_female_count == 3
     end
 
     test "without team_id redirects to /teams with a flash", %{conn: conn} do
@@ -196,6 +199,7 @@ defmodule UltistatsWeb.RulesetLiveTest do
           score_cap: 13,
           halftime_target: 7,
           timeouts_per_half: 1,
+          division: :mixed,
           gender_ratio_rule: :alternating
         })
 
@@ -211,7 +215,8 @@ defmodule UltistatsWeb.RulesetLiveTest do
                    timeouts_per_half: "1",
                    line_size: "7",
                    gender_ratio_rule: "alternating",
-                   default_starting_ratio: "four_men_three_women"
+                   starting_male_count: "4",
+                   starting_female_count: "3"
                  }
                )
                |> render_submit()

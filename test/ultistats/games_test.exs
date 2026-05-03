@@ -1041,7 +1041,9 @@ defmodule Ultistats.GamesTest do
                  halftime_target: 8,
                  timeouts_per_half: 2,
                  line_size: 7,
-                 gender_ratio_rule: :endzone
+                 gender_ratio_rule: :endzone,
+                 starting_male_count: 4,
+                 starting_female_count: 3
                })
 
       assert r.kind == :template
@@ -1068,7 +1070,9 @@ defmodule Ultistats.GamesTest do
                  hard_cap_minutes: nil,
                  timeouts_per_half: 2,
                  line_size: 7,
-                 gender_ratio_rule: :endzone
+                 gender_ratio_rule: :endzone,
+                 starting_male_count: 4,
+                 starting_female_count: 3
                })
 
       assert %{score_cap: [msg | _]} = errors_on(changeset)
@@ -1086,7 +1090,9 @@ defmodule Ultistats.GamesTest do
                  score_cap: 15,
                  timeouts_per_half: 2,
                  line_size: 7,
-                 gender_ratio_rule: :endzone
+                 gender_ratio_rule: :endzone,
+                 starting_male_count: 4,
+                 starting_female_count: 3
                })
 
       assert %{name: ["can't be blank"]} = errors_on(template_cs)
@@ -1099,7 +1105,9 @@ defmodule Ultistats.GamesTest do
                  score_cap: 15,
                  timeouts_per_half: 2,
                  line_size: 7,
-                 gender_ratio_rule: :endzone
+                 gender_ratio_rule: :endzone,
+                 starting_male_count: 4,
+                 starting_female_count: 3
                })
     end
 

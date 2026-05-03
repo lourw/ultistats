@@ -19,7 +19,6 @@ defmodule UltistatsWeb.UIComponents do
     * `position_radio/1`       three native radio inputs for handler/cutter/hybrid
     * `role_radio/1`           two native radio inputs for the membership role (admin/member)
     * `gender_ratio_radio/1`   four radio inputs for the ruleset gender-ratio rule
-    * `starting_ratio_radio/1` two radio inputs for the ruleset default starting ratio
 
   All interactive components keep `phx-*` bindings via `:rest` global
   attrs, so callers wire them like any other Phoenix component.
@@ -923,71 +922,6 @@ defmodule UltistatsWeb.UIComponents do
   defp normalize_ratio_value(""), do: nil
   defp normalize_ratio_value(value) when is_atom(value), do: Atom.to_string(value)
   defp normalize_ratio_value(value) when is_binary(value), do: value
-
-  ## ---------------------------------------------------------------------
-  ## starting_ratio_radio
-  ## ---------------------------------------------------------------------
-
-  @doc """
-  Two native radio inputs side by side for picking a ruleset's default
-  starting ratio (4M/3F or 3M/4F). Mirrors `position_radio/1`: shared
-  `name`, label-wrapped inputs with min-h-11 tap targets, and a `:rest`
-  passthrough for `phx-*` attrs (e.g. `phx-click="set_starting_ratio"`).
-
-  ## Examples
-
-      <.starting_ratio_radio field={@form[:default_starting_ratio]} phx-click="set_starting_ratio" />
-  """
-  attr :field, Phoenix.HTML.FormField, required: true
-  attr :class, :any, default: nil
-  attr :rest, :global, include: ~w(phx-change phx-click phx-target form)
-
-  def starting_ratio_radio(assigns) do
-    value = normalize_starting_ratio_value(assigns.field.value)
-
-    assigns =
-      assigns
-      |> assign(:value, value)
-      |> assign(:input_name, assigns.field.name)
-      |> assign(:input_id, assigns.field.id)
-      |> assign(:options, [
-        {"four_men_three_women", "4M / 3F"},
-        {"three_men_four_women", "3M / 4F"}
-      ])
-
-    ~H"""
-    <fieldset class={["space-y-1", @class]}>
-      <legend class="sr-only">Default starting ratio</legend>
-      <div
-        class="inline-flex flex-wrap items-center gap-2"
-        role="radiogroup"
-        aria-label="Default starting ratio"
-      >
-        <label
-          :for={{val, label} <- @options}
-          class={position_radio_label_classes(@value == val)}
-        >
-          <input
-            type="radio"
-            name={@input_name}
-            id={"#{@input_id}_#{val}"}
-            value={val}
-            checked={@value == val}
-            class="accent-primary size-5 shrink-0"
-            {@rest}
-            phx-value-ratio={val}
-          />
-          <span class="text-sm leading-none">{label}</span>
-        </label>
-      </div>
-    </fieldset>
-    """
-  end
-
-  defp normalize_starting_ratio_value(nil), do: nil
-  defp normalize_starting_ratio_value(""), do: nil
-  defp normalize_starting_ratio_value(value) when is_atom(value), do: Atom.to_string(value)
-  defp normalize_starting_ratio_value(value) when is_binary(value), do: value
 
   ## ---------------------------------------------------------------------
   ## helpers
