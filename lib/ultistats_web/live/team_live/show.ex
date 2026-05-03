@@ -60,7 +60,7 @@ defmodule UltistatsWeb.TeamLive.Show do
           phx-value-tab="presets"
           class={tab_classes(@active_tab == :presets)}
         >
-          Line presets
+          Lines
           <span class={[
             "ml-1.5 tabular-nums text-xs px-1.5 py-0.5 rounded-full",
             if(@active_tab == :presets,
@@ -148,7 +148,7 @@ defmodule UltistatsWeb.TeamLive.Show do
       <.link
         :if={@active_tab == :presets}
         navigate={~p"/line_presets/new?team_id=#{@team.id}&return_to=team"}
-        aria-label="Add line preset"
+        aria-label="Add line"
         class="fixed bottom-6 right-6 z-40 size-14 rounded-full bg-primary text-primary-content shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:active:scale-100"
       >
         <.icon name="hero-plus" class="size-6" />

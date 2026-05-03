@@ -10,24 +10,26 @@ alias Ultistats.Teams.Team
 if Repo.aggregate(Team, :count, :id) == 0 do
   {:ok, team} = Teams.create_team(%{name: "The Misfits"})
 
-  # 6 female-matching, 8 male-matching = 14 total.
+  # 6 female-matching, 8 male-matching = 14 total. Jersey numbers are
+  # intentionally not in alphabetical order of first name so sort-by
+  # toggles produce visibly different orderings during testing.
   player_specs = [
     # FMP (6)
-    {"Avery", "Stone", "1", :female_matching},
-    {"Brooke", "Lee", "2", :female_matching},
-    {"Casey", "Park", "3", :female_matching},
-    {"Devon", "Reed", "4", :female_matching},
-    {"Emery", "Vance", "5", :female_matching},
-    {"Frankie", "Holt", "6", :female_matching},
+    {"Brooke", "Lee", "3", :female_matching},
+    {"Avery", "Stone", "11", :female_matching},
+    {"Casey", "Park", "00", :female_matching},
+    {"Frankie", "Holt", "1", :female_matching},
+    {"Emery", "Vance", "21", :female_matching},
+    {"Devon", "Reed", "8", :female_matching},
     # MMP (8)
-    {"Gabe", "Quinn", "7", :male_matching},
-    {"Hayden", "Cole", "8", :male_matching},
-    {"Ira", "Bell", "9", :male_matching},
-    {"Jordan", "Diaz", "10", :male_matching},
-    {"Kit", "Ng", "11", :male_matching},
-    {"Logan", "West", "12", :male_matching},
-    {"Marlowe", "Hart", "13", :male_matching},
-    {"Niko", "Pham", "14", :male_matching}
+    {"Niko", "Pham", "2", :male_matching},
+    {"Gabe", "Quinn", "17", :male_matching},
+    {"Marlowe", "Hart", "5", :male_matching},
+    {"Hayden", "Cole", "9", :male_matching},
+    {"Logan", "West", "44", :male_matching},
+    {"Ira", "Bell", "13", :male_matching},
+    {"Kit", "Ng", "7", :male_matching},
+    {"Jordan", "Diaz", "23", :male_matching}
   ]
 
   players =

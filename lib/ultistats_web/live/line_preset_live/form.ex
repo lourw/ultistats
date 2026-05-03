@@ -1,8 +1,6 @@
 defmodule UltistatsWeb.LinePresetLive.Form do
   use UltistatsWeb, :live_view
 
-  import UltistatsWeb.UIComponents, only: [player_chip: 1]
-
   alias Ultistats.Teams
   alias Ultistats.Teams.LinePreset
   alias Ultistats.Teams.Player
@@ -11,31 +9,56 @@ defmodule UltistatsWeb.LinePresetLive.Form do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <.header>
-        {@page_title}
-        <:subtitle>Pick the players that make up this line preset.</:subtitle>
-      </.header>
-
       <.form for={@form} id="line_preset-form" phx-change="validate" phx-submit="save">
-        <.input field={@form[:name]} type="text" label="Preset name" />
+        <label
+          for={@form[:name].id}
+          class="block text-lg font-semibold text-base-content mb-2"
+        >
+          Line name
+        </label>
+        <.input field={@form[:name]} type="text" />
         <.input field={@form[:team_id]} type="hidden" />
 
         <section class="mt-6">
-          <h2 class="text-base font-semibold mb-3">
-            Roster ({selected_count(@selected_player_ids)} selected of {length(@team_players)})
-          </h2>
-
           <div :if={@team_players == []} class="text-base-content/70">
             This team has no players yet. Add some to the roster first.
           </div>
 
-          <div :if={@team_players != []} class="flex flex-wrap gap-2">
-            <.player_chip
-              :for={player <- @team_players}
-              player={chip_player(player)}
-              selected?={MapSet.member?(@selected_player_ids, player.id)}
-              phx-click="toggle_player"
-              phx-value-id={player.id}
+          <div :if={@team_players != []} class="flex items-center gap-2 text-xs text-base-content/60 mb-6">
+            <span>Sort:</span>
+            <div role="group" aria-label="Sort players" class="inline-flex rounded-md border border-base-300 overflow-hidden">
+              <button
+                type="button"
+                phx-click="set_sort"
+                phx-value-by="jersey"
+                aria-pressed={to_string(@sort_by == :jersey)}
+                class={sort_button_classes(@sort_by == :jersey)}
+              >
+                Jersey
+              </button>
+              <button
+                type="button"
+                phx-click="set_sort"
+                phx-value-by="first_name"
+                aria-pressed={to_string(@sort_by == :first_name)}
+                class={sort_button_classes(@sort_by == :first_name)}
+              >
+                First name
+              </button>
+            </div>
+          </div>
+
+          <div :if={@team_players != []} id="preset-roster" class="space-y-6">
+            <.preset_roster_section
+              :for={role <- [:male_matching, :female_matching]}
+              :if={Enum.any?(@team_players, &(&1.gender_role == role))}
+              role={role}
+              players={
+                @team_players
+                |> Enum.filter(&(&1.gender_role == role))
+                |> sort_players(@sort_by)
+              }
+              selected_ids={@selected_player_ids}
             />
           </div>
         </section>
@@ -49,16 +72,16 @@ defmodule UltistatsWeb.LinePresetLive.Form do
       <section :if={@live_action == :edit} class="mt-12 pt-6 border-t border-base-300">
         <h2 class="text-sm font-semibold text-base-content">Danger zone</h2>
         <p class="mt-1 text-sm text-base-content/70">
-          Deleting a preset doesn't affect the underlying players.
+          Deleting a line doesn't affect the underlying players.
         </p>
         <button
           type="button"
           id="delete-line-preset"
           phx-click={JS.push("delete_line_preset", value: %{id: @line_preset.id})}
-          data-confirm="Delete this line preset?"
+          data-confirm="Delete this line?"
           class="mt-3 min-h-11 inline-flex items-center px-4 rounded-md text-sm font-medium border border-error text-error hover:bg-error/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-error"
         >
-          Delete preset
+          Delete line
         </button>
       </section>
     </Layouts.app>
@@ -87,11 +110,12 @@ defmodule UltistatsWeb.LinePresetLive.Form do
       |> MapSet.new()
 
     socket
-    |> assign(:page_title, "Edit Line preset")
+    |> assign(:page_title, "Edit line")
     |> assign(:line_preset, line_preset)
     |> assign(:team_players, team_players)
     |> assign(:selected_player_ids, selected_player_ids)
     |> assign(:form, to_form(Teams.change_line_preset(line_preset)))
+    |> assign_new(:sort_by, fn -> :jersey end)
   end
 
   defp apply_action(socket, :new, params) do
@@ -104,11 +128,12 @@ defmodule UltistatsWeb.LinePresetLive.Form do
       end
 
     socket
-    |> assign(:page_title, "New Line preset")
+    |> assign(:page_title, "New line")
     |> assign(:line_preset, line_preset)
     |> assign(:team_players, team_players)
     |> assign(:selected_player_ids, MapSet.new())
     |> assign(:form, to_form(Teams.change_line_preset(line_preset)))
+    |> assign_new(:sort_by, fn -> :jersey end)
   end
 
   @impl true
@@ -137,13 +162,21 @@ defmodule UltistatsWeb.LinePresetLive.Form do
     save_line_preset(socket, socket.assigns.live_action, line_preset_params)
   end
 
+  def handle_event("set_sort", %{"by" => "jersey"}, socket) do
+    {:noreply, assign(socket, :sort_by, :jersey)}
+  end
+
+  def handle_event("set_sort", %{"by" => "first_name"}, socket) do
+    {:noreply, assign(socket, :sort_by, :first_name)}
+  end
+
   def handle_event("delete_line_preset", %{"id" => id}, socket) do
     preset = Teams.get_line_preset!(id)
     {:ok, _} = Teams.delete_line_preset(preset)
 
     {:noreply,
      socket
-     |> put_flash(:info, "Line preset deleted")
+     |> put_flash(:info, "Line deleted")
      |> push_navigate(to: return_path(socket.assigns.return_to, preset))}
   end
 
@@ -154,7 +187,7 @@ defmodule UltistatsWeb.LinePresetLive.Form do
       {:ok, line_preset} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Line preset updated successfully")
+         |> put_flash(:info, "Line updated")
          |> push_navigate(to: return_path(socket.assigns.return_to, line_preset))}
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -169,7 +202,7 @@ defmodule UltistatsWeb.LinePresetLive.Form do
       {:ok, line_preset} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Line preset created successfully")
+         |> put_flash(:info, "Line created")
          |> push_navigate(to: return_path(socket.assigns.return_to, line_preset))}
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -181,13 +214,104 @@ defmodule UltistatsWeb.LinePresetLive.Form do
     Map.put(params, "player_ids", MapSet.to_list(selected))
   end
 
-  defp selected_count(%MapSet{} = set), do: MapSet.size(set)
+  attr :role, :atom, required: true, values: [:female_matching, :male_matching]
+  attr :players, :list, required: true
+  attr :selected_ids, MapSet, required: true
 
-  # Adapt a Player struct to the shape `<.player_chip>` expects
-  # (`:number` + `:name`).
-  defp chip_player(player) do
-    %{number: player.jersey_number, name: Player.display_name(player)}
+  defp preset_roster_section(assigns) do
+    selected_in_section =
+      Enum.count(assigns.players, &MapSet.member?(assigns.selected_ids, &1.id))
+
+    assigns = assign(assigns, :selected_in_section, selected_in_section)
+
+    ~H"""
+    <section>
+      <h3 class="flex items-center gap-2 text-lg font-semibold text-base-content mb-2">
+        <span class="text-xl leading-none" aria-hidden="true">{gender_glyph(@role)}</span>
+        <span>{role_label(@role)}</span>
+        <span class="tabular-nums text-sm font-medium text-base-content/60">
+          {@selected_in_section} of {length(@players)}
+        </span>
+      </h3>
+
+      <ul class="divide-y divide-base-300">
+        <li :for={player <- @players} id={"preset-player-#{player.id}"}>
+          <button
+            type="button"
+            phx-click="toggle_player"
+            phx-value-id={player.id}
+            aria-pressed={to_string(MapSet.member?(@selected_ids, player.id))}
+            class={[
+              "w-full flex items-center justify-between gap-3 py-3 px-2 -mx-2 rounded-md",
+              "text-left transition-colors motion-reduce:transition-none",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              if(MapSet.member?(@selected_ids, player.id),
+                do: "bg-primary/10 hover:bg-primary/15",
+                else: "hover:bg-base-200"
+              )
+            ]}
+          >
+            <div class="flex items-center gap-3 min-w-0">
+              <span
+                :if={player.jersey_number}
+                class="inline-flex items-center justify-center w-8 h-7 px-1 rounded-full bg-base-200 text-base-content text-sm font-semibold tabular-nums shrink-0"
+              >
+                {player.jersey_number}
+              </span>
+              <span class="font-medium truncate">{Player.display_name(player)}</span>
+            </div>
+            <.icon
+              :if={MapSet.member?(@selected_ids, player.id)}
+              name="hero-check-circle-solid"
+              class="size-5 text-primary shrink-0"
+            />
+            <span
+              :if={!MapSet.member?(@selected_ids, player.id)}
+              class="size-5 shrink-0"
+              aria-hidden="true"
+            />
+          </button>
+        </li>
+      </ul>
+    </section>
+    """
   end
+
+  defp role_label(:male_matching), do: "Male-matching"
+  defp role_label(:female_matching), do: "Female-matching"
+
+  defp gender_glyph(:female_matching), do: "♀"
+  defp gender_glyph(:male_matching), do: "♂"
+  defp gender_glyph(_), do: ""
+
+  # Numeric ordering on jersey_number when parseable (so "9" < "10");
+  # non-numeric jerseys fall back to a lexicographic compare against
+  # other non-numerics; nil/blank jerseys sort to the end.
+  defp sort_players(players, :jersey) do
+    Enum.sort_by(players, &jersey_sort_key/1)
+  end
+
+  defp sort_players(players, :first_name) do
+    Enum.sort_by(players, &String.downcase(&1.first_name || ""))
+  end
+
+  defp jersey_sort_key(%{jersey_number: nil}), do: {2, 0, ""}
+  defp jersey_sort_key(%{jersey_number: ""}), do: {2, 0, ""}
+
+  defp jersey_sort_key(%{jersey_number: j}) when is_binary(j) do
+    case Integer.parse(j) do
+      {n, ""} -> {0, n, j}
+      _ -> {1, 0, j}
+    end
+  end
+
+  defp sort_button_classes(true),
+    do:
+      "min-h-11 px-3 text-sm font-medium bg-primary text-primary-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+
+  defp sort_button_classes(false),
+    do:
+      "min-h-11 px-3 text-sm font-medium text-base-content/70 hover:text-base-content hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 
   defp return_path("index", _line_preset), do: ~p"/line_presets"
   defp return_path("show", line_preset), do: ~p"/line_presets/#{line_preset}"

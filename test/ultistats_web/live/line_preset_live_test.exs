@@ -45,20 +45,22 @@ defmodule UltistatsWeb.LinePresetLiveTest do
     # The bare /line_presets/new flow is intentionally not covered —
     # see the PlayerLive test for the same convention.
 
-    test "renders a chip for every player on the team", %{
+    test "renders a row for every player on the team", %{
       conn: conn,
       team: team,
       players: [p1, p2, p3]
     } do
       {:ok, _form_live, html} = live(conn, ~p"/line_presets/new?team_id=#{team.id}")
 
-      assert html =~ "Roster (0 selected of 3)"
+      # Each player's name shows up in the picker.
       assert html =~ Player.display_name(p1)
       assert html =~ Player.display_name(p2)
       assert html =~ Player.display_name(p3)
+      # Section starts with 0 selected of 3 (all 3 fixture players are female-matching by default).
+      assert html =~ "0 of 3"
     end
 
-    test "toggling a chip updates the selection counter", %{
+    test "toggling a row updates the selection counter", %{
       conn: conn,
       team: team,
       players: [p1 | _]
@@ -70,14 +72,14 @@ defmodule UltistatsWeb.LinePresetLiveTest do
         |> element("button[phx-value-id='#{p1.id}']")
         |> render_click()
 
-      assert html =~ "Roster (1 selected of 3)"
+      assert html =~ "1 of 3"
 
       html =
         form_live
         |> element("button[phx-value-id='#{p1.id}']")
         |> render_click()
 
-      assert html =~ "Roster (0 selected of 3)"
+      assert html =~ "0 of 3"
     end
 
     test "save persists the preset with selected players", %{
@@ -120,7 +122,8 @@ defmodule UltistatsWeb.LinePresetLiveTest do
 
       {:ok, _form_live, html} = live(conn, ~p"/line_presets/#{preset}/edit")
 
-      assert html =~ "Roster (2 selected of 3)"
+      # All 3 fixture players are female-matching by default.
+      assert html =~ "2 of 3"
     end
 
     test "save replaces the player set", %{
@@ -149,6 +152,33 @@ defmodule UltistatsWeb.LinePresetLiveTest do
 
       reloaded = Teams.get_line_preset!(preset.id)
       assert Enum.map(reloaded.players, & &1.id) |> Enum.sort() == Enum.sort([p2.id, p3.id])
+    end
+
+    test "delete affordance on the edit form removes the preset", %{
+      conn: conn,
+      team: team,
+      players: [p1, p2, _p3]
+    } do
+      {:ok, preset} =
+        Teams.create_line_preset(%{
+          name: "Going away",
+          team_id: team.id,
+          player_ids: [p1.id, p2.id]
+        })
+
+      {:ok, edit_live, _html} = live(conn, ~p"/line_presets/#{preset}/edit")
+
+      assert has_element?(edit_live, "#delete-line-preset")
+
+      edit_live
+      |> element("#delete-line-preset")
+      |> render_click()
+
+      assert_redirect(edit_live, ~p"/line_presets")
+
+      assert_raise Ecto.NoResultsError, fn ->
+        Ultistats.Teams.get_line_preset!(preset.id)
+      end
     end
   end
 end
