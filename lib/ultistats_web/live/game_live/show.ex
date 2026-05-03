@@ -569,7 +569,7 @@ defmodule UltistatsWeb.GameLive.Show do
         />
       <% end %>
 
-      <.calls_bar disconnected?={@disconnected?} />
+      <.calls_bar disconnected?={@disconnected?} possession={@possession} />
     </section>
     """
   end
@@ -1182,50 +1182,114 @@ defmodule UltistatsWeb.GameLive.Show do
   end
 
   attr :disconnected?, :boolean, required: true
+  attr :possession, :atom, required: true
 
   defp calls_bar(assigns) do
     ~H"""
-    <div class="space-y-1" aria-label="Calls">
-      <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
-        Calls
-      </h3>
-      <div class="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          phx-click="record_call"
-          phx-value-type="pick"
-          disabled={@disconnected?}
-          aria-label="Record a pick call"
-          class={[
-            "min-h-9 px-2 py-1 rounded-md border border-base-300",
-            "inline-flex items-center justify-center gap-1.5",
-            "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
-            "transition-colors motion-reduce:transition-none",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            "disabled:opacity-50 disabled:cursor-not-allowed"
-          ]}
-        >
-          <.icon name="hero-hand-raised" class="size-4" />
-          <span>Pick</span>
-        </button>
-        <button
-          type="button"
-          phx-click="record_call"
-          phx-value-type="foul"
-          disabled={@disconnected?}
-          aria-label="Record a foul call"
-          class={[
-            "min-h-9 px-2 py-1 rounded-md border border-base-300",
-            "inline-flex items-center justify-center gap-1.5",
-            "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
-            "transition-colors motion-reduce:transition-none",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            "disabled:opacity-50 disabled:cursor-not-allowed"
-          ]}
-        >
-          <.icon name="hero-exclamation-triangle" class="size-4" />
-          <span>Foul</span>
-        </button>
+    <div class="space-y-2" aria-label="Calls">
+      <div class="space-y-1">
+        <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
+          Calls
+        </h3>
+        <div class="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            phx-click="record_call"
+            phx-value-type="pick"
+            disabled={@disconnected?}
+            aria-label="Record a pick call"
+            class={[
+              "min-h-9 px-2 py-1 rounded-md border border-base-300",
+              "inline-flex items-center justify-center gap-1.5",
+              "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
+              "transition-colors motion-reduce:transition-none",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              "disabled:opacity-50 disabled:cursor-not-allowed"
+            ]}
+          >
+            <.icon name="hero-hand-raised" class="size-4" />
+            <span>Pick</span>
+          </button>
+          <button
+            type="button"
+            phx-click="record_call"
+            phx-value-type="foul"
+            disabled={@disconnected?}
+            aria-label="Record a foul call"
+            class={[
+              "min-h-9 px-2 py-1 rounded-md border border-base-300",
+              "inline-flex items-center justify-center gap-1.5",
+              "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
+              "transition-colors motion-reduce:transition-none",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              "disabled:opacity-50 disabled:cursor-not-allowed"
+            ]}
+          >
+            <.icon name="hero-exclamation-triangle" class="size-4" />
+            <span>Foul</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="space-y-1">
+        <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
+          Stoppages
+        </h3>
+        <div class="grid grid-cols-3 gap-2">
+          <button
+            type="button"
+            phx-click="record_timeout"
+            phx-value-team="ours"
+            disabled={@disconnected? or @possession != :ours}
+            aria-label="Record a timeout called by us"
+            class={[
+              "min-h-9 px-2 py-1 rounded-md border border-base-300",
+              "inline-flex items-center justify-center gap-1.5",
+              "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
+              "transition-colors motion-reduce:transition-none",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              "disabled:opacity-50 disabled:cursor-not-allowed"
+            ]}
+          >
+            <.icon name="hero-pause" class="size-4" />
+            <span>TO us</span>
+          </button>
+          <button
+            type="button"
+            phx-click="record_timeout"
+            phx-value-team="theirs"
+            disabled={@disconnected? or @possession != :theirs}
+            aria-label="Record a timeout called by them"
+            class={[
+              "min-h-9 px-2 py-1 rounded-md border border-base-300",
+              "inline-flex items-center justify-center gap-1.5",
+              "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
+              "transition-colors motion-reduce:transition-none",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              "disabled:opacity-50 disabled:cursor-not-allowed"
+            ]}
+          >
+            <.icon name="hero-pause" class="size-4" />
+            <span>TO them</span>
+          </button>
+          <button
+            type="button"
+            phx-click="record_halftime"
+            disabled={@disconnected?}
+            aria-label="Record halftime"
+            class={[
+              "min-h-9 px-2 py-1 rounded-md border border-base-300",
+              "inline-flex items-center justify-center gap-1.5",
+              "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
+              "transition-colors motion-reduce:transition-none",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              "disabled:opacity-50 disabled:cursor-not-allowed"
+            ]}
+          >
+            <.icon name="hero-flag" class="size-4" />
+            <span>Halftime</span>
+          </button>
+        </div>
       </div>
     </div>
     """
@@ -1614,6 +1678,16 @@ defmodule UltistatsWeb.GameLive.Show do
     end
   end
 
+  def handle_event("record_timeout", %{"team" => team}, socket)
+      when team in ["ours", "theirs"] do
+    type = if team == "ours", do: :timeout_ours, else: :timeout_theirs
+    record_game_event(socket, type, "Could not record timeout.")
+  end
+
+  def handle_event("record_halftime", _params, socket) do
+    record_game_event(socket, :halftime, "Could not record halftime.")
+  end
+
   def handle_event("dismiss_halftime", _params, socket) do
     {:noreply, assign(socket, :halftime_dismissed?, true)}
   end
@@ -1696,6 +1770,24 @@ defmodule UltistatsWeb.GameLive.Show do
     socket
     |> assign(:undo_stack, [event_id | socket.assigns.undo_stack])
     |> assign(:redo_stack, [])
+  end
+
+  defp record_game_event(socket, type, error_message) do
+    case Games.record_game_event(socket.assigns.game, type) do
+      {:ok, event} ->
+        socket = track_event_recorded(socket, event)
+
+        events =
+          case socket.assigns.current_point do
+            %Ultistats.Games.Point{} = point -> Games.events_for_point(point)
+            _ -> socket.assigns.events
+          end
+
+        {:noreply, assign(socket, :events, events)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, error_message)}
+    end
   end
 
   # Re-syncs everything that derives from the events list after an undo
