@@ -80,20 +80,29 @@ defmodule UltistatsWeb.GameLive.Summary do
       <div class="py-3 space-y-3">
         <div class="flex items-center justify-between gap-2">
           <.link
-            navigate={~p"/games/#{@game.id}"}
+            navigate={back_path(@game)}
             class="inline-flex items-center gap-1 min-h-11 text-sm font-medium text-base-content/80 active:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary rounded-md"
           >
             <.icon name="hero-arrow-left" class="size-4" />
-            <span>Back to game</span>
+            <span>{back_label(@game)}</span>
           </.link>
-          <.link
-            :if={@game.ruleset_id}
-            navigate={~p"/rulesets/#{@game.ruleset_id}"}
-            class="inline-flex items-center gap-1 min-h-11 px-2 text-sm font-medium text-base-content/80 active:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary rounded-md"
-          >
-            <.icon name="hero-document-text" class="size-4" />
-            <span>Ruleset</span>
-          </.link>
+          <div class="inline-flex items-center gap-1">
+            <.link
+              navigate={~p"/games/#{@game.id}/timeline"}
+              class="inline-flex items-center gap-1 min-h-11 px-2 text-sm font-medium text-base-content/80 active:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary rounded-md"
+            >
+              <.icon name="hero-list-bullet" class="size-4" />
+              <span>Timeline</span>
+            </.link>
+            <.link
+              :if={@game.ruleset_id}
+              navigate={~p"/rulesets/#{@game.ruleset_id}"}
+              class="inline-flex items-center gap-1 min-h-11 px-2 text-sm font-medium text-base-content/80 active:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary rounded-md"
+            >
+              <.icon name="hero-document-text" class="size-4" />
+              <span>Ruleset</span>
+            </.link>
+          </div>
         </div>
 
         <div class="flex items-start justify-between gap-3">
@@ -134,6 +143,15 @@ defmodule UltistatsWeb.GameLive.Summary do
     </span>
     """
   end
+
+  # The live tracker (`/games/:id`) auto-redirects finished games back to
+  # this summary, so a "Back to game" link on a finished game would loop.
+  # Send it to the games list instead.
+  defp back_path(%{status: :finished} = _game), do: ~p"/games"
+  defp back_path(game), do: ~p"/games/#{game.id}"
+
+  defp back_label(%{status: :finished}), do: "Back to games"
+  defp back_label(_), do: "Back to game"
 
   defp status_pill_meta(:finished),
     do: %{
@@ -258,10 +276,10 @@ defmodule UltistatsWeb.GameLive.Summary do
     ~H"""
     <div class="flex flex-wrap items-center gap-3">
       <.link
-        navigate={~p"/games/#{@game.id}"}
+        navigate={back_path(@game)}
         class="inline-flex items-center gap-2 min-h-11 px-4 rounded-lg border-2 border-base-300 text-base font-semibold bg-base-100 text-base-content active:bg-base-200 transition-colors motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
-        <.icon name="hero-arrow-left" class="size-4" /> Back to game
+        <.icon name="hero-arrow-left" class="size-4" /> {back_label(@game)}
       </.link>
       <.link
         :if={@game.status == :in_progress}
