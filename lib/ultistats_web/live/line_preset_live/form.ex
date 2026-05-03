@@ -41,10 +41,26 @@ defmodule UltistatsWeb.LinePresetLive.Form do
         </section>
 
         <footer class="mt-6 flex gap-2">
-          <.button phx-disable-with="Saving..." variant="primary">Save Line preset</.button>
+          <.button phx-disable-with="Saving..." variant="primary">Save</.button>
           <.button navigate={return_path(@return_to, @line_preset)}>Cancel</.button>
         </footer>
       </.form>
+
+      <section :if={@live_action == :edit} class="mt-12 pt-6 border-t border-base-300">
+        <h2 class="text-sm font-semibold text-base-content">Danger zone</h2>
+        <p class="mt-1 text-sm text-base-content/70">
+          Deleting a preset doesn't affect the underlying players.
+        </p>
+        <button
+          type="button"
+          id="delete-line-preset"
+          phx-click={JS.push("delete_line_preset", value: %{id: @line_preset.id})}
+          data-confirm="Delete this line preset?"
+          class="mt-3 min-h-11 inline-flex items-center px-4 rounded-md text-sm font-medium border border-error text-error hover:bg-error/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-error"
+        >
+          Delete preset
+        </button>
+      </section>
     </Layouts.app>
     """
   end
@@ -119,6 +135,16 @@ defmodule UltistatsWeb.LinePresetLive.Form do
 
   def handle_event("save", %{"line_preset" => line_preset_params}, socket) do
     save_line_preset(socket, socket.assigns.live_action, line_preset_params)
+  end
+
+  def handle_event("delete_line_preset", %{"id" => id}, socket) do
+    preset = Teams.get_line_preset!(id)
+    {:ok, _} = Teams.delete_line_preset(preset)
+
+    {:noreply,
+     socket
+     |> put_flash(:info, "Line preset deleted")
+     |> push_navigate(to: return_path(socket.assigns.return_to, preset))}
   end
 
   defp save_line_preset(socket, :edit, line_preset_params) do
