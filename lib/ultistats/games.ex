@@ -214,6 +214,22 @@ defmodule Ultistats.Games do
   end
 
   @doc """
+  Reopens an ended point by clearing its `scoring_team`. Used by the
+  live tracker's "undo last goal" flow when the tracker accidentally
+  ended a point.
+  """
+  def reopen_point(%Point{} = point) do
+    point
+    |> Point.changeset(%{scoring_team: nil})
+    |> Repo.update()
+  end
+
+  def reopen_point(point_id) when is_binary(point_id) do
+    Repo.get!(Point, point_id)
+    |> reopen_point()
+  end
+
+  @doc """
   Returns the active (in-progress) point for `game` — the one whose
   `scoring_team` is `nil` — or `nil` if the game has no point in
   progress.

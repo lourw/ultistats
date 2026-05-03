@@ -63,6 +63,7 @@ defmodule UltistatsWeb.GameLive.Show do
        |> assign(:selected_defender_id, nil)
        |> assign(:undo_stack, [])
        |> assign(:redo_stack, [])
+       |> assign(:last_ended, nil)
        |> assign(:halftime_dismissed?, false)
        # Disconnect-driven button-disable is wired via JS hook in a later
        # task; assigns stays at false until the hook lands. The flash
@@ -105,6 +106,7 @@ defmodule UltistatsWeb.GameLive.Show do
             halftime?={Games.halftime?(@game) and not @halftime_dismissed?}
             undo_stack={@undo_stack}
             redo_stack={@redo_stack}
+            last_ended={@last_ended}
           />
         </div>
 
@@ -156,6 +158,7 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :halftime?, :boolean, required: true
   attr :undo_stack, :list, required: true
   attr :redo_stack, :list, required: true
+  attr :last_ended, :any, required: true
 
   defp compact_header(assigns) do
     ~H"""
@@ -190,8 +193,9 @@ defmodule UltistatsWeb.GameLive.Show do
     </div>
 
     <div class="flex items-center justify-between gap-2 px-4 py-2">
-      <div :if={@current_point} class="flex items-center gap-1 shrink-0">
+      <div class="flex items-center gap-1 shrink-0">
         <button
+          :if={@current_point}
           type="button"
           phx-click={if @undo_stack == [], do: "cancel_current_point", else: "undo"}
           data-confirm={
@@ -207,6 +211,7 @@ defmodule UltistatsWeb.GameLive.Show do
           <.icon name="hero-arrow-uturn-left" class="size-4" />
         </button>
         <button
+          :if={@current_point}
           type="button"
           phx-click="redo"
           disabled={@redo_stack == []}
@@ -214,6 +219,15 @@ defmodule UltistatsWeb.GameLive.Show do
           class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <.icon name="hero-arrow-uturn-right" class="size-4" />
+        </button>
+        <button
+          :if={is_nil(@current_point) and not is_nil(@last_ended)}
+          type="button"
+          phx-click="undo_last_goal"
+          aria-label="Undo last goal"
+          class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <.icon name="hero-arrow-uturn-left" class="size-4" />
         </button>
       </div>
 
@@ -1019,6 +1033,7 @@ defmodule UltistatsWeb.GameLive.Show do
          |> assign(:selected_defender_id, nil)
          |> assign(:undo_stack, [])
          |> assign(:redo_stack, [])
+         |> assign(:last_ended, nil)
          |> assign(:selected_player_ids, MapSet.new())
          |> assign(:selected_preset_id, nil)}
 
@@ -1053,6 +1068,7 @@ defmodule UltistatsWeb.GameLive.Show do
          |> assign(:selected_defender_id, nil)
          |> assign(:undo_stack, [])
          |> assign(:redo_stack, [])
+         |> assign(:last_ended, nil)
          |> put_flash(:info, "Point cancelled")}
     end
   end
@@ -1159,8 +1175,9 @@ defmodule UltistatsWeb.GameLive.Show do
   def handle_event("record_opponent_goal", _params, socket) do
     point = socket.assigns.current_point
 
-    with {:ok, _event} <- Games.record_throw(point, :opponent_goal, nil, nil),
+    with {:ok, event} <- Games.record_throw(point, :opponent_goal, nil, nil),
          {:ok, _ended} <- Games.end_point(point, :theirs) do
+      socket = assign(socket, :last_ended, %{point_id: point.id, event_id: event.id})
       {:noreply, after_point_end(socket)}
     else
       {:error, _} ->
@@ -1210,6 +1227,41 @@ defmodule UltistatsWeb.GameLive.Show do
            after_history_change(socket, rest_undo, [event_id | socket.assigns.redo_stack])}
         else
           _ -> {:noreply, put_flash(socket, :error, "Could not undo.")}
+        end
+    end
+  end
+
+  # Undo the goal that just ended a point and reopen the point so the
+  # tracker can keep recording. The goal event is soft-deleted; the
+  # point's `scoring_team` is cleared. Score auto-updates from the now-
+  # filtered events. One-shot — does not feed the redo stack.
+  def handle_event("undo_last_goal", _params, socket) do
+    case socket.assigns.last_ended do
+      nil ->
+        {:noreply, socket}
+
+      %{point_id: point_id, event_id: event_id} ->
+        with %Event{} = event <- Repo.get(Event, event_id),
+             {:ok, _} <- Games.soft_delete_event(event),
+             {:ok, point} <- Games.reopen_point(point_id) do
+          events = Games.events_for_point(point)
+          game = socket.assigns.game
+
+          {:noreply,
+           socket
+           |> assign(:current_point, point)
+           |> assign(:events, events)
+           |> assign(:possession, derive_possession(game, point, events))
+           |> assign(:current_passer_id, derive_current_passer(events))
+           |> assign(:score, Games.score(game))
+           |> assign(:undo_stack, events |> Enum.reverse() |> Enum.map(& &1.id))
+           |> assign(:redo_stack, [])
+           |> assign(:last_ended, nil)
+           |> assign(:selected_player_ids, MapSet.new())
+           |> assign(:selected_preset_id, nil)
+           |> put_flash(:info, "Goal undone")}
+        else
+          _ -> {:noreply, put_flash(socket, :error, "Could not undo goal.")}
         end
     end
   end
@@ -1312,6 +1364,13 @@ defmodule UltistatsWeb.GameLive.Show do
   defp apply_outcome_transition(socket, :goal, point, _events) do
     case Games.end_point(point, :ours) do
       {:ok, _ended} ->
+        # The goal event we just recorded sits at the head of the undo
+        # stack. Stash it so the line picker can offer "Undo last goal".
+        last_event_id = List.first(socket.assigns.undo_stack)
+
+        socket =
+          assign(socket, :last_ended, %{point_id: point.id, event_id: last_event_id})
+
         {:noreply, after_point_end(socket)}
 
       {:error, _} ->

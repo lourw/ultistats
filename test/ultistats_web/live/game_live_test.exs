@@ -697,6 +697,67 @@ defmodule UltistatsWeb.GameLiveTest do
 
       refute has_element?(live, "button[phx-click='undo']")
     end
+
+    test "Undo goal from the line picker reopens the point and clears the score", %{
+      conn: conn,
+      game: game,
+      players: players,
+      point: point
+    } do
+      {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
+
+      [a, scorer | _] = players
+
+      # Score a goal: A throws to scorer, tracker hits Goal.
+      render_hook(live, "set_passer", %{"id" => a.id})
+      render_hook(live, "set_receiver", %{"id" => scorer.id})
+      render_hook(live, "record_throw_outcome", %{"type" => "goal"})
+
+      # Point ended — we're back on the line picker, score 1–0.
+      reloaded = Repo.get!(Point, point.id)
+      assert reloaded.scoring_team == :ours
+      assert Games.score(game) == %{ours: 1, theirs: 0}
+      assert has_element?(live, "button[phx-click='start_point']")
+      assert has_element?(live, "button[phx-click='undo_last_goal']")
+
+      live |> element("button[phx-click='undo_last_goal']") |> render_click()
+
+      # Point reopened, goal soft-deleted, score back to 0–0.
+      reopened = Repo.get!(Point, point.id)
+      assert is_nil(reopened.scoring_team)
+      assert Games.events_for_point(reopened) == []
+      assert Games.score(game) == %{ours: 0, theirs: 0}
+
+      # Tracker is back in the in-point view.
+      refute has_element?(live, "button[phx-click='start_point']")
+      refute has_element?(live, "button[phx-click='undo_last_goal']")
+    end
+
+    test "Starting a new point clears the undo-goal affordance", %{
+      conn: conn,
+      game: game,
+      players: players
+    } do
+      {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
+
+      [a, scorer | _] = players
+      render_hook(live, "set_passer", %{"id" => a.id})
+      render_hook(live, "set_receiver", %{"id" => scorer.id})
+      render_hook(live, "record_throw_outcome", %{"type" => "goal"})
+
+      assert has_element?(live, "button[phx-click='undo_last_goal']")
+
+      # Start a new point — that commits to the previous goal.
+      render_hook(live, "select_preset", %{"id" => "noop"})
+
+      Enum.each(Enum.take(players, 7), fn p ->
+        render_hook(live, "toggle_player", %{"id" => p.id})
+      end)
+
+      render_hook(live, "start_point", %{})
+
+      refute has_element?(live, "button[phx-click='undo_last_goal']")
+    end
   end
 
   describe "Show — milestones" do
