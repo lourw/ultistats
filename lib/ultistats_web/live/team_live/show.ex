@@ -11,8 +11,7 @@ defmodule UltistatsWeb.TeamLive.Show do
     ~H"""
     <Layouts.app flash={@flash}>
       <.header>
-        Team {@team.name}
-        <:subtitle>This is a team record from your database.</:subtitle>
+        {@team.name}
         <:actions>
           <.button navigate={~p"/teams"}>
             <.icon name="hero-arrow-left" />
@@ -22,10 +21,6 @@ defmodule UltistatsWeb.TeamLive.Show do
           </.button>
         </:actions>
       </.header>
-
-      <.list>
-        <:item title="Name">{@team.name}</:item>
-      </.list>
 
       <section class="mt-8">
         <.header>
@@ -122,6 +117,18 @@ defmodule UltistatsWeb.TeamLive.Show do
           No line presets yet. Create your first to set lines quickly mid-game.
         </p>
       </section>
+
+      <section class="mt-12">
+        <button
+          type="button"
+          id="delete-team"
+          phx-click={JS.push("delete_team", value: %{id: @team.id})}
+          data-confirm="Delete this team and all its players, presets, and games?"
+          class="text-sm text-error link link-hover"
+        >
+          Delete team
+        </button>
+      </section>
     </Layouts.app>
     """
   end
@@ -132,13 +139,23 @@ defmodule UltistatsWeb.TeamLive.Show do
 
     {:ok,
      socket
-     |> assign(:page_title, "Show Team")
+     |> assign(:page_title, team.name)
      |> assign(:team, team)
      |> assign(:players, Teams.list_players_for_team(team))
      |> assign(:line_presets, Teams.list_line_presets_for_team(team))}
   end
 
   @impl true
+  def handle_event("delete_team", %{"id" => id}, socket) do
+    team = Teams.get_team!(id)
+    {:ok, _} = Teams.delete_team(team)
+
+    {:noreply,
+     socket
+     |> put_flash(:info, "Team deleted")
+     |> push_navigate(to: ~p"/teams")}
+  end
+
   def handle_event("delete_player", %{"id" => id}, socket) do
     player = Teams.get_player!(id)
     {:ok, _} = Teams.delete_player(player)

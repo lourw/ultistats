@@ -538,4 +538,127 @@ defmodule Ultistats.TeamsTest do
       assert %Ecto.Changeset{} = Teams.change_line_preset(line_preset)
     end
   end
+
+  describe "team_stats/1" do
+    import Ultistats.TeamsFixtures
+    import Ultistats.GamesFixtures
+
+    alias Ultistats.Games
+
+    test "returns zeros for an empty team" do
+      team = team_fixture()
+
+      assert %{
+               total_players: 0,
+               male_matching: 0,
+               female_matching: 0,
+               games_in_progress: 0,
+               wins: 0,
+               losses: 0,
+               ties: 0
+             } = Teams.team_stats(team)
+    end
+
+    test "counts players by gender_role" do
+      team = team_fixture()
+      _f1 = player_fixture(%{team_id: team.id, gender_role: :female_matching, jersey_number: "1"})
+      _f2 = player_fixture(%{team_id: team.id, gender_role: :female_matching, jersey_number: "2"})
+      _m1 = player_fixture(%{team_id: team.id, gender_role: :male_matching, jersey_number: "3"})
+
+      # A player on a different team should not be counted.
+      other_team = team_fixture(%{name: "Other"})
+      _stranger = player_fixture(%{team_id: other_team.id, gender_role: :male_matching})
+
+      stats = Teams.team_stats(team)
+      assert stats.total_players == 3
+      assert stats.female_matching == 2
+      assert stats.male_matching == 1
+    end
+
+    test "counts in-progress games" do
+      team = team_fixture()
+      _g1 = game_fixture(%{team_id: team.id, status: :in_progress})
+      _g2 = game_fixture(%{team_id: team.id, status: :in_progress})
+      # Different team's in-progress game should not count.
+      other = team_fixture(%{name: "Other"})
+      _other_g = game_fixture(%{team_id: other.id, status: :in_progress})
+
+      stats = Teams.team_stats(team)
+      assert stats.games_in_progress == 2
+    end
+
+    test "counts wins and losses for finished games using Games.score/1" do
+      team = team_fixture()
+
+      # Build a finished game where we win 2–1.
+      win_game = game_fixture(%{team_id: team.id, status: :finished})
+      p_win_a = point_fixture(%{game_id: win_game.id, sequence: 1, scoring_team: :ours})
+      _ = event_fixture(%{point_id: p_win_a.id, type: :goal})
+      p_win_b = point_fixture(%{game_id: win_game.id, sequence: 2, scoring_team: :ours})
+      _ = event_fixture(%{point_id: p_win_b.id, type: :goal})
+      _p_win_c = point_fixture(%{game_id: win_game.id, sequence: 3, scoring_team: :theirs})
+
+      # Build a finished game where we lose 0–1.
+      loss_game = game_fixture(%{team_id: team.id, status: :finished})
+      _p_loss = point_fixture(%{game_id: loss_game.id, sequence: 1, scoring_team: :theirs})
+
+      # Confirm score helper agrees with our setup before assertions.
+      assert Games.score(win_game) == %{ours: 2, theirs: 1}
+      assert Games.score(loss_game) == %{ours: 0, theirs: 1}
+
+      stats = Teams.team_stats(team)
+      assert stats.wins == 1
+      assert stats.losses == 1
+      assert stats.ties == 0
+    end
+
+    test "distinguishes ties from wins or losses" do
+      team = team_fixture()
+
+      tie_game = game_fixture(%{team_id: team.id, status: :finished})
+      p_t_a = point_fixture(%{game_id: tie_game.id, sequence: 1, scoring_team: :ours})
+      _ = event_fixture(%{point_id: p_t_a.id, type: :goal})
+      _p_t_b = point_fixture(%{game_id: tie_game.id, sequence: 2, scoring_team: :theirs})
+
+      assert Games.score(tie_game) == %{ours: 1, theirs: 1}
+
+      stats = Teams.team_stats(team)
+      assert stats.ties == 1
+      assert stats.wins == 0
+      assert stats.losses == 0
+    end
+
+    test "in-progress games do not contribute to wins/losses/ties" do
+      team = team_fixture()
+      g = game_fixture(%{team_id: team.id, status: :in_progress})
+      _p = point_fixture(%{game_id: g.id, sequence: 1, scoring_team: :ours})
+
+      stats = Teams.team_stats(team)
+      assert stats.games_in_progress == 1
+      assert stats.wins == 0
+      assert stats.losses == 0
+      assert stats.ties == 0
+    end
+  end
+
+  describe "list_teams_with_stats/0" do
+    import Ultistats.TeamsFixtures
+
+    test "returns a list ordered by team name with stats embedded" do
+      _b = team_fixture(%{name: "Bravo"})
+      a = team_fixture(%{name: "Alpha"})
+      _c = team_fixture(%{name: "Charlie"})
+
+      _player = player_fixture(%{team_id: a.id, gender_role: :male_matching})
+
+      results = Teams.list_teams_with_stats()
+      assert Enum.map(results, & &1.team.name) == ["Alpha", "Bravo", "Charlie"]
+
+      [%{team: alpha, stats: alpha_stats} | _] = results
+      assert alpha.id == a.id
+      assert alpha_stats.total_players == 1
+      assert alpha_stats.male_matching == 1
+      assert alpha_stats.female_matching == 0
+    end
+  end
 end

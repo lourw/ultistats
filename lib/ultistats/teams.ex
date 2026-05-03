@@ -102,7 +102,92 @@ defmodule Ultistats.Teams do
     Team.changeset(team, attrs)
   end
 
+  alias Ultistats.Games
+  alias Ultistats.Games.Game
   alias Ultistats.Teams.Player
+
+  @doc """
+  Returns aggregate stats for `team` for use on the teams index.
+
+  Stats:
+
+      %{
+        total_players: integer,
+        male_matching: integer,
+        female_matching: integer,
+        games_in_progress: integer,
+        wins: integer,           # finished games where our_score > their_score
+        losses: integer,         # finished games where our_score < their_score
+        ties: integer            # rare; finished games with equal scores
+      }
+  """
+  @spec team_stats(Team.t()) :: %{
+          total_players: non_neg_integer(),
+          male_matching: non_neg_integer(),
+          female_matching: non_neg_integer(),
+          games_in_progress: non_neg_integer(),
+          wins: non_neg_integer(),
+          losses: non_neg_integer(),
+          ties: non_neg_integer()
+        }
+  def team_stats(%Team{} = team) do
+    gender_counts =
+      Player
+      |> where([p], p.team_id == ^team.id)
+      |> group_by([p], p.gender_role)
+      |> select([p], {p.gender_role, count(p.id)})
+      |> Repo.all()
+      |> Map.new()
+
+    female_matching = Map.get(gender_counts, :female_matching, 0)
+    male_matching = Map.get(gender_counts, :male_matching, 0)
+    total_players = female_matching + male_matching
+
+    games =
+      Game
+      |> where([g], g.team_id == ^team.id)
+      |> Repo.all()
+
+    games_in_progress = Enum.count(games, &(&1.status == :in_progress))
+
+    # N+1 over finished games via Games.score/1 — acceptable at MVP scale
+    # (a team has at most a handful of finished games). If this hot-spots
+    # at scale, the per-finished-game score derivation can move into a
+    # single SQL aggregation.
+    {wins, losses, ties} =
+      games
+      |> Enum.filter(&(&1.status == :finished))
+      |> Enum.reduce({0, 0, 0}, fn game, {w, l, t} ->
+        %{ours: ours, theirs: theirs} = Games.score(game)
+
+        cond do
+          ours > theirs -> {w + 1, l, t}
+          ours < theirs -> {w, l + 1, t}
+          true -> {w, l, t + 1}
+        end
+      end)
+
+    %{
+      total_players: total_players,
+      male_matching: male_matching,
+      female_matching: female_matching,
+      games_in_progress: games_in_progress,
+      wins: wins,
+      losses: losses,
+      ties: ties
+    }
+  end
+
+  @doc """
+  Returns `[%{team: %Team{}, stats: %{...}}]` ordered by team name.
+  """
+  @spec list_teams_with_stats() :: [%{team: Team.t(), stats: map()}]
+  def list_teams_with_stats do
+    Team
+    |> order_by([t], asc: t.name)
+    |> Repo.all()
+    |> Enum.map(fn team -> %{team: team, stats: team_stats(team)} end)
+  end
 
   @doc """
   Returns the list of players.

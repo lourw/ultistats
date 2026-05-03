@@ -10,13 +10,12 @@ defmodule UltistatsWeb.TeamLive.Form do
     <Layouts.app flash={@flash}>
       <.header>
         {@page_title}
-        <:subtitle>Use this form to manage team records in your database.</:subtitle>
       </.header>
 
       <.form for={@form} id="team-form" phx-change="validate" phx-submit="save">
         <.input field={@form[:name]} type="text" label="Name" />
         <footer>
-          <.button phx-disable-with="Saving..." variant="primary">Save Team</.button>
+          <.button phx-disable-with="Saving..." variant="primary">Save</.button>
           <.button navigate={return_path(@return_to, @team)}>Cancel</.button>
         </footer>
       </.form>
@@ -39,7 +38,7 @@ defmodule UltistatsWeb.TeamLive.Form do
     team = Teams.get_team!(id)
 
     socket
-    |> assign(:page_title, "Edit Team")
+    |> assign(:page_title, "Edit #{team.name}")
     |> assign(:team, team)
     |> assign(:form, to_form(Teams.change_team(team)))
   end
@@ -48,7 +47,7 @@ defmodule UltistatsWeb.TeamLive.Form do
     team = %Team{}
 
     socket
-    |> assign(:page_title, "New Team")
+    |> assign(:page_title, "New team")
     |> assign(:team, team)
     |> assign(:form, to_form(Teams.change_team(team)))
   end

@@ -8,35 +8,39 @@ defmodule UltistatsWeb.TeamLive.Index do
     ~H"""
     <Layouts.app flash={@flash}>
       <.header>
-        Listing Teams
+        Teams
         <:actions>
           <.button variant="primary" navigate={~p"/teams/new"}>
-            <.icon name="hero-plus" /> New Team
+            <.icon name="hero-plus" /> New team
           </.button>
         </:actions>
       </.header>
 
-      <.table
-        id="teams"
-        rows={@streams.teams}
-        row_click={fn {_id, team} -> JS.navigate(~p"/teams/#{team}") end}
-      >
-        <:col :let={{_id, team}} label="Name">{team.name}</:col>
-        <:action :let={{_id, team}}>
-          <div class="sr-only">
-            <.link navigate={~p"/teams/#{team}"}>Show</.link>
-          </div>
-          <.link navigate={~p"/teams/#{team}/edit"}>Edit</.link>
-        </:action>
-        <:action :let={{id, team}}>
+      <p :if={@teams_with_stats == []} class="text-base-content/70">
+        No teams yet. <.link navigate={~p"/teams/new"} class="underline">Create your first team</.link>.
+      </p>
+
+      <ul :if={@teams_with_stats != []} id="teams-list" class="divide-y divide-base-200">
+        <li :for={%{team: team, stats: s} <- @teams_with_stats} id={"team-#{team.id}"} class="py-3">
           <.link
-            phx-click={JS.push("delete", value: %{id: team.id}) |> hide("##{id}")}
-            data-confirm="Are you sure?"
+            navigate={~p"/teams/#{team}"}
+            class="block hover:bg-base-200 rounded-md px-2 -mx-2 py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            Delete
+            <div class="font-medium text-base">{team.name}</div>
+            <div class="mt-1 text-sm text-base-content/70 flex flex-wrap gap-x-3 gap-y-1 tabular-nums">
+              <span>{s.total_players} players</span>
+              <span aria-hidden="true">·</span>
+              <span>♂ {s.male_matching}</span>
+              <span>♀ {s.female_matching}</span>
+              <span aria-hidden="true">·</span>
+              <span>{format_record(s)}</span>
+              <span :if={s.games_in_progress > 0} class="text-info">
+                {s.games_in_progress} in progress
+              </span>
+            </div>
           </.link>
-        </:action>
-      </.table>
+        </li>
+      </ul>
     </Layouts.app>
     """
   end
@@ -45,19 +49,17 @@ defmodule UltistatsWeb.TeamLive.Index do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(:page_title, "Listing Teams")
-     |> stream(:teams, list_teams())}
+     |> assign(:page_title, "Teams")
+     |> assign(:teams_with_stats, Teams.list_teams_with_stats())}
   end
 
-  @impl true
-  def handle_event("delete", %{"id" => id}, socket) do
-    team = Teams.get_team!(id)
-    {:ok, _} = Teams.delete_team(team)
-
-    {:noreply, stream_delete(socket, :teams, team)}
-  end
-
-  defp list_teams() do
-    Teams.list_teams()
-  end
+  # Record formatting:
+  # - "W–L" (en dash) for the common case of finished wins/losses
+  # - "W–L–T" when ties exist
+  # - "No games yet" when there are zero games at all
+  # - "" when only in-progress games exist (the "in progress" badge carries the info)
+  defp format_record(%{wins: 0, losses: 0, ties: 0, games_in_progress: 0}), do: "No games yet"
+  defp format_record(%{wins: 0, losses: 0, ties: 0}), do: ""
+  defp format_record(%{wins: w, losses: l, ties: 0}), do: "#{w}–#{l}"
+  defp format_record(%{wins: w, losses: l, ties: t}), do: "#{w}–#{l}–#{t}"
 end
