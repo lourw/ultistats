@@ -18,6 +18,11 @@ defmodule UltistatsWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+
+    live "/teams", TeamLive.Index, :index
+    live "/teams/new", TeamLive.Form, :new
+    live "/teams/:id", TeamLive.Show, :show
+    live "/teams/:id/edit", TeamLive.Form, :edit
   end
 
   # Other scopes may use custom stacks.
