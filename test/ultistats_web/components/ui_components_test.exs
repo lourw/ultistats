@@ -189,11 +189,11 @@ defmodule UltistatsWeb.UIComponentsTest do
       assert html =~ "min-h-11"
     end
 
-    test "shows visible short labels (FMP/MMP) plus screen-reader text" do
+    test "shows ♀/♂ glyphs plus screen-reader long names" do
       html = render_component(&gender_radio/1, field: gender_field(nil))
 
-      assert html =~ ">FMP<"
-      assert html =~ ">MMP<"
+      assert html =~ "♀"
+      assert html =~ "♂"
       assert html =~ "Female-matching"
       assert html =~ "Male-matching"
     end

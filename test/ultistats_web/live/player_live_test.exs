@@ -292,11 +292,11 @@ defmodule UltistatsWeb.PlayerLiveTest do
       player = player_fixture()
       {:ok, _view, html} = live(conn, ~p"/players/#{player}/edit")
 
-      # Both radios present, type=radio, with the FMP/MMP labels.
+      # Both radios present, type=radio, with ♀/♂ glyph labels.
       assert html =~ ~r/<input[^>]*type="radio"[^>]*value="female_matching"/
       assert html =~ ~r/<input[^>]*type="radio"[^>]*value="male_matching"/
-      assert html =~ "FMP"
-      assert html =~ "MMP"
+      assert html =~ "♀"
+      assert html =~ "♂"
     end
 
     test "tapping the other gender radio updates form state", %{conn: conn} do

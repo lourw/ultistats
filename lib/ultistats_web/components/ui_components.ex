@@ -496,7 +496,7 @@ defmodule UltistatsWeb.UIComponents do
             {@rest}
             phx-value-gender="female_matching"
           />
-          <span>FMP</span>
+          <span class="text-lg leading-none" aria-hidden="true">♀</span>
           <span class="sr-only">Female-matching</span>
         </label>
         <label class={gender_radio_label_classes(@value == "male_matching")}>
@@ -510,7 +510,7 @@ defmodule UltistatsWeb.UIComponents do
             {@rest}
             phx-value-gender="male_matching"
           />
-          <span>MMP</span>
+          <span class="text-lg leading-none" aria-hidden="true">♂</span>
           <span class="sr-only">Male-matching</span>
         </label>
       </div>

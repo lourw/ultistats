@@ -1,5 +1,9 @@
 import Config
 
+# Auto-run priv/repo/seeds.exs at app boot so `mix phx.server` always has
+# demo data. The seed script is idempotent (no-op if a team already exists).
+config :ultistats, :seed_on_start, true
+
 # Configure your database
 config :ultistats, Ultistats.Repo,
   database: Path.expand("../ultistats_dev.db", __DIR__),
