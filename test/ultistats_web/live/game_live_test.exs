@@ -8,6 +8,7 @@ defmodule UltistatsWeb.GameLiveTest do
   alias Ultistats.Games
   alias Ultistats.Repo
   alias Ultistats.Games.{Event, Point}
+  alias Ultistats.Teams.Player
 
   describe "Start" do
     test "renders the empty state when there are no teams", %{conn: conn} do
@@ -128,7 +129,7 @@ defmodule UltistatsWeb.GameLiveTest do
 
       # First player is rendered as a chip
       first = hd(players)
-      assert has_element?(live, "button[phx-value-id='#{first.id}']", first.name)
+      assert has_element?(live, "button[phx-value-id='#{first.id}']", Player.display_name(first))
 
       # Start point button is disabled before any selection.
       assert has_element?(live, "button[phx-click='start_point'][disabled]")
@@ -409,7 +410,8 @@ defmodule UltistatsWeb.GameLiveTest do
     for i <- 1..n do
       player_fixture(%{
         team_id: team.id,
-        name: "Player #{i}",
+        first_name: "Player",
+        last_name: "Number#{i}",
         jersey_number: Integer.to_string(i)
       })
     end

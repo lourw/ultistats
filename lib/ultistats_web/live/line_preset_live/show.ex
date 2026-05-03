@@ -2,6 +2,7 @@ defmodule UltistatsWeb.LinePresetLive.Show do
   use UltistatsWeb, :live_view
 
   alias Ultistats.Teams
+  alias Ultistats.Teams.Player
 
   @impl true
   def render(assigns) do
@@ -29,7 +30,7 @@ defmodule UltistatsWeb.LinePresetLive.Show do
         <ul :if={@line_preset.players != []} class="divide-y divide-base-300">
           <li :for={player <- @line_preset.players} class="flex items-center gap-3 py-2">
             <span class="badge badge-neutral font-mono">#{player.jersey_number}</span>
-            <span class="font-medium">{player.name}</span>
+            <span class="font-medium">{Player.display_name(player)}</span>
           </li>
         </ul>
         <p :if={@line_preset.players == []} class="text-base-content/70">

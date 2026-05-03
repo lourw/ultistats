@@ -2,6 +2,7 @@ defmodule UltistatsWeb.PlayerLive.Show do
   use UltistatsWeb, :live_view
 
   alias Ultistats.Teams
+  alias Ultistats.Teams.Player
 
   @impl true
   def render(assigns) do
@@ -21,7 +22,7 @@ defmodule UltistatsWeb.PlayerLive.Show do
       </.header>
 
       <.list>
-        <:item title="Name">{@player.name}</:item>
+        <:item title="Name">{Player.display_name(@player)}</:item>
         <:item title="Jersey number">{@player.jersey_number}</:item>
         <:item title="Gender role">{humanize_gender_role(@player.gender_role)}</:item>
       </.list>

@@ -19,25 +19,45 @@ defmodule Ultistats.TeamsFixtures do
   end
 
   @doc """
-  Generate a player. Creates a team automatically if `team_id` is not given.
+  Generate a player. Creates a team automatically if `team_id` is not
+  given.
+
+  Accepts `:name` for backwards compatibility with old call sites — it
+  is split on the first space into `:first_name` / `:last_name`. The
+  preferred form is to pass `:first_name` / `:last_name` directly.
   """
   def player_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
-
-    attrs =
-      Map.put_new_lazy(attrs, :team_id, fn -> team_fixture().id end)
+    attrs = Map.put_new_lazy(attrs, :team_id, fn -> team_fixture().id end)
+    attrs = expand_name_compat(attrs)
 
     {:ok, player} =
       attrs
       |> Enum.into(%{
         gender_role: :female_matching,
         jersey_number: "7",
-        name: "some name"
+        first_name: "Some",
+        last_name: "Player"
       })
       |> Ultistats.Teams.create_player()
 
     player
   end
+
+  defp expand_name_compat(%{name: name} = attrs) when is_binary(name) do
+    {first, last} =
+      case String.split(name, " ", parts: 2) do
+        [f, l] -> {f, l}
+        [f] -> {f, "—"}
+      end
+
+    attrs
+    |> Map.delete(:name)
+    |> Map.put_new(:first_name, first)
+    |> Map.put_new(:last_name, last)
+  end
+
+  defp expand_name_compat(attrs), do: attrs
 
   @doc """
   Generate a line_preset. Creates a team automatically if `team_id` is

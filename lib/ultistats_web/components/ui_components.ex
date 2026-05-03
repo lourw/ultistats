@@ -14,6 +14,7 @@ defmodule UltistatsWeb.UIComponents do
     * `score_readout/1`     large tabular-nums score display
     * `line_preset_card/1`  selectable line preset, with ratio warning
     * `timeline_event/1`    one row in the post-game / mid-game timeline
+    * `gender_radio/1`      two native radio inputs for the FMP/MMP picker
 
   All interactive components keep `phx-*` bindings via `:rest` global
   attrs, so callers wire them like any other Phoenix component.
@@ -440,6 +441,99 @@ defmodule UltistatsWeb.UIComponents do
       icon: "hero-bolt",
       color_classes: "bg-base-300 text-base-content"
     }
+
+  ## ---------------------------------------------------------------------
+  ## gender_radio
+  ## ---------------------------------------------------------------------
+
+  @doc """
+  Two native radio inputs side by side for picking a player's gender
+  role (USAU FMP / MMP). Each radio is wrapped in a `<label>` so the
+  full label area is tappable; both label rows are min-h-11 (44px) per
+  UI_DESIGN.md §Tap targets.
+
+  Both radios share the field's `name`, so the browser groups them and
+  emits one selected value on form submission. Selection feedback is
+  the browser's native radio "checked" state — no custom segmented
+  styling.
+
+  Like `gender_toggle/1` did, this component forwards `phx-*`
+  attributes through `:rest`, so callers can wire `phx-click` (with a
+  `phx-value-row` for the bulk-add form) to drive a server-side
+  `set_gender` handler. On Phoenix forms with `phx-change="validate"`,
+  selection naturally fires the form's change event too.
+
+  ## Examples
+
+      <.gender_radio field={@form[:gender_role]} phx-click="set_gender" />
+      <.gender_radio field={f[:gender_role]} phx-click="set_gender" phx-value-row={row.key} />
+  """
+  attr :field, Phoenix.HTML.FormField, required: true
+  attr :class, :any, default: nil
+  attr :rest, :global, include: ~w(phx-change phx-click phx-target form)
+
+  def gender_radio(assigns) do
+    value = normalize_gender_value(assigns.field.value)
+
+    assigns =
+      assigns
+      |> assign(:value, value)
+      |> assign(:input_name, assigns.field.name)
+      |> assign(:input_id, assigns.field.id)
+
+    ~H"""
+    <fieldset class={["space-y-1", @class]}>
+      <legend class="sr-only">Gender role</legend>
+      <div class="inline-flex items-center gap-3" role="radiogroup" aria-label="Gender role">
+        <label class={gender_radio_label_classes(@value == "female_matching")}>
+          <input
+            type="radio"
+            name={@input_name}
+            id={"#{@input_id}_female_matching"}
+            value="female_matching"
+            checked={@value == "female_matching"}
+            class="accent-primary size-5 shrink-0"
+            {@rest}
+            phx-value-gender="female_matching"
+          />
+          <span>FMP</span>
+          <span class="sr-only">Female-matching</span>
+        </label>
+        <label class={gender_radio_label_classes(@value == "male_matching")}>
+          <input
+            type="radio"
+            name={@input_name}
+            id={"#{@input_id}_male_matching"}
+            value="male_matching"
+            checked={@value == "male_matching"}
+            class="accent-primary size-5 shrink-0"
+            {@rest}
+            phx-value-gender="male_matching"
+          />
+          <span>MMP</span>
+          <span class="sr-only">Male-matching</span>
+        </label>
+      </div>
+    </fieldset>
+    """
+  end
+
+  defp gender_radio_label_classes(selected?) do
+    [
+      "min-h-11 inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium",
+      "border border-base-300 cursor-pointer select-none",
+      "focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary",
+      if(selected?,
+        do: "bg-primary/10 border-primary text-base-content",
+        else: "bg-base-100 text-base-content active:bg-base-200"
+      )
+    ]
+  end
+
+  defp normalize_gender_value(nil), do: nil
+  defp normalize_gender_value(""), do: nil
+  defp normalize_gender_value(value) when is_atom(value), do: Atom.to_string(value)
+  defp normalize_gender_value(value) when is_binary(value), do: value
 
   ## ---------------------------------------------------------------------
   ## helpers

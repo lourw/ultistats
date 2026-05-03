@@ -219,6 +219,84 @@ defmodule Ultistats.Teams do
     Player.changeset(player, attrs)
   end
 
+  @doc """
+  Inserts many players for a team in a single transaction.
+
+  Rows whose `:first_name` (or `"first_name"`) is blank or missing are
+  dropped before insert — the caller can pass over-allocated row buffers
+  (e.g. three blank starter rows in the bulk-add form). Any `team_id` in
+  the row map is ignored; the FK is always set from the `team` argument
+  so the form can't smuggle a player onto another team.
+
+  Returns:
+
+    * `{:ok, [%Player{}, ...]}` — all rows inserted.
+    * `{:error, {row_index, %Ecto.Changeset{}}}` — index is into the
+      *post-filter* (non-blank) row list, so the LiveView can attach
+      the error back to the right row. The whole transaction is rolled
+      back; nothing is persisted on failure.
+  """
+  @spec bulk_create_players(Team.t(), [map()]) ::
+          {:ok, [Player.t()]} | {:error, {non_neg_integer(), Ecto.Changeset.t()}}
+  def bulk_create_players(%Team{} = team, rows) when is_list(rows) do
+    non_blank =
+      rows
+      |> Enum.map(&normalize_row/1)
+      |> Enum.reject(&blank_row?/1)
+
+    multi =
+      non_blank
+      |> Enum.with_index()
+      |> Enum.reduce(Ecto.Multi.new(), fn {attrs, idx}, multi ->
+        attrs = attrs |> Map.delete(:team_id) |> Map.put(:team_id, team.id)
+        Ecto.Multi.insert(multi, {:player, idx}, Player.changeset(%Player{}, attrs))
+      end)
+
+    case Repo.transaction(multi) do
+      {:ok, results} ->
+        players =
+          results
+          |> Enum.filter(fn
+            {{:player, _}, _} -> true
+            _ -> false
+          end)
+          |> Enum.sort_by(fn {{:player, idx}, _} -> idx end)
+          |> Enum.map(fn {_, player} -> player end)
+
+        {:ok, players}
+
+      {:error, {:player, idx}, changeset, _changes} ->
+        {:error, {idx, changeset}}
+    end
+  end
+
+  defp normalize_row(row) when is_map(row) do
+    %{
+      first_name: fetch_row(row, :first_name) || "",
+      last_name: fetch_row(row, :last_name) || "",
+      jersey_number: fetch_row(row, :jersey_number),
+      gender_role: fetch_row(row, :gender_role)
+    }
+  end
+
+  defp fetch_row(row, key) when is_atom(key) do
+    case Map.fetch(row, key) do
+      {:ok, v} -> v
+      :error -> Map.get(row, Atom.to_string(key))
+    end
+  end
+
+  # A row is "blank" iff first AND last name are both empty/whitespace.
+  # That way starter blanks are dropped, but a row with only one name
+  # still tries to insert and surfaces a validation error.
+  defp blank_row?(%{first_name: first, last_name: last}) do
+    blank_string?(first) and blank_string?(last)
+  end
+
+  defp blank_string?(nil), do: true
+  defp blank_string?(s) when is_binary(s), do: String.trim(s) == ""
+  defp blank_string?(_), do: true
+
   alias Ultistats.Teams.LinePreset
 
   @doc """

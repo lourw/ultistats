@@ -5,6 +5,7 @@ defmodule UltistatsWeb.LinePresetLive.Form do
 
   alias Ultistats.Teams
   alias Ultistats.Teams.LinePreset
+  alias Ultistats.Teams.Player
 
   @impl true
   def render(assigns) do
@@ -159,7 +160,7 @@ defmodule UltistatsWeb.LinePresetLive.Form do
   # Adapt a Player struct to the shape `<.player_chip>` expects
   # (`:number` + `:name`).
   defp chip_player(player) do
-    %{number: player.jersey_number, name: player.name}
+    %{number: player.jersey_number, name: Player.display_name(player)}
   end
 
   defp return_path("index", _line_preset), do: ~p"/line_presets"

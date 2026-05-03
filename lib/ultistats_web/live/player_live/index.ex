@@ -2,6 +2,7 @@ defmodule UltistatsWeb.PlayerLive.Index do
   use UltistatsWeb, :live_view
 
   alias Ultistats.Teams
+  alias Ultistats.Teams.Player
 
   @impl true
   def render(assigns) do
@@ -20,7 +21,7 @@ defmodule UltistatsWeb.PlayerLive.Index do
         row_click={fn {_id, player} -> JS.navigate(~p"/players/#{player}") end}
       >
         <:col :let={{_id, player}} label="Jersey">{player.jersey_number}</:col>
-        <:col :let={{_id, player}} label="Name">{player.name}</:col>
+        <:col :let={{_id, player}} label="Name">{Player.display_name(player)}</:col>
         <:col :let={{_id, player}} label="Gender role">
           {humanize_gender_role(player.gender_role)}
         </:col>

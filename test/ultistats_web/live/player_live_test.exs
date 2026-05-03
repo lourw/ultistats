@@ -4,31 +4,28 @@ defmodule UltistatsWeb.PlayerLiveTest do
   import Phoenix.LiveViewTest
   import Ultistats.TeamsFixtures
 
+  alias Ultistats.Teams
+  alias Ultistats.Teams.Player
+
   defp create_player(_) do
     player = player_fixture()
 
     %{player: player, team_id: player.team_id}
   end
 
-  defp create_attrs(team_id) do
-    %{
-      name: "some name",
-      jersey_number: "7",
-      gender_role: "female_matching",
-      team_id: team_id
-    }
-  end
-
   defp update_attrs(team_id) do
     %{
-      name: "some updated name",
+      first_name: "Some",
+      last_name: "Updated",
       jersey_number: "42",
       gender_role: "male_matching",
       team_id: team_id
     }
   end
 
-  @invalid_attrs %{name: nil, jersey_number: nil, gender_role: nil}
+  # gender_role intentionally omitted — radio inputs reject empty values, and
+  # blank first/last is enough to trigger the "can't be blank" error path.
+  @invalid_attrs %{first_name: nil, last_name: nil, jersey_number: nil}
 
   describe "Index" do
     setup [:create_player]
@@ -37,13 +34,8 @@ defmodule UltistatsWeb.PlayerLiveTest do
       {:ok, _index_live, html} = live(conn, ~p"/players")
 
       assert html =~ "Listing Players"
-      assert html =~ player.name
+      assert html =~ Player.display_name(player)
     end
-
-    # Note: the canonical "create new player" flow is /players/new?team_id=ID
-    # (entered from the team show page). The "Form prefills team_id from query
-    # string" describe block below covers it. The bare /players/new flow without
-    # team_id is intentionally not supported in MVP — see Teams show page.
 
     test "updates player in listing", %{conn: conn, player: player, team_id: team_id} do
       {:ok, index_live, _html} = live(conn, ~p"/players")
@@ -68,7 +60,7 @@ defmodule UltistatsWeb.PlayerLiveTest do
 
       html = render(index_live)
       assert html =~ "Player updated successfully"
-      assert html =~ "some updated name"
+      assert html =~ "Some Updated"
     end
 
     test "deletes player in listing", %{conn: conn, player: player} do
@@ -86,7 +78,7 @@ defmodule UltistatsWeb.PlayerLiveTest do
       {:ok, _show_live, html} = live(conn, ~p"/players/#{player}")
 
       assert html =~ "Show Player"
-      assert html =~ player.name
+      assert html =~ Player.display_name(player)
     end
 
     test "updates player and returns to show", %{conn: conn, player: player, team_id: team_id} do
@@ -112,29 +104,234 @@ defmodule UltistatsWeb.PlayerLiveTest do
 
       html = render(show_live)
       assert html =~ "Player updated successfully"
-      assert html =~ "some updated name"
+      assert html =~ "Some Updated"
     end
   end
 
-  describe "Form prefills team_id from query string" do
-    test "creating from /players/new?team_id=ID submits with that team", %{conn: conn} do
+  describe "Bulk add (/players/new?team_id=ID)" do
+    test "renders three empty rows by default", %{conn: conn} do
       team = team_fixture()
 
-      {:ok, form_live, _html} = live(conn, ~p"/players/new?team_id=#{team.id}")
+      {:ok, view, html} = live(conn, ~p"/players/new?team_id=#{team.id}")
 
-      attrs = %{
-        name: "Roster Person",
-        jersey_number: "00",
-        gender_role: "female_matching"
+      assert html =~ "Add players to #{team.name}"
+      assert has_element?(view, "#player-row-0")
+      assert has_element?(view, "#player-row-1")
+      assert has_element?(view, "#player-row-2")
+      refute has_element?(view, "#player-row-3")
+    end
+
+    test "renders the table layout with header columns", %{conn: conn} do
+      team = team_fixture()
+      {:ok, _view, html} = live(conn, ~p"/players/new?team_id=#{team.id}")
+
+      assert html =~ "<table"
+      assert html =~ "<thead"
+      assert html =~ ">First<"
+      assert html =~ ">Last<"
+      assert html =~ ">Gender<"
+      assert html =~ ">Jersey<"
+    end
+
+    test "add_row appends a fourth row", %{conn: conn} do
+      team = team_fixture()
+      {:ok, view, _html} = live(conn, ~p"/players/new?team_id=#{team.id}")
+
+      view |> element("button", "Add row") |> render_click()
+
+      assert has_element?(view, "#player-row-3")
+    end
+
+    test "remove_row drops a row but won't go below one", %{conn: conn} do
+      team = team_fixture()
+      {:ok, view, _html} = live(conn, ~p"/players/new?team_id=#{team.id}")
+
+      # Drop rows 0 and 1 — leaves row 2 alone.
+      view |> element("#player-row-0 button[aria-label='Remove row']") |> render_click()
+      refute has_element?(view, "#player-row-0")
+
+      view |> element("#player-row-1 button[aria-label='Remove row']") |> render_click()
+      refute has_element?(view, "#player-row-1")
+
+      assert has_element?(view, "#player-row-2")
+
+      # Last remaining row's remove button is disabled — clicking is a no-op.
+      assert view
+             |> element("#player-row-2 button[aria-label='Remove row']")
+             |> render() =~ "disabled"
+    end
+
+    test "set_gender flips the selected radio", %{conn: conn} do
+      team = team_fixture()
+      {:ok, view, _html} = live(conn, ~p"/players/new?team_id=#{team.id}")
+
+      # Initially no radio is checked on row 0.
+      row0_html = view |> element("#player-row-0") |> render()
+      refute row0_html =~ ~s(checked)
+
+      # Click the female-matching radio on row 0.
+      view
+      |> element("#player-row-0 input[value='female_matching']")
+      |> render_click()
+
+      row0_html = view |> element("#player-row-0") |> render()
+
+      assert row0_html =~ ~r/<input[^>]*value="female_matching"[^>]*\schecked\b/
+    end
+
+    test "save_all with two valid rows persists two players", %{conn: conn} do
+      team = team_fixture()
+      {:ok, view, _html} = live(conn, ~p"/players/new?team_id=#{team.id}")
+
+      # Set gender on rows 0 and 1.
+      view
+      |> element("#player-row-0 input[value='female_matching']")
+      |> render_click()
+
+      view
+      |> element("#player-row-1 input[value='male_matching']")
+      |> render_click()
+
+      # Submit names + jersey via the form. Row 2 stays blank — it should be dropped.
+      params = %{
+        "row" => %{
+          "0" => %{"first_name" => "Alice", "last_name" => "Aaron", "jersey_number" => "1"},
+          "1" => %{"first_name" => "Bob", "last_name" => "Brown", "jersey_number" => ""},
+          "2" => %{"first_name" => "", "last_name" => "", "jersey_number" => ""}
+        }
       }
 
-      assert {:ok, _index_live, html} =
-               form_live
-               |> form("#player-form", player: attrs)
-               |> render_submit()
-               |> follow_redirect(conn, ~p"/players")
+      {:ok, _view, _html} =
+        view
+        |> form("#bulk-player-form", params)
+        |> render_submit()
+        |> follow_redirect(conn, ~p"/teams/#{team}")
 
-      assert html =~ "Roster Person"
+      players = Teams.list_players_for_team(team)
+      assert length(players) == 2
+
+      names = Enum.map(players, &Player.display_name/1) |> Enum.sort()
+      assert names == ["Alice Aaron", "Bob Brown"]
+    end
+
+    test "save_all with all blank rows flashes error and doesn't navigate", %{conn: conn} do
+      team = team_fixture()
+      {:ok, view, _html} = live(conn, ~p"/players/new?team_id=#{team.id}")
+
+      params = %{
+        "row" => %{
+          "0" => %{"first_name" => "", "last_name" => "", "jersey_number" => ""},
+          "1" => %{"first_name" => "", "last_name" => "", "jersey_number" => ""},
+          "2" => %{"first_name" => "", "last_name" => "", "jersey_number" => ""}
+        }
+      }
+
+      html = view |> form("#bulk-player-form", params) |> render_submit()
+
+      assert html =~ "Add at least one player"
+      assert Teams.list_players_for_team(team) == []
+    end
+
+    test "save_all with row missing gender_role surfaces inline error and rolls back", %{
+      conn: conn
+    } do
+      team = team_fixture()
+      {:ok, view, _html} = live(conn, ~p"/players/new?team_id=#{team.id}")
+
+      # Row 0 gets names + gender. Row 1 gets names but no gender.
+      view
+      |> element("#player-row-0 input[value='female_matching']")
+      |> render_click()
+
+      params = %{
+        "row" => %{
+          "0" => %{"first_name" => "Alice", "last_name" => "Aaron", "jersey_number" => "1"},
+          "1" => %{"first_name" => "Bob", "last_name" => "Brown", "jersey_number" => ""},
+          "2" => %{"first_name" => "", "last_name" => "", "jersey_number" => ""}
+        }
+      }
+
+      html = view |> form("#bulk-player-form", params) |> render_submit()
+
+      assert html =~ "can&#39;t be blank"
+      # Multi rolled back — neither player persisted.
+      assert Teams.list_players_for_team(team) == []
+    end
+
+    test "save_all persists with nil jersey_number when omitted", %{conn: conn} do
+      team = team_fixture()
+      {:ok, view, _html} = live(conn, ~p"/players/new?team_id=#{team.id}")
+
+      view
+      |> element("#player-row-0 input[value='female_matching']")
+      |> render_click()
+
+      params = %{
+        "row" => %{
+          "0" => %{"first_name" => "Jersey", "last_name" => "Less", "jersey_number" => ""},
+          "1" => %{"first_name" => "", "last_name" => "", "jersey_number" => ""},
+          "2" => %{"first_name" => "", "last_name" => "", "jersey_number" => ""}
+        }
+      }
+
+      {:ok, _view, _html} =
+        view
+        |> form("#bulk-player-form", params)
+        |> render_submit()
+        |> follow_redirect(conn, ~p"/teams/#{team}")
+
+      [player] = Teams.list_players_for_team(team)
+      assert player.first_name == "Jersey"
+      assert player.last_name == "Less"
+      assert player.jersey_number == nil
+    end
+  end
+
+  describe "Edit form gender radios" do
+    test "renders both gender radios as native inputs", %{conn: conn} do
+      player = player_fixture()
+      {:ok, _view, html} = live(conn, ~p"/players/#{player}/edit")
+
+      # Both radios present, type=radio, with the FMP/MMP labels.
+      assert html =~ ~r/<input[^>]*type="radio"[^>]*value="female_matching"/
+      assert html =~ ~r/<input[^>]*type="radio"[^>]*value="male_matching"/
+      assert html =~ "FMP"
+      assert html =~ "MMP"
+    end
+
+    test "tapping the other gender radio updates form state", %{conn: conn} do
+      player = player_fixture(%{gender_role: :female_matching})
+      {:ok, view, _html} = live(conn, ~p"/players/#{player}/edit")
+
+      # Tap male-matching.
+      view |> element("input[value='male_matching']") |> render_click()
+
+      html = render(view)
+
+      assert html =~ ~r/<input[^>]*value="male_matching"[^>]*\schecked\b/
+    end
+
+    test "saving with the new gender_role persists", %{conn: conn} do
+      player = player_fixture(%{gender_role: :female_matching})
+      {:ok, view, _html} = live(conn, ~p"/players/#{player}/edit?return_to=show")
+
+      view |> element("input[value='male_matching']") |> render_click()
+
+      assert {:ok, _show_live, _html} =
+               view
+               |> form("#player-form",
+                 player: %{
+                   first_name: player.first_name,
+                   last_name: player.last_name,
+                   jersey_number: player.jersey_number,
+                   gender_role: "male_matching",
+                   team_id: player.team_id
+                 }
+               )
+               |> render_submit()
+               |> follow_redirect(conn, ~p"/players/#{player}")
+
+      assert Teams.get_player!(player.id).gender_role == :male_matching
     end
   end
 end

@@ -7,7 +7,8 @@ defmodule Ultistats.Teams.Player do
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   schema "players" do
-    field :name, :string
+    field :first_name, :string
+    field :last_name, :string
     field :jersey_number, :string
     field :gender_role, Ecto.Enum, values: @gender_roles
 
@@ -22,13 +23,24 @@ defmodule Ultistats.Teams.Player do
   """
   def gender_roles, do: @gender_roles
 
+  @doc """
+  Returns the player's display name — `"First Last"`. Used everywhere
+  the UI needs a single-string label for a player.
+  """
+  def display_name(%__MODULE__{first_name: first, last_name: last}) do
+    [first, last]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join(" ")
+  end
+
   @doc false
   def changeset(player, attrs) do
     player
-    |> cast(attrs, [:name, :jersey_number, :gender_role, :team_id])
-    |> validate_required([:name, :jersey_number, :gender_role, :team_id])
-    |> validate_length(:name, min: 1, max: 80)
-    |> validate_length(:jersey_number, min: 1, max: 4)
+    |> cast(attrs, [:first_name, :last_name, :jersey_number, :gender_role, :team_id])
+    |> validate_required([:first_name, :last_name, :gender_role, :team_id])
+    |> validate_length(:first_name, min: 1, max: 40)
+    |> validate_length(:last_name, min: 1, max: 40)
+    |> validate_length(:jersey_number, max: 4)
     |> assoc_constraint(:team)
   end
 end

@@ -4,6 +4,7 @@ defmodule UltistatsWeb.TeamLive.Show do
   import UltistatsWeb.UIComponents, only: [line_preset_card: 1]
 
   alias Ultistats.Teams
+  alias Ultistats.Teams.Player
 
   @impl true
   def render(assigns) do
@@ -47,7 +48,7 @@ defmodule UltistatsWeb.TeamLive.Show do
           >
             <div class="flex items-center gap-3 min-w-0">
               <span class="badge badge-neutral font-mono shrink-0">#{player.jersey_number}</span>
-              <span class="font-medium truncate">{player.name}</span>
+              <span class="font-medium truncate">{Player.display_name(player)}</span>
               <span class={["badge badge-sm", gender_badge_class(player.gender_role)]}>
                 {humanize_gender_role(player.gender_role)}
               </span>

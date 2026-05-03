@@ -142,6 +142,70 @@ defmodule UltistatsWeb.UIComponentsTest do
     end
   end
 
+  describe "gender_radio/1" do
+    defp gender_field(value) do
+      %Phoenix.HTML.FormField{
+        id: "player_gender_role",
+        name: "player[gender_role]",
+        errors: [],
+        field: :gender_role,
+        form: nil,
+        value: value
+      }
+    end
+
+    test "renders two native radio inputs with the same field name" do
+      html = render_component(&gender_radio/1, field: gender_field(nil))
+
+      assert html =~ ~r/<input[^>]*type="radio"[^>]*value="female_matching"/
+      assert html =~ ~r/<input[^>]*type="radio"[^>]*value="male_matching"/
+
+      # Both share the field name (so the browser groups them).
+      assert Regex.scan(~r/name="player\[gender_role\]"/, html) |> length() == 2
+    end
+
+    test "selected value's radio gets the native checked attribute" do
+      html = render_component(&gender_radio/1, field: gender_field("female_matching"))
+
+      assert html =~ ~r/<input[^>]*value="female_matching"[^>]*\schecked\b/
+      refute html =~ ~r/<input[^>]*value="male_matching"[^>]*\schecked\b/
+    end
+
+    test "with nil value, neither radio is checked" do
+      html = render_component(&gender_radio/1, field: gender_field(nil))
+      refute html =~ ~r/<input[^>]*type="radio"[^>]*\schecked\b/
+    end
+
+    test "wraps each radio in a <label> so the whole label is tappable" do
+      html = render_component(&gender_radio/1, field: gender_field(nil))
+
+      # Two <label> elements (one per option), each containing a radio.
+      assert Regex.scan(~r/<label[^>]*>/, html) |> length() == 2
+    end
+
+    test "labels honor the 44px tap target floor (min-h-11)" do
+      html = render_component(&gender_radio/1, field: gender_field(nil))
+      # min-h-11 lives on the label classes.
+      assert html =~ "min-h-11"
+    end
+
+    test "shows visible short labels (FMP/MMP) plus screen-reader text" do
+      html = render_component(&gender_radio/1, field: gender_field(nil))
+
+      assert html =~ ">FMP<"
+      assert html =~ ">MMP<"
+      assert html =~ "Female-matching"
+      assert html =~ "Male-matching"
+    end
+
+    test "groups the radios with role=radiogroup and an accessible label" do
+      html = render_component(&gender_radio/1, field: gender_field(nil))
+
+      assert html =~ ~s(role="radiogroup")
+      assert html =~ ~s(aria-label="Gender role")
+    end
+  end
+
   describe "timeline_event/1" do
     @event %{type: :goal, player_label: "#7 Sam", timestamp: "12:04", point_label: "P3"}
 

@@ -15,6 +15,7 @@ defmodule UltistatsWeb.GameLive.Show do
   use UltistatsWeb, :live_view
 
   alias Ultistats.{Games, Teams}
+  alias Ultistats.Teams.Player
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
@@ -217,7 +218,7 @@ defmodule UltistatsWeb.GameLive.Show do
           <div class="flex flex-wrap gap-2">
             <.player_chip
               :for={player <- @team_players}
-              player={%{number: player.jersey_number, name: player.name}}
+              player={%{number: player.jersey_number, name: Player.display_name(player)}}
               selected?={MapSet.member?(@selected_player_ids, player.id)}
               phx-click="toggle_player"
               phx-value-id={player.id}
@@ -254,7 +255,7 @@ defmodule UltistatsWeb.GameLive.Show do
         <div class="flex flex-wrap gap-2">
           <.player_chip
             :for={player <- @on_field}
-            player={%{number: player.jersey_number, name: player.name}}
+            player={%{number: player.jersey_number, name: Player.display_name(player)}}
             selected?={true}
             disabled?={true}
           />
@@ -416,7 +417,7 @@ defmodule UltistatsWeb.GameLive.Show do
           <div class="flex flex-wrap gap-2">
             <.player_chip
               :for={player <- @on_field}
-              player={%{number: player.jersey_number, name: player.name}}
+              player={%{number: player.jersey_number, name: Player.display_name(player)}}
               phx-click={picker_event_name(@mode)}
               phx-value-id={player.id}
             />
@@ -720,7 +721,7 @@ defmodule UltistatsWeb.GameLive.Show do
   defp player_label(lookup, player_id) do
     case Map.get(lookup, player_id) do
       nil -> "—"
-      player -> "##{player.jersey_number} #{player.name}"
+      player -> "##{player.jersey_number} #{Player.display_name(player)}"
     end
   end
 

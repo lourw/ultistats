@@ -5,12 +5,34 @@ defmodule UltistatsWeb.LinePresetLiveTest do
   import Ultistats.TeamsFixtures
 
   alias Ultistats.Teams
+  alias Ultistats.Teams.Player
 
   defp setup_team_with_roster(_) do
     team = team_fixture(%{name: "Home"})
-    p1 = player_fixture(%{team_id: team.id, jersey_number: "7", name: "Avery"})
-    p2 = player_fixture(%{team_id: team.id, jersey_number: "11", name: "Casey"})
-    p3 = player_fixture(%{team_id: team.id, jersey_number: "23", name: "Drew"})
+
+    p1 =
+      player_fixture(%{
+        team_id: team.id,
+        jersey_number: "7",
+        first_name: "Avery",
+        last_name: "Adams"
+      })
+
+    p2 =
+      player_fixture(%{
+        team_id: team.id,
+        jersey_number: "11",
+        first_name: "Casey",
+        last_name: "Cole"
+      })
+
+    p3 =
+      player_fixture(%{
+        team_id: team.id,
+        jersey_number: "23",
+        first_name: "Drew",
+        last_name: "Davis"
+      })
 
     %{team: team, players: [p1, p2, p3]}
   end
@@ -55,9 +77,9 @@ defmodule UltistatsWeb.LinePresetLiveTest do
       {:ok, _form_live, html} = live(conn, ~p"/line_presets/new?team_id=#{team.id}")
 
       assert html =~ "Roster (0 selected of 3)"
-      assert html =~ p1.name
-      assert html =~ p2.name
-      assert html =~ p3.name
+      assert html =~ Player.display_name(p1)
+      assert html =~ Player.display_name(p2)
+      assert html =~ Player.display_name(p3)
     end
 
     test "toggling a chip updates the selection counter", %{
