@@ -129,8 +129,10 @@ else
       soft_cap_minutes: nil,
       hard_cap_minutes: nil,
       timeouts_per_half: 2,
+      line_size: 7,
       gender_ratio_rule: :endzone,
-      default_starting_ratio: :four_men_three_women
+      starting_male_count: 4,
+      starting_female_count: 3
     })
 
   {:ok, _} =
@@ -145,8 +147,10 @@ else
       soft_cap_minutes: 50,
       hard_cap_minutes: 60,
       timeouts_per_half: 1,
+      line_size: 7,
       gender_ratio_rule: :alternating,
-      default_starting_ratio: :four_men_three_women
+      starting_male_count: 4,
+      starting_female_count: 3
     })
 
   IO.puts(
@@ -230,8 +234,8 @@ else
       soft_cap_minutes: nil,
       hard_cap_minutes: nil,
       timeouts_per_half: 2,
-      gender_ratio_rule: :none,
-      default_starting_ratio: nil
+      line_size: 7,
+      gender_ratio_rule: :none
     })
 
   IO.puts("Seeded: #{team.name} · 14 male-matching members · 2 line presets · 1 :none ruleset")

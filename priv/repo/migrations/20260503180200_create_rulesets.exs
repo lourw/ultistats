@@ -16,6 +16,8 @@ defmodule Ultistats.Repo.Migrations.CreateRulesets do
       # kind / gender_ratio_rule / default_starting_ratio are Ecto.Enum
       # at the app layer. Stored as plain :string so migrations stay
       # adapter-portable across SQLite and Postgres.
+      # Note: `:default_starting_ratio` is dropped in a later migration
+      # (`20260503212315_replace_starting_ratio_with_counts`).
       add :kind, :string, null: false
       add :archived_at, :utc_datetime
 

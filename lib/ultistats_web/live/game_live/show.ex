@@ -90,7 +90,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
   # Refreshes everything the between-points line picker reads:
   #   * `:next_point_sequence`            — 1-based number of the upcoming point.
-  #   * `:required_ratio`                 — atom or nil from the ruleset.
+  #   * `:required_ratio`                 — %{m, f} map or nil from the ruleset.
   #   * `:starting_possession_preview`    — :ours / :theirs (O-line vs D-line).
   #   * `:ratio_violation`                — nil, or %{actual:, required:} on mismatch.
   # Called from mount + every state transition that flips between
@@ -100,10 +100,17 @@ defmodule UltistatsWeb.GameLive.Show do
     next_seq = length_of_points(game) + 1
     required = Games.required_ratio_for_point(game, next_seq)
     starting = Games.starting_possession_for_next_point(game)
+    required_line_size = Games.line_size_for(game)
 
     selected = selected_memberships(socket.assigns.team_players, socket.assigns.selected_user_ids)
     violation = Games.line_ratio_violation(selected, required)
     points_played = Games.points_played_by_user(game)
+
+    line_size_violation =
+      Games.line_size_violation(
+        socket.assigns.selected_user_ids |> MapSet.to_list(),
+        required_line_size
+      )
 
     socket
     |> assign(:next_point_sequence, next_seq)
@@ -111,6 +118,8 @@ defmodule UltistatsWeb.GameLive.Show do
     |> assign(:starting_possession_preview, starting)
     |> assign(:ratio_violation, violation)
     |> assign(:points_played_by_user, points_played)
+    |> assign(:required_line_size, required_line_size)
+    |> assign(:line_size_violation, line_size_violation)
   end
 
   defp selected_memberships(team_players, selected_ids) do
@@ -180,6 +189,7 @@ defmodule UltistatsWeb.GameLive.Show do
               points_played_by_user={@points_played_by_user}
               sort={@line_picker_sort}
               split_by_position?={@split_by_position?}
+              line_size_violation={@line_size_violation}
             />
         <% end %>
 
@@ -188,6 +198,7 @@ defmodule UltistatsWeb.GameLive.Show do
           current_point={@current_point}
           selected_user_ids={@selected_user_ids}
           team_players={@team_players}
+          required_line_size={@required_line_size}
           disconnected?={@disconnected?}
         />
       </div>
@@ -319,6 +330,14 @@ defmodule UltistatsWeb.GameLive.Show do
         >
           <.icon name="hero-list-bullet" class="size-4" />
         </.link>
+        <.link
+          :if={@game.ruleset_id}
+          navigate={~p"/rulesets/#{@game.ruleset_id}"}
+          aria-label="View ruleset"
+          class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <.icon name="hero-document-text" class="size-4" />
+        </.link>
       </div>
     </div>
     """
@@ -335,6 +354,7 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :points_played_by_user, :map, required: true
   attr :sort, :atom, required: true
   attr :split_by_position?, :boolean, required: true
+  attr :line_size_violation, :any, required: true
 
   defp between_points_view(assigns) do
     ~H"""
@@ -360,6 +380,15 @@ defmodule UltistatsWeb.GameLive.Show do
       >
         <.icon name="hero-exclamation-triangle-solid" class="size-4 shrink-0" />
         <span>{ratio_mismatch_text(@ratio_violation)}</span>
+      </div>
+
+      <div
+        :if={@line_size_violation}
+        class="-mx-4 flex items-center gap-2 px-4 py-1.5 text-xs font-medium bg-warning/10 text-warning"
+        role="status"
+      >
+        <.icon name="hero-exclamation-triangle-solid" class="size-4 shrink-0" />
+        <span>{line_size_mismatch_text(@line_size_violation)}</span>
       </div>
 
       <details :if={@line_presets != []} class="group">
@@ -1206,6 +1235,7 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :current_point, :any, required: true
   attr :selected_user_ids, :any, required: true
   attr :team_players, :list, required: true
+  attr :required_line_size, :integer, required: true
   attr :disconnected?, :boolean, required: true
 
   defp bottom_action_bar(assigns) do
@@ -1218,7 +1248,7 @@ defmodule UltistatsWeb.GameLive.Show do
         <button
           type="button"
           phx-click="start_point"
-          disabled={MapSet.size(@selected_user_ids) == 0 or @disconnected?}
+          disabled={MapSet.size(@selected_user_ids) != @required_line_size or @disconnected?}
           class={[
             "w-full min-h-14 rounded-xl px-4 py-3",
             "text-lg font-semibold",
@@ -1231,9 +1261,38 @@ defmodule UltistatsWeb.GameLive.Show do
           ]}
         >
           <span>Start point</span>
-          <span class="text-sm font-medium tabular-nums opacity-90" aria-label="selected of required">
-            {MapSet.size(@selected_user_ids)} / 7
+          <span class="text-sm font-medium tabular-nums opacity-90 inline-flex items-center gap-2">
+            <span>{MapSet.size(@selected_user_ids)} / {@required_line_size}</span>
+            <span aria-hidden="true">♂</span> {selected_role_count(
+              @selected_user_ids,
+              @team_players,
+              :male_matching
+            )}
+            <span aria-hidden="true">♀</span> {selected_role_count(
+              @selected_user_ids,
+              @team_players,
+              :female_matching
+            )}
           </span>
+        </button>
+        <button
+          type="button"
+          phx-click="finish_game"
+          data-confirm="Finish this game? You can't add more points after."
+          disabled={@disconnected?}
+          class={[
+            "mt-2 w-full min-h-11 rounded-xl px-4 py-2",
+            "inline-flex items-center justify-center gap-2",
+            "text-sm font-medium",
+            "bg-base-100 border border-base-300 text-base-content",
+            "transition-colors motion-reduce:transition-none",
+            "active:scale-[0.99] active:bg-base-200 motion-reduce:active:scale-100",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+            "disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+          ]}
+        >
+          <.icon name="hero-flag" class="size-4" />
+          <span>Finish game</span>
         </button>
       </div>
     </div>
@@ -1319,8 +1378,24 @@ defmodule UltistatsWeb.GameLive.Show do
          |> assign(:selected_preset_id, nil)
          |> assign_line_picker_state()}
 
+      {:error, :wrong_line_size} ->
+        required = Games.line_size_for(socket.assigns.game)
+
+        {:noreply,
+         put_flash(socket, :error, "Pick exactly #{required} players to start the point.")}
+
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Could not start point — pick at least one player.")}
+    end
+  end
+
+  def handle_event("finish_game", _params, socket) do
+    case Games.end_game(socket.assigns.game) do
+      {:ok, finished} ->
+        {:noreply, push_navigate(socket, to: ~p"/games/#{finished.id}/summary")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not finish game.")}
     end
   end
 
@@ -1827,6 +1902,10 @@ defmodule UltistatsWeb.GameLive.Show do
     "Ratio mismatch — selected #{m}M / #{f}F, ruleset requires #{rm}M / #{rf}F."
   end
 
+  defp line_size_mismatch_text(%{actual: actual, required: required}) do
+    "Line size mismatch — selected #{actual}, ruleset requires #{required}."
+  end
+
   # Possession at the start of the point comes from the pull/receive rules
   # (`Games.starting_possession/2`); per-throw events flip per the table
   # in `docs/DESIGN.md`. Calls (`:pick`, `:foul`) leave possession alone.
@@ -1851,6 +1930,13 @@ defmodule UltistatsWeb.GameLive.Show do
 
   defp role_label(:male_matching), do: "Male-matching"
   defp role_label(:female_matching), do: "Female-matching"
+
+  defp selected_role_count(selected_ids, members, role) do
+    Enum.count(
+      members,
+      &(&1.user.gender_role == role and MapSet.member?(selected_ids, &1.user_id))
+    )
+  end
 
   attr :role, :atom, required: true, values: [:female_matching, :male_matching]
   attr :players, :list, required: true

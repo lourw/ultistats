@@ -13,12 +13,30 @@ defmodule Ultistats.GamesFixtures do
   @doc """
   Generate a game. Creates a team automatically if `team_id` is not
   given.
+
+  Accepts a convenience `:line_size` attr — when provided, synthesizes a
+  `:game_instance` ruleset on the same team carrying that line size and
+  attaches it via `:ruleset_id`. This lets terse test setups (1 or 2
+  players) skip the otherwise-mandatory 7-player line-size enforcement
+  in `Games.start_point/2`.
   """
   def game_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 
     attrs =
       Map.put_new_lazy(attrs, :team_id, fn -> team_fixture().id end)
+
+    {line_size, attrs} = Map.pop(attrs, :line_size)
+
+    attrs =
+      if is_integer(line_size) and not Map.has_key?(attrs, :ruleset_id) do
+        ruleset =
+          Ultistats.GamesFixtures.line_size_ruleset(attrs.team_id, line_size)
+
+        Map.put(attrs, :ruleset_id, ruleset.id)
+      else
+        attrs
+      end
 
     {:ok, game} =
       attrs
@@ -32,6 +50,27 @@ defmodule Ultistats.GamesFixtures do
       |> Games.create_game()
 
     game
+  end
+
+  @doc """
+  Inserts a `:game_instance` ruleset on `team_id` carrying `line_size`,
+  USAU defaults otherwise. Used by `game_fixture/1` when a `:line_size`
+  shortcut is requested.
+  """
+  def line_size_ruleset(team_id, line_size) when is_integer(line_size) do
+    {:ok, ruleset} =
+      Ultistats.Games.create_ruleset(%{
+        team_id: team_id,
+        kind: :game_instance,
+        name: nil,
+        score_cap: 15,
+        halftime_target: 8,
+        timeouts_per_half: 2,
+        line_size: line_size,
+        gender_ratio_rule: :none
+      })
+
+    ruleset
   end
 
   @doc """

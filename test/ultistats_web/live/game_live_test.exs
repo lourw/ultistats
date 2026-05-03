@@ -171,7 +171,7 @@ defmodule UltistatsWeb.GameLiveTest do
       conn: conn,
       user: user
     } do
-      team = team_fixture()
+      team = team_fixture(%{division: :mixed})
       add_to_team(team, user)
 
       template =
@@ -180,7 +180,11 @@ defmodule UltistatsWeb.GameLiveTest do
           name: "Hat League",
           score_cap: 13,
           halftime_target: 7,
-          timeouts_per_half: 1
+          timeouts_per_half: 1,
+          division: :mixed,
+          gender_ratio_rule: :endzone,
+          starting_male_count: 4,
+          starting_female_count: 3
         })
 
       {:ok, live, _html} = live(conn, ~p"/games/new?team_id=#{team.id}")
@@ -205,7 +209,8 @@ defmodule UltistatsWeb.GameLiveTest do
                    "halftime_target" => "7",
                    "timeouts_per_half" => "1",
                    "gender_ratio_rule" => "endzone",
-                   "default_starting_ratio" => "four_men_three_women"
+                   "starting_male_count" => "4",
+                   "starting_female_count" => "3"
                  }
                )
                |> render_submit()
@@ -351,6 +356,36 @@ defmodule UltistatsWeb.GameLiveTest do
       assert html =~ "They have the disc"
 
       assert Repo.aggregate(Point, :count, :id) == 1
+    end
+
+    test "Start point is disabled when count != line_size and enabled when count == line_size",
+         %{conn: conn, game: game, players: players} do
+      {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
+
+      # 0 selected — disabled, hook returns flash + inserts no Point.
+      before = Repo.aggregate(Point, :count, :id)
+      assert has_element?(live, "button[phx-click='start_point'][disabled]")
+
+      render_hook(live, "start_point", %{})
+      assert Repo.aggregate(Point, :count, :id) == before
+      assert render(live) =~ "Pick exactly 7 players to start the point."
+
+      # Pick 6 — still wrong, still disabled, still no Point inserted.
+      Enum.each(Enum.take(players, 6), fn p ->
+        live |> element("button[phx-value-id='#{p.user_id}']") |> render_click()
+      end)
+
+      assert has_element?(live, "button[phx-click='start_point'][disabled]")
+      render_hook(live, "start_point", %{})
+      assert Repo.aggregate(Point, :count, :id) == before
+
+      # Pick the 7th — button enables and starting the point inserts.
+      live |> element("button[phx-value-id='#{Enum.at(players, 6).user_id}']") |> render_click()
+
+      refute has_element?(live, "button[phx-click='start_point'][disabled]")
+
+      live |> element("button[phx-click='start_point']") |> render_click()
+      assert Repo.aggregate(Point, :count, :id) == before + 1
     end
   end
 
@@ -1147,7 +1182,7 @@ defmodule UltistatsWeb.GameLiveTest do
       team = team_fixture()
       add_to_team(team, user)
       players = build_players(team, 3)
-      game = game_fixture(%{team_id: team.id, opponent_name: "Stormcrows"})
+      game = game_fixture(%{team_id: team.id, opponent_name: "Stormcrows", line_size: 3})
       %{team: team, players: players, game: game}
     end
 

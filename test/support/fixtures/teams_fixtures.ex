@@ -119,10 +119,16 @@ defmodule Ultistats.TeamsFixtures do
   @doc """
   Generate a ruleset. Creates a team automatically if `team_id` is not
   given. Defaults to a `:template` row with USAU-standard values.
+
+  When the caller overrides `:line_size` away from 7 without supplying
+  starting gender counts, we drop the gender-ratio rule to `:none` (and
+  clear the starting counts) so the schema's "starting_male + starting_female
+  must equal line_size" check stays satisfied.
   """
   def ruleset_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
     attrs = Map.put_new_lazy(attrs, :team_id, fn -> team_fixture().id end)
+    attrs = ratio_defaults_for_line_size(attrs)
 
     {:ok, ruleset} =
       attrs
@@ -135,11 +141,31 @@ defmodule Ultistats.TeamsFixtures do
         soft_cap_minutes: nil,
         hard_cap_minutes: nil,
         timeouts_per_half: 2,
+        line_size: 7,
         gender_ratio_rule: :endzone,
-        default_starting_ratio: :four_men_three_women
+        starting_male_count: 4,
+        starting_female_count: 3
       })
       |> Ultistats.Games.create_ruleset()
 
     ruleset
+  end
+
+  defp ratio_defaults_for_line_size(attrs) do
+    has_counts? =
+      Map.has_key?(attrs, :starting_male_count) or
+        Map.has_key?(attrs, :starting_female_count)
+
+    has_rule? = Map.has_key?(attrs, :gender_ratio_rule)
+    line_size = Map.get(attrs, :line_size)
+
+    if not has_counts? and not has_rule? and is_integer(line_size) and line_size != 7 do
+      attrs
+      |> Map.put(:gender_ratio_rule, :none)
+      |> Map.put(:starting_male_count, nil)
+      |> Map.put(:starting_female_count, nil)
+    else
+      attrs
+    end
   end
 end

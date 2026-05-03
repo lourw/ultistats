@@ -250,7 +250,8 @@ defmodule Ultistats.GamesTest do
           team_id: team.id,
           name: "No halftime",
           score_cap: 15,
-          halftime_target: nil
+          halftime_target: nil,
+          line_size: 1
         })
 
       {:ok, game} =
@@ -276,7 +277,8 @@ defmodule Ultistats.GamesTest do
           team_id: team.id,
           name: "Timed only",
           score_cap: nil,
-          hard_cap_minutes: 60
+          hard_cap_minutes: 60,
+          line_size: 1
         })
 
       {:ok, game} =
@@ -313,14 +315,14 @@ defmodule Ultistats.GamesTest do
   describe "start_point/2" do
     setup do
       team = team_fixture()
-      game = game_fixture(team_id: team.id)
       p1 = member_fixture(team_id: team.id, jersey_number: "1")
       p2 = member_fixture(team_id: team.id, jersey_number: "2")
-      %{team: team, game: game, p1: p1, p2: p2}
+      %{team: team, p1: p1, p2: p2}
     end
 
-    test "starts at sequence 1 and increments", %{game: game, p1: p1, p2: p2} do
-      assert {:ok, pt1} = Games.start_point(game, [p1.id, p2.id])
+    test "starts at sequence 1 and increments", %{team: team, p1: p1, p2: p2} do
+      game_two = game_fixture(team_id: team.id, line_size: 2)
+      assert {:ok, pt1} = Games.start_point(game_two, [p1.id, p2.id])
       assert pt1.sequence == 1
       assert pt1.scoring_team == nil
       assert pt1.our_line_snapshot == %{"user_ids" => [p1.id, p2.id]}
@@ -328,11 +330,13 @@ defmodule Ultistats.GamesTest do
       # End point 1 so it's no longer the active point.
       {:ok, _} = Games.end_point(pt1, :ours)
 
-      assert {:ok, pt2} = Games.start_point(game, [p1.id])
-      assert pt2.sequence == 2
+      game_one = game_fixture(team_id: team.id, line_size: 1)
+      assert {:ok, pt2} = Games.start_point(game_one, [p1.id])
+      assert pt2.sequence == 1
     end
 
-    test "filters out player ids from another team", %{game: game, p1: p1} do
+    test "filters out player ids from another team", %{team: team, p1: p1} do
+      game = game_fixture(team_id: team.id, line_size: 1)
       other_team = team_fixture()
       stranger = member_fixture(team_id: other_team.id, jersey_number: "9")
 
@@ -340,26 +344,43 @@ defmodule Ultistats.GamesTest do
       assert pt.our_line_snapshot["user_ids"] == [p1.id]
     end
 
-    test "all-foreign player_ids yields a changeset error", %{game: game} do
+    test "all-foreign player_ids returns :wrong_line_size", %{team: team} do
+      game = game_fixture(team_id: team.id, line_size: 1)
       other_team = team_fixture()
       stranger = member_fixture(team_id: other_team.id, jersey_number: "9")
 
-      assert {:error, changeset} = Games.start_point(game, [stranger.id])
-      assert %{our_line_snapshot: [_msg]} = errors_on(changeset)
+      assert {:error, :wrong_line_size} = Games.start_point(game, [stranger.id])
     end
 
-    test "persists snapshot as a map under string key", %{game: game, p1: p1} do
+    test "persists snapshot as a map under string key", %{team: team, p1: p1} do
+      game = game_fixture(team_id: team.id, line_size: 1)
       assert {:ok, pt} = Games.start_point(game, [p1.id])
       reloaded = Repo.get!(Point, pt.id)
       assert is_map(reloaded.our_line_snapshot)
       assert reloaded.our_line_snapshot["user_ids"] == [p1.id]
+    end
+
+    test "wrong line size returns {:error, :wrong_line_size} and inserts no point",
+         %{team: team, p1: p1, p2: p2} do
+      game = game_fixture(team_id: team.id, line_size: 7)
+      before = Repo.aggregate(Point, :count, :id)
+
+      assert {:error, :wrong_line_size} = Games.start_point(game, [p1.id, p2.id])
+      assert Repo.aggregate(Point, :count, :id) == before
+    end
+
+    test "exactly the ruleset's line_size succeeds", %{team: team, p1: p1, p2: p2} do
+      game = game_fixture(team_id: team.id, line_size: 2)
+
+      assert {:ok, %Point{} = pt} = Games.start_point(game, [p1.id, p2.id])
+      assert pt.our_line_snapshot["user_ids"] == [p1.id, p2.id]
     end
   end
 
   describe "end_point/2" do
     setup do
       team = team_fixture()
-      game = game_fixture(team_id: team.id)
+      game = game_fixture(team_id: team.id, line_size: 1)
       player = member_fixture(team_id: team.id)
       {:ok, point} = Games.start_point(game, [player.id])
       %{game: game, point: point}
@@ -385,7 +406,7 @@ defmodule Ultistats.GamesTest do
   describe "current_point/1" do
     setup do
       team = team_fixture()
-      game = game_fixture(team_id: team.id)
+      game = game_fixture(team_id: team.id, line_size: 1)
       player = member_fixture(team_id: team.id)
       %{team: team, game: game, player: player}
     end
@@ -428,7 +449,7 @@ defmodule Ultistats.GamesTest do
   describe "record_throw/4" do
     setup do
       team = team_fixture()
-      game = game_fixture(team_id: team.id)
+      game = game_fixture(team_id: team.id, line_size: 2)
       passer = member_fixture(team_id: team.id, jersey_number: "1")
       receiver = member_fixture(team_id: team.id, jersey_number: "2")
       {:ok, point} = Games.start_point(game, [passer.id, receiver.id])
@@ -559,7 +580,7 @@ defmodule Ultistats.GamesTest do
   describe "update_event/2" do
     setup do
       team = team_fixture()
-      game = game_fixture(team_id: team.id)
+      game = game_fixture(team_id: team.id, line_size: 3)
       passer = member_fixture(team_id: team.id, jersey_number: "1")
       receiver = member_fixture(team_id: team.id, jersey_number: "2")
       other_player = member_fixture(team_id: team.id, jersey_number: "9")
@@ -644,7 +665,7 @@ defmodule Ultistats.GamesTest do
   describe "soft_delete_event/1 + events_for_point/1" do
     setup do
       team = team_fixture()
-      game = game_fixture(team_id: team.id)
+      game = game_fixture(team_id: team.id, line_size: 1)
       player = member_fixture(team_id: team.id)
       {:ok, point} = Games.start_point(game, [player.id])
       %{point: point, player: player}
@@ -688,7 +709,7 @@ defmodule Ultistats.GamesTest do
   describe "score/1, halftime?/1, hard_cap_reached?/1" do
     setup do
       team = team_fixture()
-      game = game_fixture(team_id: team.id, format: :usau_standard)
+      game = game_fixture(team_id: team.id, format: :usau_standard, line_size: 1)
       player = member_fixture(team_id: team.id)
       %{team: team, game: game, player: player}
     end
@@ -744,7 +765,7 @@ defmodule Ultistats.GamesTest do
   describe "cascade behavior" do
     test "deleting a game deletes its points and events" do
       team = team_fixture()
-      game = game_fixture(team_id: team.id)
+      game = game_fixture(team_id: team.id, line_size: 1)
       player = member_fixture(team_id: team.id)
       {:ok, point} = Games.start_point(game, [player.id])
       {:ok, event} = Games.record_throw(point, :goal, player.id, player.id)
@@ -757,7 +778,7 @@ defmodule Ultistats.GamesTest do
 
     test "deleting a user nilifies passer_user_id and receiver_user_id on existing events" do
       team = team_fixture()
-      game = game_fixture(team_id: team.id)
+      game = game_fixture(team_id: team.id, line_size: 2)
       player = member_fixture(team_id: team.id)
       other = member_fixture(team_id: team.id, jersey_number: "9")
       {:ok, point} = Games.start_point(game, [player.id, other.id])
@@ -774,7 +795,6 @@ defmodule Ultistats.GamesTest do
   describe "summary_for_game/1" do
     setup do
       team = team_fixture()
-      game = game_fixture(team_id: team.id)
 
       # Numeric jerseys: 3, 7, 11; plus a nil-jersey player (sorts last).
       pa = member_fixture(team_id: team.id, first_name: "Ada", last_name: "A", jersey_number: "7")
@@ -785,10 +805,11 @@ defmodule Ultistats.GamesTest do
       pc = member_fixture(team_id: team.id, first_name: "Cal", last_name: "C", jersey_number: "3")
       pd = member_fixture(team_id: team.id, first_name: "Dee", last_name: "D", jersey_number: nil)
 
-      %{team: team, game: game, pa: pa, pb: pb, pc: pc, pd: pd}
+      %{team: team, pa: pa, pb: pb, pc: pc, pd: pd}
     end
 
-    test "empty game returns 0/0 score and all-zero rows", %{game: game} do
+    test "empty game returns 0/0 score and all-zero rows", %{team: team} do
+      game = game_fixture(team_id: team.id)
       summary = Games.summary_for_game(game)
       assert summary.score == %{ours: 0, theirs: 0}
       assert length(summary.players) == 4
@@ -804,7 +825,8 @@ defmodule Ultistats.GamesTest do
       end)
     end
 
-    test "tallies a goal as scorer goal + assister assist", %{game: game, pa: pa, pb: pb} do
+    test "tallies a goal as scorer goal + assister assist", %{team: team, pa: pa, pb: pb} do
+      game = game_fixture(team_id: team.id, line_size: 2)
       {:ok, point} = Games.start_point(game, [pa.id, pb.id])
       {:ok, _} = Games.record_throw(point, :goal, pb.id, pa.id)
       {:ok, _} = Games.end_point(point, :ours)
@@ -824,7 +846,8 @@ defmodule Ultistats.GamesTest do
       assert b_row.points_played == 1
     end
 
-    test "tallies catches for the receiver of a :catch", %{game: game, pa: pa, pb: pb} do
+    test "tallies catches for the receiver of a :catch", %{team: team, pa: pa, pb: pb} do
+      game = game_fixture(team_id: team.id, line_size: 2)
       {:ok, point} = Games.start_point(game, [pa.id, pb.id])
       {:ok, _} = Games.record_throw(point, :catch, pa.id, pb.id)
       {:ok, _} = Games.end_point(point, :theirs)
@@ -838,10 +861,11 @@ defmodule Ultistats.GamesTest do
     end
 
     test "a :drop counts as a drop on the receiver and a throwaway on the passer", %{
-      game: game,
+      team: team,
       pa: pa,
       pb: pb
     } do
+      game = game_fixture(team_id: team.id, line_size: 2)
       {:ok, point} = Games.start_point(game, [pa.id, pb.id])
       {:ok, _} = Games.record_throw(point, :drop, pa.id, pb.id)
       {:ok, _} = Games.end_point(point, :theirs)
@@ -854,7 +878,8 @@ defmodule Ultistats.GamesTest do
       assert a_row.throwaways == 1
     end
 
-    test "a :throwaway counts as a throwaway on the passer", %{game: game, pa: pa} do
+    test "a :throwaway counts as a throwaway on the passer", %{team: team, pa: pa} do
+      game = game_fixture(team_id: team.id, line_size: 1)
       {:ok, point} = Games.start_point(game, [pa.id])
       {:ok, _} = Games.record_throw(point, :throwaway, pa.id, nil)
       {:ok, _} = Games.end_point(point, :theirs)
@@ -864,7 +889,8 @@ defmodule Ultistats.GamesTest do
       assert a_row.throwaways == 1
     end
 
-    test "a :block counts as a block on the blocker", %{game: game, pa: pa} do
+    test "a :block counts as a block on the blocker", %{team: team, pa: pa} do
+      game = game_fixture(team_id: team.id, line_size: 1)
       {:ok, point} = Games.start_point(game, [pa.id])
       {:ok, _} = Games.record_throw(point, :block, pa.id, nil)
       {:ok, _} = Games.end_point(point, :ours)
@@ -874,7 +900,8 @@ defmodule Ultistats.GamesTest do
       assert a_row.blocks == 1
     end
 
-    test "calls and opponent events do not move per-player counters", %{game: game, pa: pa} do
+    test "calls and opponent events do not move per-player counters", %{team: team, pa: pa} do
+      game = game_fixture(team_id: team.id, line_size: 1)
       {:ok, point} = Games.start_point(game, [pa.id])
       {:ok, _} = Games.record_throw(point, :pick, nil, nil)
       {:ok, _} = Games.record_throw(point, :foul, nil, nil)
@@ -891,7 +918,8 @@ defmodule Ultistats.GamesTest do
       assert a_row.blocks == 0
     end
 
-    test "soft-deleted events drop out of the tally", %{game: game, pa: pa} do
+    test "soft-deleted events drop out of the tally", %{team: team, pa: pa} do
+      game = game_fixture(team_id: team.id, line_size: 1)
       {:ok, point} = Games.start_point(game, [pa.id])
       {:ok, event} = Games.record_throw(point, :goal, pa.id, pa.id)
       {:ok, _} = Games.end_point(point, :ours)
@@ -905,15 +933,22 @@ defmodule Ultistats.GamesTest do
     end
 
     test "points_played counts snapshot membership even with no events", %{
-      game: game,
+      team: team,
       pa: pa,
       pb: pb
     } do
+      game = game_fixture(team_id: team.id, line_size: 2)
       {:ok, point1} = Games.start_point(game, [pa.id, pb.id])
       {:ok, _} = Games.end_point(point1, :theirs)
 
-      {:ok, point2} = Games.start_point(game, [pa.id])
-      {:ok, _} = Games.end_point(point2, :theirs)
+      # Point 2 needs a different line size — bypass start_point's
+      # enforcement by inserting via point_fixture.
+      _point2 =
+        point_fixture(
+          game_id: game.id,
+          our_line_snapshot: %{"user_ids" => [pa.id]},
+          scoring_team: :theirs
+        )
 
       summary = Games.summary_for_game(game)
       a_row = Enum.find(summary.players, &(&1.user.id == pa.id))
@@ -927,9 +962,9 @@ defmodule Ultistats.GamesTest do
 
     test "cross-team ids in a snapshot are ignored defensively", %{
       team: team,
-      game: game,
       pa: pa
     } do
+      game = game_fixture(team_id: team.id)
       other_team = team_fixture()
       stranger = member_fixture(team_id: other_team.id, jersey_number: "99")
 
@@ -945,18 +980,16 @@ defmodule Ultistats.GamesTest do
       refute Enum.any?(summary.players, &(&1.user.id == stranger.id))
       a_row = Enum.find(summary.players, &(&1.user.id == pa.id))
       assert a_row.points_played == 1
-
-      # silence unused
-      _ = team
     end
 
     test "players sort by jersey ascending; nil jersey last", %{
-      game: game,
+      team: team,
       pa: pa,
       pb: pb,
       pc: pc,
       pd: pd
     } do
+      game = game_fixture(team_id: team.id)
       summary = Games.summary_for_game(game)
       ids_in_order = Enum.map(summary.players, & &1.user.id)
       # Numeric: 3 (pc), 7 (pa), 11 (pb), then nil-jersey pd.
@@ -1007,18 +1040,22 @@ defmodule Ultistats.GamesTest do
                  score_cap: 15,
                  halftime_target: 8,
                  timeouts_per_half: 2,
-                 gender_ratio_rule: :endzone
+                 line_size: 7,
+                 gender_ratio_rule: :endzone,
+                 starting_male_count: 4,
+                 starting_female_count: 3
                })
 
       assert r.kind == :template
     end
 
-    test "create_ruleset/1 requires team, kind, timeouts_per_half, gender_ratio_rule" do
+    test "create_ruleset/1 requires team, kind, timeouts_per_half, line_size, gender_ratio_rule" do
       assert {:error, changeset} = Games.create_ruleset(%{})
       errors = errors_on(changeset)
 
       assert errors[:team_id]
       assert errors[:timeouts_per_half]
+      assert errors[:line_size]
       assert errors[:gender_ratio_rule]
     end
 
@@ -1032,7 +1069,10 @@ defmodule Ultistats.GamesTest do
                  score_cap: nil,
                  hard_cap_minutes: nil,
                  timeouts_per_half: 2,
-                 gender_ratio_rule: :endzone
+                 line_size: 7,
+                 gender_ratio_rule: :endzone,
+                 starting_male_count: 4,
+                 starting_female_count: 3
                })
 
       assert %{score_cap: [msg | _]} = errors_on(changeset)
@@ -1049,7 +1089,10 @@ defmodule Ultistats.GamesTest do
                  name: nil,
                  score_cap: 15,
                  timeouts_per_half: 2,
-                 gender_ratio_rule: :endzone
+                 line_size: 7,
+                 gender_ratio_rule: :endzone,
+                 starting_male_count: 4,
+                 starting_female_count: 3
                })
 
       assert %{name: ["can't be blank"]} = errors_on(template_cs)
@@ -1061,7 +1104,10 @@ defmodule Ultistats.GamesTest do
                  name: nil,
                  score_cap: 15,
                  timeouts_per_half: 2,
-                 gender_ratio_rule: :endzone
+                 line_size: 7,
+                 gender_ratio_rule: :endzone,
+                 starting_male_count: 4,
+                 starting_female_count: 3
                })
     end
 

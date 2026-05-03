@@ -234,7 +234,8 @@ defmodule UltistatsWeb.DashboardLiveTest do
         game_fixture(%{
           team_id: team.id,
           opponent_name: "Other Squad",
-          status: :in_progress
+          status: :in_progress,
+          line_size: 2
         })
 
       {:ok, point} = Games.start_point(game, [passer_m.user_id, receiver_m.user_id])

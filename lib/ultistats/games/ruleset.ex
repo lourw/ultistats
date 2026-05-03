@@ -4,7 +4,6 @@ defmodule Ultistats.Games.Ruleset do
 
   @kinds [:template, :game_instance]
   @gender_ratio_rules [:endzone, :alternating, :fixed, :none]
-  @starting_ratios [:four_men_three_women, :three_men_four_women]
   @divisions [:open, :womens, :mixed]
 
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -20,8 +19,10 @@ defmodule Ultistats.Games.Ruleset do
     field :soft_cap_minutes, :integer
     field :hard_cap_minutes, :integer
     field :timeouts_per_half, :integer
+    field :line_size, :integer
     field :gender_ratio_rule, Ecto.Enum, values: @gender_ratio_rules
-    field :default_starting_ratio, Ecto.Enum, values: @starting_ratios
+    field :starting_male_count, :integer
+    field :starting_female_count, :integer
     field :division, Ecto.Enum, values: @divisions, default: :open
 
     belongs_to :team, Ultistats.Teams.Team
@@ -34,9 +35,6 @@ defmodule Ultistats.Games.Ruleset do
 
   @doc "Valid `:gender_ratio_rule` enum values."
   def gender_ratio_rules, do: @gender_ratio_rules
-
-  @doc "Valid `:default_starting_ratio` enum values."
-  def starting_ratios, do: @starting_ratios
 
   @doc "Valid `:division` enum values."
   def divisions, do: @divisions
@@ -74,14 +72,24 @@ defmodule Ultistats.Games.Ruleset do
       :soft_cap_minutes,
       :hard_cap_minutes,
       :timeouts_per_half,
+      :line_size,
       :gender_ratio_rule,
-      :default_starting_ratio,
+      :starting_male_count,
+      :starting_female_count,
       :division
     ])
-    |> validate_required([:team_id, :kind, :timeouts_per_half, :gender_ratio_rule, :division])
+    |> validate_required([
+      :team_id,
+      :kind,
+      :timeouts_per_half,
+      :line_size,
+      :gender_ratio_rule,
+      :division
+    ])
     |> validate_name_for_kind()
     |> validate_number(:score_cap, greater_than_or_equal_to: 1, less_than_or_equal_to: 30)
     |> validate_number(:timeouts_per_half, greater_than_or_equal_to: 0, less_than_or_equal_to: 5)
+    |> validate_number(:line_size, greater_than_or_equal_to: 1, less_than_or_equal_to: 15)
     |> validate_number(:halftime_cap_minutes,
       greater_than_or_equal_to: 1,
       less_than_or_equal_to: 240
@@ -89,6 +97,15 @@ defmodule Ultistats.Games.Ruleset do
     |> validate_number(:halftime_target, greater_than_or_equal_to: 1)
     |> validate_number(:soft_cap_minutes, greater_than_or_equal_to: 1)
     |> validate_number(:hard_cap_minutes, greater_than_or_equal_to: 1)
+    |> validate_number(:starting_male_count,
+      greater_than_or_equal_to: 0,
+      less_than_or_equal_to: 15
+    )
+    |> validate_number(:starting_female_count,
+      greater_than_or_equal_to: 0,
+      less_than_or_equal_to: 15
+    )
+    |> validate_starting_counts_for_rule()
     |> validate_halftime_target_within_cap()
     |> validate_has_end_condition()
     |> assoc_constraint(:team)
@@ -113,6 +130,63 @@ defmodule Ultistats.Games.Ruleset do
       )
     else
       changeset
+    end
+  end
+
+  # When the gender-ratio rule is `:none`, both starting counts stay
+  # unrestricted. Otherwise both are required and must sum to `:line_size`.
+  # If `:line_size` is missing/invalid, skip the sum check so the
+  # `validate_required` / `validate_number` errors on it surface alone.
+  defp validate_starting_counts_for_rule(changeset) do
+    case get_field(changeset, :gender_ratio_rule) do
+      :none ->
+        changeset
+
+      rule when rule in [:endzone, :alternating, :fixed] ->
+        changeset
+        |> require_starting_counts()
+        |> validate_starting_counts_sum()
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp require_starting_counts(changeset) do
+    changeset
+    |> require_count(:starting_male_count)
+    |> require_count(:starting_female_count)
+  end
+
+  defp require_count(changeset, field) do
+    if is_nil(get_field(changeset, field)) do
+      add_error(changeset, field, "can't be blank")
+    else
+      changeset
+    end
+  end
+
+  defp validate_starting_counts_sum(changeset) do
+    m = get_field(changeset, :starting_male_count)
+    f = get_field(changeset, :starting_female_count)
+    line_size = get_field(changeset, :line_size)
+
+    cond do
+      not is_integer(m) or not is_integer(f) ->
+        changeset
+
+      not is_integer(line_size) ->
+        changeset
+
+      m + f == line_size ->
+        changeset
+
+      true ->
+        add_error(
+          changeset,
+          :starting_male_count,
+          "male + female must equal line_size (#{line_size})"
+        )
     end
   end
 

@@ -79,10 +79,14 @@ defmodule UltistatsWeb.GameLive.Index do
           id="games-list"
           class="-mx-4 border-y border-base-200 divide-y divide-base-200"
         >
-          <li :for={game <- @games} id={"game-#{game.id}"}>
+          <li
+            :for={game <- @games}
+            id={"game-#{game.id}"}
+            class="min-h-9 flex items-stretch gap-1 pr-2"
+          >
             <.link
               navigate={~p"/games/#{game.id}"}
-              class="min-h-9 flex items-center gap-2 px-4 py-1.5 hover:bg-base-200 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              class="flex-1 min-w-0 flex items-center gap-2 px-4 py-1.5 hover:bg-base-200 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               <div class="flex-1 min-w-0">
                 <div class="font-medium text-sm truncate leading-tight">
@@ -99,6 +103,24 @@ defmodule UltistatsWeb.GameLive.Index do
                 {status_label(game.status)}
               </span>
             </.link>
+            <.link
+              navigate={~p"/games/#{game.id}/timeline"}
+              aria-label={"Open timeline for #{team_name(game)} vs #{game.opponent_name}"}
+              class="shrink-0 self-center min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              <.icon name="hero-list-bullet" class="size-4" />
+            </.link>
+            <button
+              :if={MapSet.member?(@admin_team_ids, game.team_id)}
+              type="button"
+              phx-click="delete_game"
+              phx-value-id={game.id}
+              data-confirm="Delete this game? Points and events will be removed. This can't be undone."
+              aria-label={"Delete #{team_name(game)} vs #{game.opponent_name}"}
+              class="shrink-0 self-center min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-error/70 hover:text-error active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-error"
+            >
+              <.icon name="hero-trash" class="size-4" />
+            </button>
           </li>
         </ul>
 
@@ -251,6 +273,26 @@ defmodule UltistatsWeb.GameLive.Index do
      socket
      |> assign(:division_filter, division)
      |> assign(:new_ruleset_team_id, new_team_id)}
+  end
+
+  def handle_event("delete_game", %{"id" => game_id}, socket) do
+    user = socket.assigns.current_scope.user
+    game = Games.get_game!(game_id)
+
+    if Teams.user_admin_of?(user, game.team_id) do
+      case Games.delete_game(game) do
+        {:ok, _} ->
+          {:noreply,
+           socket
+           |> assign(:games, list_games_for_user(user))
+           |> put_flash(:info, "Game deleted.")}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Could not delete game.")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "You don't have permission to delete that game.")}
+    end
   end
 
   defp list_games_for_user(user) do

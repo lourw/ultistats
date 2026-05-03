@@ -27,8 +27,10 @@ defmodule Ultistats.Games do
       soft_cap_minutes: nil,
       hard_cap_minutes: nil,
       timeouts_per_half: 2,
+      line_size: 7,
       gender_ratio_rule: :endzone,
-      default_starting_ratio: :four_men_three_women
+      starting_male_count: 4,
+      starting_female_count: 3
     }
   end
 
@@ -201,17 +203,21 @@ defmodule Ultistats.Games do
   def start_point(%Game{} = game, user_ids) when is_list(user_ids) do
     scoped_ids = scope_user_ids_to_team(user_ids, game.team_id)
 
-    attrs = %{
-      game_id: game.id,
-      sequence: next_point_sequence(game),
-      our_line_snapshot: %{"user_ids" => scoped_ids},
-      scoring_team: nil
-    }
+    if length(scoped_ids) != line_size_for(game) do
+      {:error, :wrong_line_size}
+    else
+      attrs = %{
+        game_id: game.id,
+        sequence: next_point_sequence(game),
+        our_line_snapshot: %{"user_ids" => scoped_ids},
+        scoring_team: nil
+      }
 
-    %Point{}
-    |> Point.changeset(attrs)
-    |> validate_non_empty_line(scoped_ids)
-    |> Repo.insert()
+      %Point{}
+      |> Point.changeset(attrs)
+      |> validate_non_empty_line(scoped_ids)
+      |> Repo.insert()
+    end
   end
 
   @doc """
@@ -501,10 +507,23 @@ defmodule Ultistats.Games do
     fetch_ruleset_field(game, :score_cap)
   end
 
+  @doc "Resolved line size (players per point) for `game`. Falls back to USAU default 7."
+  def line_size_for(%Game{} = game), do: fetch_ruleset_field(game, :line_size)
+
+  @doc """
+  Returns nil when `line` has exactly `required` players, otherwise
+  `%{actual: integer, required: integer}` for non-blocking display.
+  """
+  def line_size_violation(line, required) when is_integer(required) and is_list(line) do
+    actual = length(line)
+    if actual == required, do: nil, else: %{actual: actual, required: required}
+  end
+
   @doc """
   Required gender ratio for a given point of a game, derived from the
-  game's ruleset. Returns `:four_men_three_women`, `:three_men_four_women`,
-  or `nil` (when the rule is `:none` or the ratio is otherwise irrelevant).
+  game's ruleset. Returns `%{m: integer, f: integer}` carrying the
+  required male / female-matching counts, or `nil` (when the rule is
+  `:none` or either starting count is missing).
 
   Accepts either a `%Point{}` (uses `point.sequence`) or a 1-based integer
   for the next-point sequence (callable from the line picker before a
@@ -515,26 +534,26 @@ defmodule Ultistats.Games do
 
   def required_ratio_for_point(%Game{} = game, seq) when is_integer(seq) and seq >= 1 do
     rule = fetch_ruleset_field(game, :gender_ratio_rule)
-    starting = fetch_ruleset_field(game, :default_starting_ratio)
+    m = fetch_ruleset_field(game, :starting_male_count)
+    f = fetch_ruleset_field(game, :starting_female_count)
 
-    case rule do
-      :none -> nil
-      :fixed -> starting
-      r when r in [:endzone, :alternating] -> ratio_for_sequence(starting, seq)
-      _ -> nil
+    cond do
+      rule == :none ->
+        nil
+
+      not is_integer(m) or not is_integer(f) ->
+        nil
+
+      rule == :fixed ->
+        %{m: m, f: f}
+
+      rule in [:endzone, :alternating] ->
+        if rem(seq, 2) == 1, do: %{m: m, f: f}, else: %{m: f, f: m}
+
+      true ->
+        nil
     end
   end
-
-  defp ratio_for_sequence(nil, _seq), do: nil
-  defp ratio_for_sequence(starting, seq) when rem(seq, 2) == 1, do: starting
-  defp ratio_for_sequence(starting, _seq), do: opposite_ratio(starting)
-
-  defp opposite_ratio(:four_men_three_women), do: :three_men_four_women
-  defp opposite_ratio(:three_men_four_women), do: :four_men_three_women
-  defp opposite_ratio(_), do: nil
-
-  defp ratio_split(:four_men_three_women), do: %{m: 4, f: 3}
-  defp ratio_split(:three_men_four_women), do: %{m: 3, f: 4}
 
   @doc """
   Counts gender roles in a list. Accepts either `%TeamMembership{}` (reads
@@ -564,22 +583,20 @@ defmodule Ultistats.Games do
   """
   def line_ratio_violation(_line, nil), do: nil
 
-  def line_ratio_violation(line, required)
-      when required in [:four_men_three_women, :three_men_four_women] do
+  def line_ratio_violation(line, %{m: rm, f: rf} = required)
+      when is_integer(rm) and is_integer(rf) do
     %{male_matching: m, female_matching: f} = line_ratio_summary(line)
-    required_split = ratio_split(required)
 
-    if m == required_split.m and f == required_split.f do
+    if m == rm and f == rf do
       nil
     else
-      %{actual: %{m: m, f: f}, required: required_split}
+      %{actual: %{m: m, f: f}, required: required}
     end
   end
 
   @doc "Human label for a required ratio (or 'Any composition' when nil)."
-  def ratio_label(:four_men_three_women), do: "4M / 3F"
-  def ratio_label(:three_men_four_women), do: "3M / 4F"
   def ratio_label(nil), do: "Any composition"
+  def ratio_label(%{m: m, f: f}) when is_integer(m) and is_integer(f), do: "#{m}M / #{f}F"
 
   @doc """
   The `:ours`/`:theirs` possession the *next* point will start with,
@@ -975,8 +992,10 @@ defmodule Ultistats.Games do
     :soft_cap_minutes,
     :hard_cap_minutes,
     :timeouts_per_half,
+    :line_size,
     :gender_ratio_rule,
-    :default_starting_ratio
+    :starting_male_count,
+    :starting_female_count
   ]
 
   @doc """

@@ -1,7 +1,7 @@
 defmodule UltistatsWeb.RulesetLive.Form do
   use UltistatsWeb, :live_view
 
-  import UltistatsWeb.UIComponents, only: [gender_ratio_radio: 1, starting_ratio_radio: 1]
+  import UltistatsWeb.UIComponents, only: [gender_ratio_radio: 1]
 
   alias Ultistats.{Games, Teams}
   alias Ultistats.Games.Ruleset
@@ -74,6 +74,15 @@ defmodule UltistatsWeb.RulesetLive.Form do
         />
 
         <.input
+          field={@form[:line_size]}
+          type="number"
+          label="Line size (players per point)"
+          min="1"
+          max="15"
+          inputmode="numeric"
+        />
+
+        <.input
           field={@form[:timeouts_per_half]}
           type="number"
           label="Timeouts per half"
@@ -89,16 +98,30 @@ defmodule UltistatsWeb.RulesetLive.Form do
           options={division_options()}
         />
 
-        <div class="space-y-1">
+        <div :if={division(@form) == "mixed"} class="space-y-1 mb-2">
           <p class="block text-sm font-medium text-base-content">Gender ratio rule</p>
           <.gender_ratio_radio field={@form[:gender_ratio_rule]} phx-click="set_ratio_rule" />
         </div>
 
-        <div :if={ratio_rule(@form) != "none"} class="space-y-1">
-          <p class="block text-sm font-medium text-base-content">Default starting ratio</p>
-          <.starting_ratio_radio
-            field={@form[:default_starting_ratio]}
-            phx-click="set_starting_ratio"
+        <div
+          :if={division(@form) == "mixed" and ratio_rule(@form) != "none"}
+          class="grid grid-cols-2 gap-3 mb-2"
+        >
+          <.input
+            field={@form[:starting_male_count]}
+            type="number"
+            label="Starting M"
+            min="0"
+            max="15"
+            inputmode="numeric"
+          />
+          <.input
+            field={@form[:starting_female_count]}
+            type="number"
+            label="Starting F"
+            min="0"
+            max="15"
+            inputmode="numeric"
           />
         </div>
 
@@ -170,8 +193,10 @@ defmodule UltistatsWeb.RulesetLive.Form do
           kind: :template,
           division: team.division || :open,
           timeouts_per_half: 2,
+          line_size: 7,
           gender_ratio_rule: :endzone,
-          default_starting_ratio: :four_men_three_women
+          starting_male_count: 4,
+          starting_female_count: 3
         }
 
         socket
@@ -189,12 +214,13 @@ defmodule UltistatsWeb.RulesetLive.Form do
 
   @impl true
   def handle_event("validate", %{"ruleset" => ruleset_params}, socket) do
+    ruleset_params = clear_ratio_when_not_mixed(ruleset_params)
     changeset = Games.change_ruleset(socket.assigns.ruleset, ruleset_params)
     {:noreply, assign(socket, form: to_form(changeset, action: :validate))}
   end
 
   def handle_event("save", %{"ruleset" => ruleset_params}, socket) do
-    save_ruleset(socket, socket.assigns.live_action, ruleset_params)
+    save_ruleset(socket, socket.assigns.live_action, clear_ratio_when_not_mixed(ruleset_params))
   end
 
   def handle_event("set_ratio_rule", %{"rule" => rule}, socket) do
@@ -203,7 +229,6 @@ defmodule UltistatsWeb.RulesetLive.Form do
     params =
       (socket.assigns.form.params || %{})
       |> Map.put("gender_ratio_rule", rule_str)
-      |> maybe_clear_starting_ratio(rule_str)
 
     changeset =
       socket.assigns.ruleset
@@ -212,26 +237,6 @@ defmodule UltistatsWeb.RulesetLive.Form do
 
     {:noreply, assign(socket, :form, to_form(changeset))}
   end
-
-  def handle_event("set_starting_ratio", %{"ratio" => ratio}, socket) do
-    ratio_str = ratio || ""
-
-    params =
-      (socket.assigns.form.params || %{})
-      |> Map.put("default_starting_ratio", ratio_str)
-
-    changeset =
-      socket.assigns.ruleset
-      |> Games.change_ruleset(params)
-      |> Map.put(:action, :validate)
-
-    {:noreply, assign(socket, :form, to_form(changeset))}
-  end
-
-  defp maybe_clear_starting_ratio(params, "none"),
-    do: Map.put(params, "default_starting_ratio", "")
-
-  defp maybe_clear_starting_ratio(params, _), do: params
 
   defp save_ruleset(socket, :edit, ruleset_params) do
     user = socket.assigns.current_scope.user
@@ -282,6 +287,29 @@ defmodule UltistatsWeb.RulesetLive.Form do
       v when is_atom(v) -> Atom.to_string(v)
       v when is_binary(v) -> v
     end
+  end
+
+  # Reads the current division string off the form so the render gates
+  # the gender-ratio block on `:mixed`.
+  defp division(%Phoenix.HTML.Form{} = form) do
+    case form[:division].value do
+      nil -> ""
+      v when is_atom(v) -> Atom.to_string(v)
+      v when is_binary(v) -> v
+    end
+  end
+
+  # Non-mixed divisions (open / women's) don't carry a ratio. Force the
+  # rule to `:none` and clear both starting counts so the row submits a
+  # valid changeset regardless of whatever the (now-hidden) inputs held
+  # before the division switch.
+  defp clear_ratio_when_not_mixed(%{"division" => "mixed"} = params), do: params
+
+  defp clear_ratio_when_not_mixed(params) when is_map(params) do
+    params
+    |> Map.put("gender_ratio_rule", "none")
+    |> Map.put("starting_male_count", "")
+    |> Map.put("starting_female_count", "")
   end
 
   defp return_path("index", _ruleset), do: ~p"/rulesets"

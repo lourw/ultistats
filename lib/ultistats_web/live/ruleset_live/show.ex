@@ -42,12 +42,13 @@ defmodule UltistatsWeb.RulesetLive.Show do
         </:item>
         <:item title="Soft cap">{minutes_label(@ruleset.soft_cap_minutes)}</:item>
         <:item title="Hard cap">{minutes_label(@ruleset.hard_cap_minutes)}</:item>
+        <:item title="Line size">{@ruleset.line_size}</:item>
         <:item title="Timeouts per half">{@ruleset.timeouts_per_half}</:item>
         <:item title="Gender ratio rule">
           {gender_ratio_label(@ruleset.gender_ratio_rule)}
         </:item>
-        <:item :if={@ruleset.gender_ratio_rule != :none} title="Default starting ratio">
-          {starting_ratio_label(@ruleset.default_starting_ratio)}
+        <:item :if={@ruleset.gender_ratio_rule != :none} title="Starting ratio">
+          {starting_counts_label(@ruleset)}
         </:item>
       </.list>
     </Layouts.app>
@@ -128,8 +129,9 @@ defmodule UltistatsWeb.RulesetLive.Show do
   defp gender_ratio_label(:none), do: "None"
   defp gender_ratio_label(other), do: to_string(other)
 
-  defp starting_ratio_label(:four_men_three_women), do: "4M / 3F"
-  defp starting_ratio_label(:three_men_four_women), do: "3M / 4F"
-  defp starting_ratio_label(nil), do: "—"
-  defp starting_ratio_label(other), do: to_string(other)
+  defp starting_counts_label(%Ruleset{starting_male_count: m, starting_female_count: f})
+       when is_integer(m) and is_integer(f),
+       do: "#{m}M / #{f}F"
+
+  defp starting_counts_label(_), do: "—"
 end
