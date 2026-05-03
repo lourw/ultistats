@@ -215,10 +215,8 @@ defmodule UltistatsWeb.GameLiveTest do
       {:ok, live, html} = live(conn, ~p"/games/#{game.id}")
 
       assert html =~ "vs Stormcrows"
-      assert html =~ "Pick line for point 1"
-      assert html =~ "0 selected"
 
-      # First player is rendered as a chip
+      # Each player shows up in the picker by display name.
       first = hd(players)
       assert has_element?(live, "button[phx-value-id='#{first.id}']", Player.display_name(first))
 
@@ -226,7 +224,7 @@ defmodule UltistatsWeb.GameLiveTest do
       assert has_element?(live, "button[phx-click='start_point'][disabled]")
     end
 
-    test "toggling player chips updates the selection counter", %{
+    test "toggling players updates the per-section counter", %{
       conn: conn,
       game: game,
       players: players
@@ -235,15 +233,12 @@ defmodule UltistatsWeb.GameLiveTest do
 
       [p1, p2 | _] = players
 
-      live
-      |> element("button[phx-value-id='#{p1.id}']")
-      |> render_click()
+      live |> element("button[phx-value-id='#{p1.id}']") |> render_click()
+      live |> element("button[phx-value-id='#{p2.id}']") |> render_click()
 
-      live
-      |> element("button[phx-value-id='#{p2.id}']")
-      |> render_click()
-
-      assert render(live) =~ "2 selected"
+      # All 7 fixture players default to :female_matching, so the female
+      # section header reflects the live count.
+      assert render(live) =~ "2 of 7"
     end
 
     test "selecting a line preset populates the roster", %{
@@ -263,7 +258,51 @@ defmodule UltistatsWeb.GameLiveTest do
       |> element("button[phx-value-id='#{preset.id}']")
       |> render_click()
 
-      assert render(live) =~ "5 selected"
+      # Picking a 5-player preset fills the roster — visible via the
+      # per-section counter (all 7 players are female-matching here).
+      assert render(live) =~ "5 of 7"
+    end
+
+    test "Start point button reflects ♂ and ♀ counts of selected players", %{
+      conn: conn
+    } do
+      team = team_fixture()
+      game = game_fixture(%{team_id: team.id})
+
+      m_player =
+        player_fixture(%{
+          team_id: team.id,
+          first_name: "Mark",
+          last_name: "M",
+          jersey_number: "1",
+          gender_role: :male_matching
+        })
+
+      f_player =
+        player_fixture(%{
+          team_id: team.id,
+          first_name: "Frances",
+          last_name: "F",
+          jersey_number: "2",
+          gender_role: :female_matching
+        })
+
+      {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
+
+      # Nothing selected: the Start button text reads "♂ 0  ♀ 0" (whitespace varies).
+      button_html = live |> element("button[phx-click='start_point']") |> render()
+      assert button_html =~ "♂"
+      assert button_html =~ "♀"
+      assert Regex.scan(~r/>\s*0\s*</, button_html) |> length() >= 2
+
+      live |> element("button[phx-value-id='#{m_player.id}']") |> render_click()
+      live |> element("button[phx-value-id='#{f_player.id}']") |> render_click()
+
+      button_html = live |> element("button[phx-click='start_point']") |> render()
+      assert button_html =~ "♂"
+      assert button_html =~ "♀"
+      # Both selected: button now shows two "1"s instead of two "0"s.
+      assert Regex.scan(~r/>\s*1\s*</, button_html) |> length() >= 2
     end
 
     test "Start point creates a Point and transitions to in-point view", %{
@@ -334,10 +373,8 @@ defmodule UltistatsWeb.GameLiveTest do
       assert Enum.any?(events, &(&1.type == :goal and &1.player_id == scorer.id))
       refute Enum.any?(events, &(&1.type == :assist))
 
-      # back to between-points view, score updated
-      html = render(live)
-      assert html =~ "Pick line for point 2"
-      # our score is 1
+      # back to between-points view: Start point button reappears, score updated.
+      assert has_element?(live, "button[phx-click='start_point']")
       assert Games.score(game) == %{ours: 1, theirs: 0}
     end
 
@@ -409,7 +446,8 @@ defmodule UltistatsWeb.GameLiveTest do
       assert reloaded.scoring_team == :theirs
       assert Repo.aggregate(Event, :count, :id) == 0
 
-      assert render(live) =~ "Pick line for point 2"
+      # back to between-points view: Start point button reappears.
+      assert has_element?(live, "button[phx-click='start_point']")
       assert Games.score(game) == %{ours: 0, theirs: 1}
     end
   end

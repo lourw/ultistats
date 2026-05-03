@@ -108,6 +108,7 @@ defmodule UltistatsWeb.GameLive.Show do
           game={@game}
           current_point={@current_point}
           selected_player_ids={@selected_player_ids}
+          team_players={@team_players}
           disconnected?={@disconnected?}
           pending_event={@pending_event}
         />
@@ -211,58 +212,57 @@ defmodule UltistatsWeb.GameLive.Show do
 
   defp between_points_view(assigns) do
     ~H"""
-    <section class="flex-1 py-4 space-y-6" aria-label="Line picker">
-      <div>
-        <h2 class="text-lg font-semibold mb-2">Pick line for point {@point_number}</h2>
-        <p class="text-sm text-base-content/70">
-          Tap a preset, or pick players one-by-one below.
-        </p>
-      </div>
-
-      <div :if={@line_presets != []} class="space-y-2">
-        <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/70">
-          Line presets
-        </h3>
-        <div class="grid grid-cols-1 gap-2">
-          <.line_preset_card
+    <section class="flex-1 py-3 space-y-3" aria-label="Line picker">
+      <div :if={@line_presets != []} class="-mx-4 px-4 overflow-x-auto">
+        <div class="flex gap-2 w-max">
+          <button
             :for={preset <- @line_presets}
-            preset={%{name: preset.name, players: preset.players}}
-            selected?={@selected_preset_id == preset.id}
+            type="button"
             phx-click="select_preset"
             phx-value-id={preset.id}
+            aria-pressed={to_string(@selected_preset_id == preset.id)}
+            class={[
+              "min-h-11 inline-flex items-center gap-2 px-3 rounded-full text-sm font-medium",
+              "border transition-colors motion-reduce:transition-none active:scale-[0.98] motion-reduce:active:scale-100",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              if(@selected_preset_id == preset.id,
+                do: "bg-primary text-primary-content border-primary",
+                else: "bg-base-100 text-base-content border-base-300 active:bg-base-200"
+              )
+            ]}
+          >
+            <span>{preset.name}</span>
+            <span class={[
+              "tabular-nums text-xs px-1.5 py-0.5 rounded-full",
+              if(@selected_preset_id == preset.id,
+                do: "bg-primary-content/20 text-primary-content",
+                else: "bg-base-200 text-base-content/70"
+              )
+            ]}>
+              {length(preset.players)}
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <%= if @team_players == [] do %>
+        <div class="rounded-lg border-2 border-dashed border-base-300 p-6 text-center">
+          <p class="text-base font-medium">No players on this team yet.</p>
+          <p class="text-sm text-base-content/70 mt-1">
+            Add players to the team's roster to start tracking points.
+          </p>
+        </div>
+      <% else %>
+        <div id="game-line-picker" class="space-y-4">
+          <.line_picker_section
+            :for={role <- [:male_matching, :female_matching]}
+            :if={Enum.any?(@team_players, &(&1.gender_role == role))}
+            role={role}
+            players={Enum.filter(@team_players, &(&1.gender_role == role))}
+            selected_ids={@selected_player_ids}
           />
         </div>
-      </div>
-
-      <div class="space-y-2">
-        <div class="flex items-baseline justify-between">
-          <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/70">
-            Roster
-          </h3>
-          <span class="text-sm text-base-content/70 tabular-nums">
-            {MapSet.size(@selected_player_ids)} selected
-          </span>
-        </div>
-
-        <%= if @team_players == [] do %>
-          <div class="rounded-lg border-2 border-dashed border-base-300 p-6 text-center">
-            <p class="text-base font-medium">No players on this team yet.</p>
-            <p class="text-sm text-base-content/70 mt-1">
-              Add players to the team's roster to start tracking points.
-            </p>
-          </div>
-        <% else %>
-          <div class="flex flex-wrap gap-2">
-            <.player_chip
-              :for={player <- @team_players}
-              player={%{number: player.jersey_number, name: Player.display_name(player)}}
-              selected?={MapSet.member?(@selected_player_ids, player.id)}
-              phx-click="toggle_player"
-              phx-value-id={player.id}
-            />
-          </div>
-        <% end %>
-      </div>
+      <% end %>
     </section>
     """
   end
@@ -332,6 +332,7 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :game, :map, required: true
   attr :current_point, :any, required: true
   attr :selected_player_ids, :any, required: true
+  attr :team_players, :list, required: true
   attr :disconnected?, :boolean, required: true
   attr :pending_event, :any, required: true
 
@@ -390,10 +391,15 @@ defmodule UltistatsWeb.GameLive.Show do
               "transition-colors motion-reduce:transition-none",
               "active:scale-[0.99] active:bg-primary/80 motion-reduce:active:scale-100",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-              "disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+              "disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100",
+              "inline-flex items-center justify-center gap-3"
             ]}
           >
-            Start point
+            <span>Start point</span>
+            <span class="text-sm font-medium tabular-nums opacity-90 inline-flex items-center gap-2">
+              <span aria-hidden="true">♂</span> {selected_role_count(@selected_player_ids, @team_players, :male_matching)}
+              <span aria-hidden="true">♀</span> {selected_role_count(@selected_player_ids, @team_players, :female_matching)}
+            </span>
           </button>
         <% end %>
       </div>
@@ -743,4 +749,78 @@ defmodule UltistatsWeb.GameLive.Show do
 
   defp format_time(%DateTime{} = dt), do: Calendar.strftime(dt, "%H:%M")
   defp format_time(_), do: ""
+
+  defp gender_glyph(:female_matching), do: "♀"
+  defp gender_glyph(:male_matching), do: "♂"
+  defp gender_glyph(_), do: ""
+
+  defp role_label(:male_matching), do: "Male-matching"
+  defp role_label(:female_matching), do: "Female-matching"
+
+  defp selected_role_count(selected_ids, players, role) do
+    Enum.count(players, &(&1.gender_role == role and MapSet.member?(selected_ids, &1.id)))
+  end
+
+  attr :role, :atom, required: true, values: [:female_matching, :male_matching]
+  attr :players, :list, required: true
+  attr :selected_ids, MapSet, required: true
+
+  defp line_picker_section(assigns) do
+    selected_in_section =
+      Enum.count(assigns.players, &MapSet.member?(assigns.selected_ids, &1.id))
+
+    assigns = assign(assigns, :selected_in_section, selected_in_section)
+
+    ~H"""
+    <section>
+      <h3 class="flex items-center gap-2 text-base font-semibold text-base-content mb-1">
+        <span class="text-lg leading-none" aria-hidden="true">{gender_glyph(@role)}</span>
+        <span>{role_label(@role)}</span>
+        <span class="tabular-nums text-sm font-medium text-base-content/60">
+          {@selected_in_section} of {length(@players)}
+        </span>
+      </h3>
+
+      <ul class="divide-y divide-base-200">
+        <li :for={player <- @players} id={"line-pick-#{player.id}"}>
+          <button
+            type="button"
+            phx-click="toggle_player"
+            phx-value-id={player.id}
+            aria-pressed={to_string(MapSet.member?(@selected_ids, player.id))}
+            class={[
+              "w-full flex items-center justify-between gap-3 py-2 px-2 -mx-2 rounded-md",
+              "text-left transition-colors motion-reduce:transition-none",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              if(MapSet.member?(@selected_ids, player.id),
+                do: "bg-primary/10 hover:bg-primary/15",
+                else: "hover:bg-base-200"
+              )
+            ]}
+          >
+            <div class="flex items-center gap-3 min-w-0">
+              <span
+                :if={player.jersey_number}
+                class="inline-flex items-center justify-center w-8 h-7 px-1 rounded-full bg-base-200 text-base-content text-sm font-semibold tabular-nums shrink-0"
+              >
+                {player.jersey_number}
+              </span>
+              <span class="font-medium truncate">{Player.display_name(player)}</span>
+            </div>
+            <.icon
+              :if={MapSet.member?(@selected_ids, player.id)}
+              name="hero-check-circle-solid"
+              class="size-5 text-primary shrink-0"
+            />
+            <span
+              :if={!MapSet.member?(@selected_ids, player.id)}
+              class="size-5 shrink-0"
+              aria-hidden="true"
+            />
+          </button>
+        </li>
+      </ul>
+    </section>
+    """
+  end
 end
