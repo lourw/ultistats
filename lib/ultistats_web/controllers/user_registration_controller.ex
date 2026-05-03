@@ -15,9 +15,14 @@ defmodule UltistatsWeb.UserRegistrationController do
       {:ok, user} ->
         user = Accounts.confirm_user!(user)
 
+        # Preserve any pre-register `:user_return_to` (e.g. a `/join/:token`
+        # the visitor was bounced from). Only fall back to /teams when
+        # nothing was stashed.
+        return_to = get_session(conn, :user_return_to) || ~p"/teams"
+
         conn
         |> put_flash(:info, "Account created. Welcome!")
-        |> put_session(:user_return_to, ~p"/teams")
+        |> put_session(:user_return_to, return_to)
         |> UserAuth.log_in_user(user)
 
       {:error, %Ecto.Changeset{} = changeset} ->

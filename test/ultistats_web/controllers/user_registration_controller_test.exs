@@ -37,6 +37,23 @@ defmodule UltistatsWeb.UserRegistrationControllerTest do
       assert user.confirmed_at
     end
 
+    test "preserves a pre-stashed :user_return_to (e.g. a /join/:token bounce)",
+         %{conn: conn} do
+      return_to = "/join/some-token"
+
+      conn =
+        conn
+        |> Phoenix.ConnTest.init_test_session(%{user_return_to: return_to})
+        |> post(~p"/users/register", %{
+          "user" => valid_user_attributes()
+        })
+
+      assert get_session(conn, :user_token)
+      # Post-register redirect lands on the original return-to URL,
+      # not the /teams default.
+      assert redirected_to(conn) == return_to
+    end
+
     test "render errors for invalid email", %{conn: conn} do
       conn =
         post(conn, ~p"/users/register", %{

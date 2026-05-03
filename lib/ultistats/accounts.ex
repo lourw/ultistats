@@ -26,13 +26,6 @@ defmodule Ultistats.Accounts do
   alias Ultistats.Games.Event
   alias Ultistats.Teams.TeamMembership
 
-  # Stub-claim tokens are stateless — `Phoenix.Token.sign/3` carries the
-  # stub user's id signed by the endpoint secret. Seven days is long
-  # enough for an admin to share a copied link without keeping a token
-  # table around.
-  @stub_claim_salt "stub claim"
-  @stub_claim_max_age 60 * 60 * 24 * 7
-
   ## Database getters
 
   @doc """
@@ -303,40 +296,6 @@ defmodule Ultistats.Accounts do
     Repo.delete_all(from(UserToken, where: [token: ^token, context: "session"]))
     :ok
   end
-
-  ## Stub-claim tokens
-
-  @doc """
-  Signs a stateless claim token for `stub_user`. Admins copy this URL
-  off a stub roster row and hand it to the real human; the recipient
-  visits `/claim/:token` and either logs in or registers, then confirms
-  the claim. See `verify_stub_claim_token/1` and `claim_stub_user/2`.
-  """
-  def generate_stub_claim_token(%User{id: id}) do
-    Phoenix.Token.sign(UltistatsWeb.Endpoint, @stub_claim_salt, id)
-  end
-
-  @doc """
-  Verifies a stub-claim `token`. Returns `{:ok, %User{}}` when the
-  signed user still exists, or `{:error, :invalid}` when the signature
-  is bad / expired or the stub has already been claimed (and deleted).
-  """
-  def verify_stub_claim_token(token) when is_binary(token) do
-    case Phoenix.Token.verify(UltistatsWeb.Endpoint, @stub_claim_salt, token,
-           max_age: @stub_claim_max_age
-         ) do
-      {:ok, user_id} ->
-        case Repo.get(User, user_id) do
-          nil -> {:error, :invalid}
-          %User{} = user -> {:ok, user}
-        end
-
-      {:error, _reason} ->
-        {:error, :invalid}
-    end
-  end
-
-  def verify_stub_claim_token(_), do: {:error, :invalid}
 
   @doc """
   Claims `stub` on behalf of `claimer`, reassigning the stub's

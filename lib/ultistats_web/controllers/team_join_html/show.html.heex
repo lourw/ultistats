@@ -1,11 +1,10 @@
 <Layouts.app flash={@flash} current_scope={@current_scope}>
   <div class="mx-auto max-w-sm space-y-6">
     <.header>
-      Claim profile
+      Join {@team.name}
       <:subtitle>
-        An admin invited <span class="font-semibold">{User.display_name(@stub)}</span>
-        to claim this profile. Log in or register to continue —
-        you'll come back here automatically.
+        You've been invited to join <span class="font-semibold">{@team.name}</span>.
+        Log in or register to continue — you'll come back here automatically.
       </:subtitle>
     </.header>
 

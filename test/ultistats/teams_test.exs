@@ -309,6 +309,266 @@ defmodule Ultistats.TeamsTest do
     end
   end
 
+  describe "team join tokens" do
+    import Ultistats.TeamsFixtures
+
+    alias Ultistats.Teams.Team
+
+    test "generate + verify round-trip returns the team" do
+      team = team_fixture()
+
+      token = Teams.generate_team_join_token(team)
+      assert is_binary(token)
+
+      assert {:ok, %Team{id: id}} = Teams.verify_team_join_token(token)
+      assert id == team.id
+    end
+
+    test "tampered token returns :invalid" do
+      team = team_fixture()
+      token = Teams.generate_team_join_token(team) <> "garbage"
+      assert {:error, :invalid} = Teams.verify_team_join_token(token)
+    end
+
+    test "non-binary token returns :invalid" do
+      assert {:error, :invalid} = Teams.verify_team_join_token(nil)
+    end
+
+    test "verify returns :invalid when the underlying team is gone" do
+      team = team_fixture()
+      token = Teams.generate_team_join_token(team)
+      {:ok, _} = Teams.delete_team(team)
+
+      assert {:error, :invalid} = Teams.verify_team_join_token(token)
+    end
+  end
+
+  describe "list_unclaimed_stub_memberships_for_team/1" do
+    import Ultistats.TeamsFixtures
+    import Ultistats.AccountsFixtures, only: [user_fixture: 0]
+
+    alias Ultistats.Repo
+    alias Ultistats.Accounts.User
+
+    test "returns memberships whose user has no claimed_at, preloaded with :user" do
+      team = team_fixture()
+
+      stub_m =
+        team_membership_fixture(%{team_id: team.id, jersey_number: "5", first_name: "Stub"})
+
+      # A claimed user — should be excluded.
+      claimed = user_fixture()
+
+      claimed
+      |> Ecto.Changeset.change(claimed_at: DateTime.utc_now(:second))
+      |> Repo.update!()
+
+      reloaded = Repo.get!(User, claimed.id)
+      {:ok, _} = Teams.add_team_member(team, reloaded, %{role: :member, is_player: true})
+
+      results = Teams.list_unclaimed_stub_memberships_for_team(team)
+      ids = Enum.map(results, & &1.id)
+      assert stub_m.id in ids
+      refute Enum.any?(results, &(&1.user.claimed_at != nil))
+    end
+
+    test "scopes by team" do
+      team = team_fixture(%{name: "Home"})
+      other = team_fixture(%{name: "Away"})
+
+      mine = team_membership_fixture(%{team_id: team.id, jersey_number: "1"})
+      _theirs = team_membership_fixture(%{team_id: other.id, jersey_number: "2"})
+
+      results = Teams.list_unclaimed_stub_memberships_for_team(team)
+      assert Enum.map(results, & &1.id) == [mine.id]
+    end
+
+    test "excludes a real registered user (claimed_at nil but has a password)" do
+      team = team_fixture()
+
+      # A stub — should appear.
+      stub_m = team_membership_fixture(%{team_id: team.id, jersey_number: "5"})
+
+      # A real registered user with no claimed_at (joined directly via
+      # the new-player flow). They have a hashed_password, so they
+      # should NOT appear in the stub-picker list — even though their
+      # claimed_at is also nil.
+      real = user_fixture()
+      assert is_nil(real.claimed_at)
+      assert is_binary(real.hashed_password)
+
+      {:ok, _} = Teams.add_team_member(team, real, %{role: :member, is_player: true})
+
+      results = Teams.list_unclaimed_stub_memberships_for_team(team)
+      ids = Enum.map(results, & &1.id)
+
+      assert stub_m.id in ids
+      refute Enum.any?(results, &(&1.user.id == real.id))
+    end
+  end
+
+  describe "claim_stub_with_profile/4" do
+    import Ultistats.TeamsFixtures
+    import Ultistats.AccountsFixtures, only: [user_fixture: 0]
+
+    alias Ultistats.Accounts
+    alias Ultistats.Accounts.User
+    alias Ultistats.Repo
+    alias Ultistats.Teams.TeamMembership
+
+    test "copies the verified profile onto the claimer, applies per-team overrides, and deletes the stub" do
+      team = team_fixture()
+
+      stub_m =
+        team_membership_fixture(%{
+          team_id: team.id,
+          first_name: "Stale",
+          last_name: "Data",
+          gender_role: :female_matching,
+          position: :hybrid,
+          jersey_number: "1"
+        })
+
+      stub_id = stub_m.user_id
+
+      claimer = user_fixture()
+
+      assert {:ok, %{teams: team_ids}} =
+               Teams.claim_stub_with_profile(
+                 stub_m,
+                 claimer,
+                 %{
+                   first_name: "Edited",
+                   last_name: "Name",
+                   gender_role: :male_matching,
+                   position: :handler
+                 },
+                 %{jersey_number: "77", position: :handler}
+               )
+
+      assert team.id in team_ids
+
+      # Stub user gone.
+      refute Repo.get(User, stub_id)
+
+      # Claimer's profile updated.
+      reloaded = Accounts.get_user!(claimer.id)
+      assert reloaded.first_name == "Edited"
+      assert reloaded.last_name == "Name"
+      assert reloaded.gender_role == :male_matching
+      assert reloaded.position == :handler
+
+      # Membership reassigned and per-team overrides applied.
+      reloaded_m = Repo.get!(TeamMembership, stub_m.id)
+      assert reloaded_m.user_id == claimer.id
+      assert reloaded_m.jersey_number == "77"
+      assert reloaded_m.position == :handler
+    end
+
+    test "returns {:error, {:profile, changeset}} on invalid profile params (no mutation)" do
+      team = team_fixture()
+      stub_m = team_membership_fixture(%{team_id: team.id, jersey_number: "1"})
+      stub_id = stub_m.user_id
+      claimer = user_fixture()
+
+      assert {:error, {:profile, %Ecto.Changeset{}}} =
+               Teams.claim_stub_with_profile(
+                 stub_m,
+                 claimer,
+                 %{first_name: "", last_name: "", gender_role: nil, position: nil},
+                 %{}
+               )
+
+      # Stub still present, claimer not on the team, claimer profile
+      # untouched.
+      assert Repo.get(User, stub_id)
+      refute Teams.user_member_of?(claimer, team)
+      reloaded = Accounts.get_user!(claimer.id)
+      assert is_nil(reloaded.first_name)
+    end
+  end
+
+  describe "join_team_as_new_player/3" do
+    import Ultistats.TeamsFixtures
+    import Ultistats.AccountsFixtures, only: [user_fixture: 0]
+
+    alias Ultistats.Teams.TeamMembership
+
+    test "updates the user's profile and inserts a membership" do
+      team = team_fixture()
+      user = user_fixture()
+
+      attrs = %{
+        first_name: "New",
+        last_name: "Player",
+        gender_role: :female_matching,
+        position: :cutter,
+        jersey_number: "21"
+      }
+
+      assert {:ok, %{user: updated_user, membership: %TeamMembership{} = m}} =
+               Teams.join_team_as_new_player(team, user, attrs)
+
+      assert updated_user.first_name == "New"
+      assert updated_user.last_name == "Player"
+      assert updated_user.gender_role == :female_matching
+      assert updated_user.position == :cutter
+
+      assert m.team_id == team.id
+      assert m.user_id == user.id
+      assert m.role == :member
+      assert m.is_player == true
+      assert m.jersey_number == "21"
+      assert m.position == :cutter
+
+      assert Teams.user_member_of?(updated_user, team)
+    end
+
+    test "rolls back the profile update when membership insert fails" do
+      team = team_fixture()
+      user = user_fixture()
+
+      # Pre-add the membership so the second attempt collides on the
+      # unique team_id+user_id index.
+      {:ok, _existing} =
+        Teams.add_team_member(team, user, %{role: :member, is_player: true})
+
+      attrs = %{
+        first_name: "Should",
+        last_name: "Rollback",
+        gender_role: :male_matching,
+        position: :handler,
+        jersey_number: "9"
+      }
+
+      assert {:error, :membership, %Ecto.Changeset{}, _changes} =
+               Teams.join_team_as_new_player(team, user, attrs)
+
+      reloaded = Ultistats.Accounts.get_user!(user.id)
+      assert is_nil(reloaded.first_name)
+      assert is_nil(reloaded.last_name)
+    end
+
+    test "returns a user changeset error when profile validation fails" do
+      team = team_fixture()
+      user = user_fixture()
+
+      attrs = %{
+        first_name: "",
+        last_name: "",
+        gender_role: nil,
+        position: nil,
+        jersey_number: nil
+      }
+
+      assert {:error, :user, %Ecto.Changeset{} = changeset, _changes} =
+               Teams.join_team_as_new_player(team, user, attrs)
+
+      assert %{first_name: _} = errors_on(changeset)
+      refute Teams.user_member_of?(user, team)
+    end
+  end
+
   describe "line_presets" do
     alias Ultistats.Teams.LinePreset
 

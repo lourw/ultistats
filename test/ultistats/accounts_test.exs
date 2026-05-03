@@ -359,56 +359,6 @@ defmodule Ultistats.AccountsTest do
     end
   end
 
-  describe "stub-claim tokens" do
-    test "generate + verify round-trip returns the user" do
-      {:ok, stub} =
-        Accounts.create_stub_user(%{
-          first_name: "Stub",
-          last_name: "Person",
-          gender_role: :male_matching,
-          position: :handler
-        })
-
-      token = Accounts.generate_stub_claim_token(stub)
-      assert is_binary(token)
-
-      assert {:ok, %User{id: id}} = Accounts.verify_stub_claim_token(token)
-      assert id == stub.id
-    end
-
-    test "tampered token returns :invalid" do
-      {:ok, stub} =
-        Accounts.create_stub_user(%{
-          first_name: "Stub",
-          last_name: "Person",
-          gender_role: :male_matching,
-          position: :handler
-        })
-
-      token = Accounts.generate_stub_claim_token(stub) <> "garbage"
-      assert {:error, :invalid} = Accounts.verify_stub_claim_token(token)
-    end
-
-    test "non-binary token returns :invalid" do
-      assert {:error, :invalid} = Accounts.verify_stub_claim_token(nil)
-    end
-
-    test "verify returns :invalid when the underlying user is gone" do
-      {:ok, stub} =
-        Accounts.create_stub_user(%{
-          first_name: "Gone",
-          last_name: "Soon",
-          gender_role: :female_matching,
-          position: :cutter
-        })
-
-      token = Accounts.generate_stub_claim_token(stub)
-      Repo.delete!(stub)
-
-      assert {:error, :invalid} = Accounts.verify_stub_claim_token(token)
-    end
-  end
-
   describe "claim_stub_user/2" do
     alias Ultistats.Games
     alias Ultistats.Repo
