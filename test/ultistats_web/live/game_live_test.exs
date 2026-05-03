@@ -386,8 +386,11 @@ defmodule UltistatsWeb.GameLiveTest do
       [a, b | _] = players
 
       render_hook(live, "set_passer", %{"id" => a.user_id})
-      render_hook(live, "set_receiver", %{"id" => b.user_id})
-      render_hook(live, "record_throw_outcome", %{"type" => "catch"})
+
+      render_hook(live, "record_throw_for_player", %{
+        "player-id" => b.user_id,
+        "type" => "catch"
+      })
 
       [event] = Games.events_for_point(point)
       assert event.type == :catch
@@ -410,11 +413,16 @@ defmodule UltistatsWeb.GameLiveTest do
       [a, b, c | _] = players
 
       render_hook(live, "set_passer", %{"id" => a.user_id})
-      render_hook(live, "set_receiver", %{"id" => b.user_id})
-      render_hook(live, "record_throw_outcome", %{"type" => "catch"})
 
-      render_hook(live, "set_receiver", %{"id" => c.user_id})
-      render_hook(live, "record_throw_outcome", %{"type" => "goal"})
+      render_hook(live, "record_throw_for_player", %{
+        "player-id" => b.user_id,
+        "type" => "catch"
+      })
+
+      render_hook(live, "record_throw_for_player", %{
+        "player-id" => c.user_id,
+        "type" => "goal"
+      })
 
       events = Games.events_for_point(point)
 
@@ -449,8 +457,11 @@ defmodule UltistatsWeb.GameLiveTest do
       [a, b | _] = players
 
       render_hook(live, "set_passer", %{"id" => a.user_id})
-      render_hook(live, "set_receiver", %{"id" => b.user_id})
-      render_hook(live, "record_throw_outcome", %{"type" => "drop"})
+
+      render_hook(live, "record_throw_for_player", %{
+        "player-id" => b.user_id,
+        "type" => "drop"
+      })
 
       [event] = Games.events_for_point(point)
       assert event.type == :drop
@@ -475,7 +486,7 @@ defmodule UltistatsWeb.GameLiveTest do
       [a | _] = players
 
       render_hook(live, "set_passer", %{"id" => a.user_id})
-      render_hook(live, "record_throw_outcome", %{"type" => "throwaway"})
+      render_hook(live, "record_throw_for_player", %{"type" => "throwaway"})
 
       [event] = Games.events_for_point(point)
       assert event.type == :throwaway
@@ -496,10 +507,12 @@ defmodule UltistatsWeb.GameLiveTest do
       # First, flip to :theirs by recording a throwaway.
       [a, blocker | _] = players
       render_hook(live, "set_passer", %{"id" => a.user_id})
-      render_hook(live, "record_throw_outcome", %{"type" => "throwaway"})
+      render_hook(live, "record_throw_for_player", %{"type" => "throwaway"})
 
-      render_hook(live, "set_defender", %{"id" => blocker.user_id})
-      render_hook(live, "record_defense", %{"kind" => "block"})
+      render_hook(live, "record_defense_for_player", %{
+        "player-id" => blocker.user_id,
+        "kind" => "block"
+      })
 
       events = Games.events_for_point(point)
       assert Enum.any?(events, &(&1.type == :block and &1.passer_user_id == blocker.user_id))
@@ -520,10 +533,12 @@ defmodule UltistatsWeb.GameLiveTest do
       # Flip to :theirs via a throwaway from one of our players.
       [a, catcher | _] = players
       render_hook(live, "set_passer", %{"id" => a.user_id})
-      render_hook(live, "record_throw_outcome", %{"type" => "throwaway"})
+      render_hook(live, "record_throw_for_player", %{"type" => "throwaway"})
 
-      render_hook(live, "set_defender", %{"id" => catcher.user_id})
-      render_hook(live, "record_defense", %{"kind" => "catch"})
+      render_hook(live, "record_defense_for_player", %{
+        "player-id" => catcher.user_id,
+        "kind" => "catch"
+      })
 
       events = Games.events_for_point(point)
 
@@ -549,7 +564,7 @@ defmodule UltistatsWeb.GameLiveTest do
       [a | _] = players
       # Flip to :theirs first via a throwaway.
       render_hook(live, "set_passer", %{"id" => a.user_id})
-      render_hook(live, "record_throw_outcome", %{"type" => "throwaway"})
+      render_hook(live, "record_throw_for_player", %{"type" => "throwaway"})
 
       live |> element("button[phx-click='record_opponent_turnover']") |> render_click()
 
@@ -573,7 +588,7 @@ defmodule UltistatsWeb.GameLiveTest do
       [a | _] = players
       # Flip to :theirs first.
       render_hook(live, "set_passer", %{"id" => a.user_id})
-      render_hook(live, "record_throw_outcome", %{"type" => "throwaway"})
+      render_hook(live, "record_throw_for_player", %{"type" => "throwaway"})
 
       live |> element("button[phx-click='record_opponent_goal']") |> render_click()
 
@@ -624,9 +639,11 @@ defmodule UltistatsWeb.GameLiveTest do
 
       # Set passer to unknown via the chip.
       render_hook(live, "set_passer", %{"id" => "unknown"})
-      # Receiver is a real player.
-      render_hook(live, "set_receiver", %{"id" => a.user_id})
-      render_hook(live, "record_throw_outcome", %{"type" => "catch"})
+      # Receiver is a real player; the per-row Catch button records it.
+      render_hook(live, "record_throw_for_player", %{
+        "player-id" => a.user_id,
+        "type" => "catch"
+      })
 
       [event] = Games.events_for_point(point)
       assert event.type == :catch
@@ -641,8 +658,11 @@ defmodule UltistatsWeb.GameLiveTest do
       [a, b | _] = players
 
       render_hook(live, "set_passer", %{"id" => a.user_id})
-      render_hook(live, "set_receiver", %{"id" => b.user_id})
-      render_hook(live, "record_throw_outcome", %{"type" => "catch"})
+
+      render_hook(live, "record_throw_for_player", %{
+        "player-id" => b.user_id,
+        "type" => "catch"
+      })
 
       # Catch landed: B is now the passer.
       assert render(live) =~ "data-current-passer=\"#{b.user_id}\""
@@ -676,8 +696,11 @@ defmodule UltistatsWeb.GameLiveTest do
       [a, b | _] = players
 
       render_hook(live, "set_passer", %{"id" => a.user_id})
-      render_hook(live, "set_receiver", %{"id" => b.user_id})
-      render_hook(live, "record_throw_outcome", %{"type" => "catch"})
+
+      render_hook(live, "record_throw_for_player", %{
+        "player-id" => b.user_id,
+        "type" => "catch"
+      })
 
       live |> element("button[phx-click='undo']") |> render_click()
       assert Games.events_for_point(point) == []
@@ -704,15 +727,22 @@ defmodule UltistatsWeb.GameLiveTest do
       [a, b, c | _] = players
 
       render_hook(live, "set_passer", %{"id" => a.user_id})
-      render_hook(live, "set_receiver", %{"id" => b.user_id})
-      render_hook(live, "record_throw_outcome", %{"type" => "catch"})
+
+      render_hook(live, "record_throw_for_player", %{
+        "player-id" => b.user_id,
+        "type" => "catch"
+      })
 
       live |> element("button[phx-click='undo']") |> render_click()
 
-      # Branch off in a different direction.
+      # Branch off in a different direction. Undo cleared the passer
+      # too, so set it again before the new catch.
       render_hook(live, "set_passer", %{"id" => a.user_id})
-      render_hook(live, "set_receiver", %{"id" => c.user_id})
-      render_hook(live, "record_throw_outcome", %{"type" => "catch"})
+
+      render_hook(live, "record_throw_for_player", %{
+        "player-id" => c.user_id,
+        "type" => "catch"
+      })
 
       # Redo button should be disabled now that the redo stack is cleared.
       assert has_element?(live, "button[phx-click='redo'][disabled]")
@@ -749,8 +779,11 @@ defmodule UltistatsWeb.GameLiveTest do
 
       # Score a goal: A throws to scorer, tracker hits Goal.
       render_hook(live, "set_passer", %{"id" => a.user_id})
-      render_hook(live, "set_receiver", %{"id" => scorer.user_id})
-      render_hook(live, "record_throw_outcome", %{"type" => "goal"})
+
+      render_hook(live, "record_throw_for_player", %{
+        "player-id" => scorer.user_id,
+        "type" => "goal"
+      })
 
       # Point ended — we're back on the line picker, score 1–0.
       reloaded = Repo.get!(Point, point.id)
@@ -781,8 +814,11 @@ defmodule UltistatsWeb.GameLiveTest do
 
       [a, scorer | _] = players
       render_hook(live, "set_passer", %{"id" => a.user_id})
-      render_hook(live, "set_receiver", %{"id" => scorer.user_id})
-      render_hook(live, "record_throw_outcome", %{"type" => "goal"})
+
+      render_hook(live, "record_throw_for_player", %{
+        "player-id" => scorer.user_id,
+        "type" => "goal"
+      })
 
       assert has_element?(live, "button[phx-click='undo_last_goal']")
 
@@ -839,10 +875,12 @@ defmodule UltistatsWeb.GameLiveTest do
 
       [scorer, assister | _] = players
       render_hook(live, "set_passer", %{"id" => assister.user_id})
-      render_hook(live, "set_receiver", %{"id" => scorer.user_id})
 
       assert {:error, {:live_redirect, %{to: to}}} =
-               render_hook(live, "record_throw_outcome", %{"type" => "goal"})
+               render_hook(live, "record_throw_for_player", %{
+                 "player-id" => scorer.user_id,
+                 "type" => "goal"
+               })
 
       assert to == ~p"/games/#{game.id}/summary"
 

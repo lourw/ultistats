@@ -73,17 +73,44 @@ defmodule UltistatsWeb.GameLive.Show do
        |> assign(:selected_user_ids, MapSet.new())
        |> assign(:selected_preset_id, nil)
        |> assign(:current_passer_id, nil)
-       |> assign(:selected_receiver_id, nil)
-       |> assign(:selected_defender_id, nil)
        |> assign(:undo_stack, [])
        |> assign(:redo_stack, [])
        |> assign(:last_ended, nil)
+       |> assign(:throwaway_prompt, nil)
        |> assign(:halftime_dismissed?, false)
        # Disconnect-driven button-disable is wired via JS hook in a later
        # task; assigns stays at false until the hook lands. The flash
        # banner from `Layouts.flash_group/1` already covers visual feedback.
-       |> assign(:disconnected?, false)}
+       |> assign(:disconnected?, false)
+       |> assign_line_picker_state()}
     end
+  end
+
+  # Refreshes everything the between-points line picker reads:
+  #   * `:next_point_sequence`            — 1-based number of the upcoming point.
+  #   * `:required_ratio`                 — atom or nil from the ruleset.
+  #   * `:starting_possession_preview`    — :ours / :theirs (O-line vs D-line).
+  #   * `:ratio_violation`                — nil, or %{actual:, required:} on mismatch.
+  # Called from mount + every state transition that flips between
+  # in-point and between-points OR changes selection.
+  defp assign_line_picker_state(socket) do
+    game = socket.assigns.game
+    next_seq = length_of_points(game) + 1
+    required = Games.required_ratio_for_point(game, next_seq)
+    starting = Games.starting_possession_for_next_point(game)
+
+    selected = selected_memberships(socket.assigns.team_players, socket.assigns.selected_user_ids)
+    violation = Games.line_ratio_violation(selected, required)
+
+    socket
+    |> assign(:next_point_sequence, next_seq)
+    |> assign(:required_ratio, required)
+    |> assign(:starting_possession_preview, starting)
+    |> assign(:ratio_violation, violation)
+  end
+
+  defp selected_memberships(team_players, selected_ids) do
+    Enum.filter(team_players, &MapSet.member?(selected_ids, &1.user_id))
   end
 
   ## ---------------------------------------------------------------------
@@ -132,8 +159,7 @@ defmodule UltistatsWeb.GameLive.Show do
               events={@events}
               possession={@possession}
               current_passer_id={@current_passer_id}
-              selected_receiver_id={@selected_receiver_id}
-              selected_defender_id={@selected_defender_id}
+              throwaway_prompt={@throwaway_prompt}
               disconnected?={@disconnected?}
             />
           <% true -> %>
@@ -143,6 +169,9 @@ defmodule UltistatsWeb.GameLive.Show do
               team_players={@team_players}
               selected_user_ids={@selected_user_ids}
               selected_preset_id={@selected_preset_id}
+              required_ratio={@required_ratio}
+              starting_possession_preview={@starting_possession_preview}
+              ratio_violation={@ratio_violation}
             />
         <% end %>
 
@@ -291,6 +320,9 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :team_players, :list, required: true
   attr :selected_user_ids, :any, required: true
   attr :selected_preset_id, :any, required: true
+  attr :required_ratio, :any, required: true
+  attr :starting_possession_preview, :atom, required: true
+  attr :ratio_violation, :any, required: true
 
   defp between_points_view(assigns) do
     ~H"""
@@ -298,6 +330,28 @@ defmodule UltistatsWeb.GameLive.Show do
       class="flex-1 min-h-0 flex flex-col gap-3 px-4 py-3 overflow-hidden"
       aria-label="Line picker"
     >
+      <div class="flex flex-wrap items-center gap-2">
+        <span class={[
+          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+          starting_possession_pill_classes(@starting_possession_preview)
+        ]}>
+          <.icon name={starting_possession_icon(@starting_possession_preview)} class="size-3.5" />
+          <span>{starting_possession_label(@starting_possession_preview)}</span>
+        </span>
+        <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold bg-base-200 text-base-content/80">
+          {required_ratio_pill(@required_ratio)}
+        </span>
+      </div>
+
+      <div
+        :if={@ratio_violation}
+        class="-mx-4 flex items-center gap-2 px-4 py-1.5 text-xs font-medium bg-warning/10 text-warning"
+        role="status"
+      >
+        <.icon name="hero-exclamation-triangle-solid" class="size-4 shrink-0" />
+        <span>{ratio_mismatch_text(@ratio_violation)}</span>
+      </div>
+
       <div :if={@line_presets != []} class="-mx-4 px-4 overflow-x-auto">
         <div class="flex gap-2 w-max">
           <button
@@ -357,9 +411,8 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :events, :list, required: true
   attr :possession, :atom, required: true
   attr :current_passer_id, :any, required: true
-  attr :selected_receiver_id, :any, required: true
-  attr :selected_defender_id, :any, required: true
   attr :disconnected?, :boolean, required: true
+  attr :throwaway_prompt, :any, required: true
 
   defp in_point_view(assigns) do
     line_user_ids = line_user_ids(assigns.current_point)
@@ -381,13 +434,12 @@ defmodule UltistatsWeb.GameLive.Show do
           on_field={@on_field}
           player_lookup={@player_lookup}
           current_passer_id={@current_passer_id}
-          selected_receiver_id={@selected_receiver_id}
+          throwaway_prompt={@throwaway_prompt}
           disconnected?={@disconnected?}
         />
       <% else %>
         <.their_possession_view
           on_field={@on_field}
-          selected_defender_id={@selected_defender_id}
           disconnected?={@disconnected?}
         />
       <% end %>
@@ -400,17 +452,12 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :on_field, :list, required: true
   attr :player_lookup, :map, required: true
   attr :current_passer_id, :any, required: true
-  attr :selected_receiver_id, :any, required: true
+  attr :throwaway_prompt, :any, required: true
   attr :disconnected?, :boolean, required: true
 
   defp our_possession_view(assigns) do
     passer_set? = not is_nil(assigns.current_passer_id)
-    receiver_set? = not is_nil(assigns.selected_receiver_id)
-
-    assigns =
-      assigns
-      |> assign(:passer_set?, passer_set?)
-      |> assign(:receiver_set?, receiver_set?)
+    assigns = assign(assigns, :passer_set?, passer_set?)
 
     ~H"""
     <div class="space-y-2">
@@ -421,68 +468,326 @@ defmodule UltistatsWeb.GameLive.Show do
       <.current_passer_card
         current_passer_id={@current_passer_id}
         player_lookup={@player_lookup}
+        pending_throwaway?={not is_nil(@throwaway_prompt)}
       />
 
-      <.receiver_grid
+      <.throwaway_prompt_strip
+        :if={@throwaway_prompt}
+        prompt={@throwaway_prompt}
+        current_passer_id={@current_passer_id}
+        player_lookup={@player_lookup}
+      />
+
+      <p :if={not @passer_set?} class="text-xs text-base-content/70" aria-live="polite">
+        Tap who has the disc.
+      </p>
+
+      <.action_legend variant={:ours} />
+
+      <.action_player_grid
         on_field={@on_field}
         passer_set?={@passer_set?}
         current_passer_id={@current_passer_id}
-        selected_receiver_id={@selected_receiver_id}
-      />
-
-      <.outcome_buttons
-        passer_set?={@passer_set?}
-        receiver_set?={@receiver_set?}
         disconnected?={@disconnected?}
       />
 
-      <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60 pt-1">
-        Actions from their team
-      </h3>
-      <div class="grid grid-cols-2 gap-2">
+      <button
+        type="button"
+        phx-click="record_throw_outcome"
+        phx-value-type="stall"
+        disabled={@disconnected? or not @passer_set?}
+        aria-label="Record a stall"
+        class={[
+          "min-h-9 px-3 py-1 rounded-md border border-base-300",
+          "inline-flex items-center justify-center gap-1.5",
+          "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
+          "transition-colors motion-reduce:transition-none",
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+          "disabled:opacity-50 disabled:cursor-not-allowed"
+        ]}
+      >
+        <.icon name="hero-clock" class="size-4" />
+        <span>Stall</span>
+      </button>
+    </div>
+    """
+  end
+
+  attr :on_field, :list, required: true
+  attr :passer_set?, :boolean, required: true
+  attr :current_passer_id, :any, required: true
+  attr :disconnected?, :boolean, required: true
+
+  defp action_player_grid(assigns) do
+    ~H"""
+    <ul
+      class="-mx-4 border-y border-base-200 divide-y divide-base-200"
+      role="list"
+      aria-label="On-field players"
+    >
+      <li :for={member <- @on_field}>
+        <.action_player_row
+          player_id={member.user_id}
+          jersey={member.jersey_number}
+          name={User.display_name(member.user)}
+          passer_set?={@passer_set?}
+          is_current_passer?={@current_passer_id == member.user_id}
+          disconnected?={@disconnected?}
+        />
+      </li>
+
+      <%!-- Unknown row — same buttons, records nil ids. --%>
+      <li>
+        <.action_player_row
+          player_id={:unknown}
+          jersey={nil}
+          name="Unknown"
+          passer_set?={@passer_set?}
+          is_current_passer?={@current_passer_id == :unknown}
+          disconnected?={@disconnected?}
+          unknown?={true}
+        />
+      </li>
+    </ul>
+    """
+  end
+
+  attr :player_id, :any, required: true
+  attr :jersey, :any, default: nil
+  attr :name, :string, required: true
+  attr :passer_set?, :boolean, required: true
+  attr :is_current_passer?, :boolean, required: true
+  attr :disconnected?, :boolean, required: true
+  attr :unknown?, :boolean, default: false
+
+  defp action_player_row(assigns) do
+    ~H"""
+    <div class={[
+      "min-h-9 flex items-center gap-2 px-4 py-1",
+      @unknown? && "italic",
+      @is_current_passer? && "bg-success/15"
+    ]}>
+      <button
+        type="button"
+        phx-click="set_passer"
+        phx-value-id={action_row_phx_value(@player_id)}
+        disabled={@disconnected? or @passer_set?}
+        aria-label={"Set #{@name} as current passer"}
+        class={[
+          "flex items-center gap-2 flex-1 min-w-0 text-left rounded-md",
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+          "disabled:cursor-default"
+        ]}
+      >
+        <span
+          :if={@jersey}
+          class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0"
+          aria-hidden="true"
+        >
+          {@jersey}
+        </span>
+        <span
+          :if={@unknown?}
+          class="inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-xs shrink-0"
+          aria-hidden="true"
+        >
+          ?
+        </span>
+        <span class="font-medium text-sm truncate flex-1 leading-tight">{@name}</span>
+      </button>
+
+      <div class="flex items-center gap-0.5 shrink-0">
         <button
           type="button"
-          phx-click="record_throw_outcome"
-          phx-value-type="throwaway"
-          disabled={@disconnected? or not @passer_set?}
-          aria-label="Record an opponent block"
-          class={[
-            "min-h-9 px-2 py-1 rounded-md border border-base-300",
-            "inline-flex items-center justify-center gap-1.5",
-            "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
-            "transition-colors motion-reduce:transition-none",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            "disabled:opacity-50 disabled:cursor-not-allowed"
-          ]}
+          phx-click="record_throw_for_player"
+          phx-value-player-id={action_row_phx_value(@player_id)}
+          phx-value-type="catch"
+          disabled={
+            @disconnected? or not @passer_set? or
+              (@is_current_passer? and not @unknown?)
+          }
+          aria-label={"Record catch by #{@name}"}
+          class={action_row_button_classes(:catch)}
         >
-          <.icon name="hero-shield-check" class="size-4" />
-          <span>Block</span>
+          <.icon name="hero-check" class="size-3.5" />
+          <span class="text-[10px] font-bold leading-none">C</span>
         </button>
         <button
           type="button"
-          phx-click="record_throw_outcome"
-          phx-value-type="throwaway"
-          disabled={@disconnected? or not @passer_set?}
-          aria-label="Record an opponent interception"
-          class={[
-            "min-h-9 px-2 py-1 rounded-md border border-base-300",
-            "inline-flex items-center justify-center gap-1.5",
-            "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
-            "transition-colors motion-reduce:transition-none",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            "disabled:opacity-50 disabled:cursor-not-allowed"
-          ]}
+          phx-click="record_throw_for_player"
+          phx-value-player-id={action_row_phx_value(@player_id)}
+          phx-value-type="drop"
+          disabled={
+            @disconnected? or not @passer_set? or
+              (@is_current_passer? and not @unknown?)
+          }
+          aria-label={"Record drop by #{@name}"}
+          class={action_row_button_classes(:drop)}
         >
-          <.icon name="hero-check" class="size-4" />
-          <span>Catch</span>
+          <.icon name="hero-arrow-down-tray" class="size-3.5" />
+          <span class="text-[10px] font-bold leading-none">D</span>
+        </button>
+        <button
+          type="button"
+          phx-click="prompt_throwaway"
+          phx-value-player-id={action_row_phx_value(@player_id)}
+          disabled={@disconnected? or not @passer_set?}
+          aria-label={"Disambiguate turnover involving #{@name}"}
+          class={action_row_button_classes(:throwaway)}
+        >
+          <.icon name="hero-arrow-path-rounded-square" class="size-3.5" />
+          <span class="text-[10px] font-bold leading-none">T</span>
+        </button>
+        <button
+          type="button"
+          phx-click="record_throw_for_player"
+          phx-value-player-id={action_row_phx_value(@player_id)}
+          phx-value-type="goal"
+          disabled={
+            @disconnected? or not @passer_set? or
+              (@is_current_passer? and not @unknown?)
+          }
+          aria-label={"Record goal by #{@name}"}
+          class={action_row_button_classes(:goal)}
+        >
+          <.icon name="hero-trophy" class="size-3.5" />
+          <span class="text-[10px] font-bold leading-none">G</span>
         </button>
       </div>
     </div>
     """
   end
 
+  attr :prompt, :map, required: true
   attr :current_passer_id, :any, required: true
   attr :player_lookup, :map, required: true
+
+  defp throwaway_prompt_strip(assigns) do
+    receiver_label = passer_card_label(assigns.prompt.player_id, assigns.player_lookup)
+    passer_label = passer_card_label(assigns.current_passer_id, assigns.player_lookup)
+
+    assigns =
+      assigns
+      |> assign(:receiver_label, receiver_label)
+      |> assign(:passer_label, passer_label)
+      |> assign(:receiver_token, action_row_phx_value(assigns.prompt.player_id))
+
+    ~H"""
+    <div
+      class="-mx-4 px-4 py-2 bg-warning/10 text-warning space-y-1.5"
+      role="dialog"
+      aria-label="Disambiguate turnover"
+    >
+      <p class="text-xs font-medium leading-tight">What happened?</p>
+      <div class="grid grid-cols-2 gap-1.5">
+        <button
+          type="button"
+          phx-click="record_throw_for_player"
+          phx-value-player-id={@receiver_token}
+          phx-value-type="drop"
+          class="min-h-9 px-2 inline-flex items-center justify-center rounded-md text-xs font-semibold border border-warning/40 text-warning active:bg-warning/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          {@receiver_label} drop
+        </button>
+        <button
+          type="button"
+          phx-click="record_throw_for_player"
+          phx-value-type="throwaway"
+          class="min-h-9 px-2 inline-flex items-center justify-center rounded-md text-xs font-semibold border border-warning/40 text-warning active:bg-warning/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          {@passer_label} throwaway
+        </button>
+        <button
+          type="button"
+          phx-click="record_throw_for_player"
+          phx-value-type="throwaway"
+          class="min-h-9 px-2 inline-flex items-center justify-center rounded-md text-xs font-semibold border border-warning/40 text-warning active:bg-warning/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          Other team block
+        </button>
+        <button
+          type="button"
+          phx-click="record_throw_for_player"
+          phx-value-type="throwaway"
+          class="min-h-9 px-2 inline-flex items-center justify-center rounded-md text-xs font-semibold border border-warning/40 text-warning active:bg-warning/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          Other team intercept
+        </button>
+      </div>
+      <button
+        type="button"
+        phx-click="cancel_throwaway"
+        class="min-h-9 px-2 inline-flex items-center justify-center rounded-md text-xs font-semibold text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
+        Cancel
+      </button>
+    </div>
+    """
+  end
+
+  attr :variant, :atom, required: true, values: [:ours, :theirs]
+
+  defp action_legend(assigns) do
+    ~H"""
+    <div
+      class="flex items-center flex-wrap gap-x-2 gap-y-1 text-[10px] text-base-content/60"
+      aria-label="Action icons"
+    >
+      <span class="uppercase tracking-wide font-semibold text-base-content/50">Legend</span>
+      <span :for={item <- legend_items(@variant)} class="inline-flex items-center gap-1">
+        <span class={[
+          "inline-flex items-center justify-center size-5 rounded-md",
+          action_row_button_color(item.kind)
+        ]}>
+          <.icon name={item.icon} class="size-3" />
+        </span>
+        <span>{item.label}</span>
+      </span>
+    </div>
+    """
+  end
+
+  defp legend_items(:ours) do
+    [
+      %{kind: :catch, icon: "hero-check", letter: "C", label: "Catch"},
+      %{kind: :drop, icon: "hero-arrow-down-tray", letter: "D", label: "Drop"},
+      %{
+        kind: :throwaway,
+        icon: "hero-arrow-path-rounded-square",
+        letter: "T",
+        label: "Turnover"
+      },
+      %{kind: :goal, icon: "hero-trophy", letter: "G", label: "Goal"}
+    ]
+  end
+
+  defp legend_items(:theirs) do
+    [
+      %{kind: :throwaway, icon: "hero-shield-check", letter: "B", label: "Block"},
+      %{kind: :catch, icon: "hero-check", letter: "C", label: "Catch"}
+    ]
+  end
+
+  defp action_row_phx_value(:unknown), do: "unknown"
+  defp action_row_phx_value(id) when is_binary(id), do: id
+
+  defp action_row_button_classes(kind) do
+    [
+      "min-h-9 min-w-9 px-1.5 inline-flex items-center justify-center gap-0.5 rounded-md",
+      action_row_button_color(kind),
+      "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+      "disabled:opacity-30 disabled:cursor-not-allowed"
+    ]
+  end
+
+  defp action_row_button_color(:catch), do: "bg-success/10 text-success active:bg-success/20"
+  defp action_row_button_color(:drop), do: "bg-error/10 text-error active:bg-error/20"
+  defp action_row_button_color(:throwaway), do: "bg-warning/10 text-warning active:bg-warning/20"
+  defp action_row_button_color(:goal), do: "bg-primary/10 text-primary active:bg-primary/20"
+
+  attr :current_passer_id, :any, required: true
+  attr :player_lookup, :map, required: true
+  attr :pending_throwaway?, :boolean, default: false
 
   defp current_passer_card(assigns) do
     label = passer_card_label(assigns.current_passer_id, assigns.player_lookup)
@@ -499,20 +804,38 @@ defmodule UltistatsWeb.GameLive.Show do
 
     <div
       :if={not is_nil(@current_passer_id)}
-      class="rounded-lg bg-success/15 ring-2 ring-success px-3 py-2"
+      class={[
+        "rounded-lg px-3 py-2",
+        if(@pending_throwaway?,
+          do: "bg-warning/15 ring-2 ring-warning",
+          else: "bg-success/15 ring-2 ring-success"
+        )
+      ]}
       aria-label={"Current passer: #{@label}"}
       data-current-passer={passer_data_id(@current_passer_id)}
     >
       <div class="flex items-center gap-2">
         <span
-          class="tabular-nums font-semibold inline-flex items-center justify-center size-8 rounded-full bg-success text-success-content text-sm"
+          class={[
+            "tabular-nums font-semibold inline-flex items-center justify-center size-8 rounded-full text-sm",
+            if(@pending_throwaway?,
+              do: "bg-warning text-warning-content",
+              else: "bg-success text-success-content"
+            )
+          ]}
           aria-hidden="true"
         >
           {passer_card_number(@current_passer_id, @player_lookup)}
         </span>
         <div class="flex-1 min-w-0">
           <p class="text-sm font-semibold truncate leading-tight">{@label}</p>
-          <p class="text-[11px] text-base-content/70 leading-tight">has the disc</p>
+          <p class="text-[11px] text-base-content/70 leading-tight">
+            <%= if @pending_throwaway? do %>
+              has thrown it away
+            <% else %>
+              has the disc
+            <% end %>
+          </p>
         </div>
       </div>
     </div>
@@ -520,241 +843,20 @@ defmodule UltistatsWeb.GameLive.Show do
   end
 
   attr :on_field, :list, required: true
-  attr :passer_set?, :boolean, required: true
-  attr :current_passer_id, :any, required: true
-  attr :selected_receiver_id, :any, required: true
-
-  defp receiver_grid(assigns) do
-    event_name = if assigns.passer_set?, do: "set_receiver", else: "set_passer"
-    assigns = assign(assigns, :event_name, event_name)
-
-    ~H"""
-    <ul
-      class="-mx-4 border-y border-base-200 divide-y divide-base-200"
-      role="list"
-      aria-label="On-field players"
-    >
-      <li :for={member <- @on_field}>
-        <button
-          type="button"
-          phx-click={@event_name}
-          phx-value-id={member.user_id}
-          aria-pressed={
-            to_string(
-              receiver_active?(
-                member.user_id,
-                @passer_set?,
-                @current_passer_id,
-                @selected_receiver_id
-              )
-            )
-          }
-          disabled={receiver_disabled?(member.user_id, @passer_set?, @current_passer_id)}
-          class={[
-            "w-full min-h-9 px-4 py-0.5 flex items-center gap-2 text-left",
-            "transition-colors motion-reduce:transition-none active:bg-base-200",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            "disabled:opacity-50 disabled:cursor-not-allowed",
-            receiver_row_classes(
-              member.user_id,
-              @passer_set?,
-              @current_passer_id,
-              @selected_receiver_id
-            )
-          ]}
-        >
-          <span
-            class={[
-              "tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full text-[11px] shrink-0",
-              if(member.user_id == @selected_receiver_id,
-                do: "bg-primary text-primary-content",
-                else: "bg-base-200 text-base-content"
-              )
-            ]}
-            aria-hidden="true"
-          >
-            {member.jersey_number}
-          </span>
-          <span class="font-medium text-sm truncate flex-1 leading-tight">
-            {User.display_name(member.user)}
-          </span>
-          <.icon
-            :if={member.user_id == @selected_receiver_id}
-            name="hero-check-circle-solid"
-            class="size-4 text-primary shrink-0"
-          />
-        </button>
-      </li>
-
-      <%!-- Unknown chip — for when the tracker missed who threw or caught. --%>
-      <li>
-        <button
-          type="button"
-          phx-click={@event_name}
-          phx-value-id="unknown"
-          aria-pressed={
-            to_string(
-              receiver_active?(:unknown, @passer_set?, @current_passer_id, @selected_receiver_id)
-            )
-          }
-          class={[
-            "w-full min-h-9 px-4 py-0.5 flex items-center gap-2 text-left italic",
-            "border-t-2 border-dashed border-base-300",
-            "transition-colors motion-reduce:transition-none active:bg-base-200",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            receiver_row_classes(:unknown, @passer_set?, @current_passer_id, @selected_receiver_id)
-          ]}
-        >
-          <span
-            class="inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-xs shrink-0"
-            aria-hidden="true"
-          >
-            ?
-          </span>
-          <span class="font-medium text-sm flex-1 leading-tight">Unknown</span>
-          <.icon
-            :if={@selected_receiver_id == :unknown}
-            name="hero-check-circle-solid"
-            class="size-4 text-primary shrink-0"
-          />
-        </button>
-      </li>
-    </ul>
-    """
-  end
-
-  attr :passer_set?, :boolean, required: true
-  attr :receiver_set?, :boolean, required: true
-  attr :disconnected?, :boolean, required: true
-
-  defp outcome_buttons(assigns) do
-    catch_disabled? = assigns.disconnected? or not (assigns.passer_set? and assigns.receiver_set?)
-    passer_only_disabled? = assigns.disconnected? or not assigns.passer_set?
-
-    assigns =
-      assigns
-      |> assign(:catch_disabled?, catch_disabled?)
-      |> assign(:passer_only_disabled?, passer_only_disabled?)
-
-    ~H"""
-    <div class="space-y-2">
-      <%!-- Catch / Drop / Goal — require both passer + receiver. --%>
-      <div class="grid grid-cols-3 gap-2">
-        <button
-          type="button"
-          phx-click="record_throw_outcome"
-          phx-value-type="catch"
-          disabled={@catch_disabled?}
-          aria-label="Record a catch"
-          class={[
-            "min-h-11 px-3 py-1.5 rounded-lg",
-            "inline-flex items-center justify-center gap-1.5",
-            "text-sm font-semibold",
-            "bg-success text-success-content active:bg-success/80",
-            "transition-colors motion-reduce:transition-none",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            "disabled:opacity-50 disabled:cursor-not-allowed"
-          ]}
-        >
-          <.icon name="hero-check" class="size-4" />
-          <span>Catch</span>
-        </button>
-        <button
-          type="button"
-          phx-click="record_throw_outcome"
-          phx-value-type="drop"
-          disabled={@catch_disabled?}
-          aria-label="Record a drop"
-          class={[
-            "min-h-11 px-3 py-1.5 rounded-lg",
-            "inline-flex items-center justify-center gap-1.5",
-            "text-sm font-semibold",
-            "bg-error text-error-content active:bg-error/80",
-            "transition-colors motion-reduce:transition-none",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            "disabled:opacity-50 disabled:cursor-not-allowed"
-          ]}
-        >
-          <.icon name="hero-arrow-down-tray" class="size-4" />
-          <span>Drop</span>
-        </button>
-        <button
-          type="button"
-          phx-click="record_throw_outcome"
-          phx-value-type="goal"
-          disabled={@catch_disabled?}
-          aria-label="Record a goal"
-          class={[
-            "min-h-11 px-3 py-1.5 rounded-lg",
-            "inline-flex items-center justify-center gap-1.5",
-            "text-sm font-semibold",
-            "bg-primary text-primary-content active:bg-primary/80",
-            "transition-colors motion-reduce:transition-none",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            "disabled:opacity-50 disabled:cursor-not-allowed"
-          ]}
-        >
-          <.icon name="hero-trophy" class="size-4" />
-          <span>Goal</span>
-        </button>
-      </div>
-
-      <%!-- Throwaway / Stall — passer-only, calls-style. --%>
-      <div class="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          phx-click="record_throw_outcome"
-          phx-value-type="throwaway"
-          disabled={@passer_only_disabled?}
-          aria-label="Record a throwaway"
-          class={[
-            "min-h-9 px-2 py-1 rounded-md border border-base-300",
-            "inline-flex items-center justify-center gap-1.5",
-            "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
-            "transition-colors motion-reduce:transition-none",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            "disabled:opacity-50 disabled:cursor-not-allowed"
-          ]}
-        >
-          <.icon name="hero-arrow-path-rounded-square" class="size-4" />
-          <span>Throwaway</span>
-        </button>
-        <button
-          type="button"
-          phx-click="record_throw_outcome"
-          phx-value-type="stall"
-          disabled={@passer_only_disabled?}
-          aria-label="Record a stall"
-          class={[
-            "min-h-9 px-2 py-1 rounded-md border border-base-300",
-            "inline-flex items-center justify-center gap-1.5",
-            "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
-            "transition-colors motion-reduce:transition-none",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            "disabled:opacity-50 disabled:cursor-not-allowed"
-          ]}
-        >
-          <.icon name="hero-clock" class="size-4" />
-          <span>Stall</span>
-        </button>
-      </div>
-    </div>
-    """
-  end
-
-  attr :on_field, :list, required: true
-  attr :selected_defender_id, :any, required: true
   attr :disconnected?, :boolean, required: true
 
   defp their_possession_view(assigns) do
-    defender_set? = not is_nil(assigns.selected_defender_id)
-    assigns = assign(assigns, :defender_set?, defender_set?)
-
     ~H"""
     <div class="space-y-2">
       <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
         Actions from our team
       </h3>
+
+      <p class="text-xs text-base-content/70" aria-live="polite">
+        Tap the action next to the defender who got the disc back.
+      </p>
+
+      <.action_legend variant={:theirs} />
 
       <ul
         class="-mx-4 border-y border-base-200 divide-y divide-base-200"
@@ -762,111 +864,23 @@ defmodule UltistatsWeb.GameLive.Show do
         aria-label="On-field defenders"
       >
         <li :for={member <- @on_field}>
-          <button
-            type="button"
-            phx-click="set_defender"
-            phx-value-id={member.user_id}
-            aria-pressed={to_string(@selected_defender_id == member.user_id)}
-            class={[
-              "w-full min-h-9 px-4 py-0.5 flex items-center gap-2 text-left",
-              "transition-colors motion-reduce:transition-none active:bg-base-200",
-              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-              if(@selected_defender_id == member.user_id, do: "bg-primary/10", else: "")
-            ]}
-          >
-            <span
-              class={[
-                "tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full text-[11px] shrink-0",
-                if(@selected_defender_id == member.user_id,
-                  do: "bg-primary text-primary-content",
-                  else: "bg-base-200 text-base-content"
-                )
-              ]}
-              aria-hidden="true"
-            >
-              {member.jersey_number}
-            </span>
-            <span class="font-medium text-sm truncate flex-1 leading-tight">
-              {User.display_name(member.user)}
-            </span>
-            <.icon
-              :if={@selected_defender_id == member.user_id}
-              name="hero-check-circle-solid"
-              class="size-4 text-primary shrink-0"
-            />
-          </button>
+          <.defender_action_row
+            player_id={member.user_id}
+            jersey={member.jersey_number}
+            name={User.display_name(member.user)}
+            disconnected?={@disconnected?}
+          />
         </li>
-
         <li>
-          <button
-            type="button"
-            phx-click="set_defender"
-            phx-value-id="unknown"
-            aria-pressed={to_string(@selected_defender_id == :unknown)}
-            class={[
-              "w-full min-h-9 px-4 py-0.5 flex items-center gap-2 text-left italic",
-              "border-t-2 border-dashed border-base-300",
-              "transition-colors motion-reduce:transition-none active:bg-base-200",
-              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-              if(@selected_defender_id == :unknown, do: "bg-primary/10", else: "")
-            ]}
-          >
-            <span
-              class="inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-xs shrink-0"
-              aria-hidden="true"
-            >
-              ?
-            </span>
-            <span class="font-medium text-sm flex-1 leading-tight">Unknown</span>
-            <.icon
-              :if={@selected_defender_id == :unknown}
-              name="hero-check-circle-solid"
-              class="size-4 text-primary shrink-0"
-            />
-          </button>
+          <.defender_action_row
+            player_id={:unknown}
+            jersey={nil}
+            name="Unknown"
+            disconnected?={@disconnected?}
+            unknown?={true}
+          />
         </li>
       </ul>
-
-      <div class="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          phx-click="record_defense"
-          phx-value-kind="block"
-          disabled={@disconnected? or not @defender_set?}
-          aria-label="Record a block"
-          class={[
-            "min-h-11 px-3 py-2 rounded-xl",
-            "flex items-center justify-center gap-2",
-            "text-base font-semibold bg-primary text-primary-content",
-            "active:scale-[0.98] motion-reduce:active:scale-100 active:bg-primary/80",
-            "transition-colors motion-reduce:transition-none",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            "disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
-          ]}
-        >
-          <.icon name="hero-shield-check" class="size-5" />
-          <span>Block</span>
-        </button>
-        <button
-          type="button"
-          phx-click="record_defense"
-          phx-value-kind="catch"
-          disabled={@disconnected? or not @defender_set?}
-          aria-label="Record an interception"
-          class={[
-            "min-h-11 px-3 py-2 rounded-xl",
-            "flex items-center justify-center gap-2",
-            "text-base font-semibold bg-success text-success-content",
-            "active:scale-[0.98] motion-reduce:active:scale-100 active:bg-success/80",
-            "transition-colors motion-reduce:transition-none",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            "disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
-          ]}
-        >
-          <.icon name="hero-check" class="size-5" />
-          <span>Catch</span>
-        </button>
-      </div>
 
       <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60 pt-1">
         Actions from their team
@@ -905,6 +919,60 @@ defmodule UltistatsWeb.GameLive.Show do
         >
           <.icon name="hero-flag" class="size-4" />
           <span>Score</span>
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  attr :player_id, :any, required: true
+  attr :jersey, :any, default: nil
+  attr :name, :string, required: true
+  attr :disconnected?, :boolean, required: true
+  attr :unknown?, :boolean, default: false
+
+  defp defender_action_row(assigns) do
+    ~H"""
+    <div class={["min-h-9 flex items-center gap-2 px-4 py-1", @unknown? && "italic"]}>
+      <span
+        :if={@jersey}
+        class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0"
+        aria-hidden="true"
+      >
+        {@jersey}
+      </span>
+      <span
+        :if={@unknown?}
+        class="inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-xs shrink-0"
+        aria-hidden="true"
+      >
+        ?
+      </span>
+      <span class="font-medium text-sm truncate flex-1 leading-tight">{@name}</span>
+      <div class="flex items-center gap-0.5 shrink-0">
+        <button
+          type="button"
+          phx-click="record_defense_for_player"
+          phx-value-player-id={action_row_phx_value(@player_id)}
+          phx-value-kind="block"
+          disabled={@disconnected?}
+          aria-label={"Record block by #{@name}"}
+          class={action_row_button_classes(:throwaway)}
+        >
+          <.icon name="hero-shield-check" class="size-3.5" />
+          <span class="text-[10px] font-bold leading-none">B</span>
+        </button>
+        <button
+          type="button"
+          phx-click="record_defense_for_player"
+          phx-value-player-id={action_row_phx_value(@player_id)}
+          phx-value-kind="catch"
+          disabled={@disconnected?}
+          aria-label={"Record interception by #{@name}"}
+          class={action_row_button_classes(:catch)}
+        >
+          <.icon name="hero-check" class="size-3.5" />
+          <span class="text-[10px] font-bold leading-none">C</span>
         </button>
       </div>
     </div>
@@ -1024,7 +1092,8 @@ defmodule UltistatsWeb.GameLive.Show do
     {:noreply,
      socket
      |> assign(:selected_user_ids, selected)
-     |> assign(:selected_preset_id, nil)}
+     |> assign(:selected_preset_id, nil)
+     |> assign_line_picker_state()}
   end
 
   def handle_event("select_preset", %{"id" => preset_id}, socket) do
@@ -1038,7 +1107,8 @@ defmodule UltistatsWeb.GameLive.Show do
         {:noreply,
          socket
          |> assign(:selected_user_ids, ids)
-         |> assign(:selected_preset_id, preset_id)}
+         |> assign(:selected_preset_id, preset_id)
+         |> assign_line_picker_state()}
     end
   end
 
@@ -1053,13 +1123,13 @@ defmodule UltistatsWeb.GameLive.Show do
          |> assign(:events, [])
          |> assign(:possession, Games.starting_possession(socket.assigns.game, point))
          |> assign(:current_passer_id, nil)
-         |> assign(:selected_receiver_id, nil)
-         |> assign(:selected_defender_id, nil)
+         |> assign(:throwaway_prompt, nil)
          |> assign(:undo_stack, [])
          |> assign(:redo_stack, [])
          |> assign(:last_ended, nil)
          |> assign(:selected_user_ids, MapSet.new())
-         |> assign(:selected_preset_id, nil)}
+         |> assign(:selected_preset_id, nil)
+         |> assign_line_picker_state()}
 
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Could not start point — pick at least one player.")}
@@ -1088,37 +1158,40 @@ defmodule UltistatsWeb.GameLive.Show do
          |> assign(:possession, nil)
          |> assign(:selected_user_ids, previous_user_ids)
          |> assign(:current_passer_id, nil)
-         |> assign(:selected_receiver_id, nil)
-         |> assign(:selected_defender_id, nil)
+         |> assign(:throwaway_prompt, nil)
          |> assign(:undo_stack, [])
          |> assign(:redo_stack, [])
          |> assign(:last_ended, nil)
+         |> assign_line_picker_state()
          |> put_flash(:info, "Point cancelled")}
     end
   end
 
-  # When no current passer is set, a tap in the on-field grid sets the passer.
+  # When no current passer is set yet, a tap on a player's name area
+  # promotes them to the current passer.
   def handle_event("set_passer", %{"id" => raw_id}, socket) do
-    {:noreply,
-     socket
-     |> assign(:current_passer_id, parse_player_token(raw_id))
-     |> assign(:selected_receiver_id, nil)}
+    {:noreply, assign(socket, :current_passer_id, parse_player_token(raw_id))}
   end
 
-  # When the passer is set, a tap in the on-field grid selects the receiver.
-  def handle_event("set_receiver", %{"id" => raw_id}, socket) do
-    {:noreply, assign(socket, :selected_receiver_id, parse_player_token(raw_id))}
-  end
-
-  def handle_event("record_throw_outcome", %{"type" => type_str}, socket) do
+  # Inline per-row outcome capture. `type` is one of
+  # `"catch" | "drop" | "goal" | "throwaway"`. For passer-only types
+  # (`throwaway`) the row's player-id is ignored; for receiver-attributed
+  # types it becomes the receiver_id (or nil for "unknown").
+  def handle_event("record_throw_for_player", %{"type" => type_str} = params, socket) do
     type = String.to_existing_atom(type_str)
     point = socket.assigns.current_point
     passer_id = id_or_nil(socket.assigns.current_passer_id)
 
     receiver_id =
       case type do
-        t when t in [:throwaway, :stall] -> nil
-        _ -> id_or_nil(socket.assigns.selected_receiver_id)
+        t when t in [:throwaway, :stall] ->
+          nil
+
+        _ ->
+          params
+          |> Map.get("player-id")
+          |> parse_player_token()
+          |> id_or_nil()
       end
 
     case Games.record_throw(point, type, passer_id, receiver_id) do
@@ -1129,6 +1202,7 @@ defmodule UltistatsWeb.GameLive.Show do
           socket
           |> assign(:events, events)
           |> track_event_recorded(event)
+          |> assign(:throwaway_prompt, nil)
 
         apply_outcome_transition(socket, type, point, events)
 
@@ -1137,25 +1211,49 @@ defmodule UltistatsWeb.GameLive.Show do
     end
   end
 
-  def handle_event("set_defender", %{"id" => raw_id}, socket) do
-    {:noreply, assign(socket, :selected_defender_id, parse_player_token(raw_id))}
+  # Standalone Stall button (passer-only, no row context).
+  def handle_event("record_throw_outcome", %{"type" => "stall"}, socket) do
+    point = socket.assigns.current_point
+    passer_id = id_or_nil(socket.assigns.current_passer_id)
+
+    case Games.record_throw(point, :stall, passer_id, nil) do
+      {:ok, event} ->
+        events = Games.events_for_point(point)
+
+        socket =
+          socket
+          |> assign(:events, events)
+          |> track_event_recorded(event)
+
+        apply_outcome_transition(socket, :stall, point, events)
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not record stall.")}
+    end
   end
 
-  # Records a defensive play with the previously-selected defender.
-  #   :block  → :block event (defender = passer)
-  #   :catch  → :catch event (passer = nil, defender = receiver / interceptor)
-  # In both cases the defender becomes the new current passer and
-  # possession derives back to :ours.
-  def handle_event("record_defense", %{"kind" => kind}, socket)
+  # Open the throwaway disambiguation strip for `player-id` (the row
+  # whose Throwaway icon was tapped).
+  def handle_event("prompt_throwaway", %{"player-id" => raw}, socket) do
+    {:noreply, assign(socket, :throwaway_prompt, %{player_id: parse_player_token(raw)})}
+  end
+
+  def handle_event("cancel_throwaway", _params, socket) do
+    {:noreply, assign(socket, :throwaway_prompt, nil)}
+  end
+
+  # Inline defender-row capture. `kind` is `"block"` (defender = passer)
+  # or `"catch"` (defender = receiver/interceptor, passer = nil).
+  def handle_event("record_defense_for_player", %{"player-id" => raw, "kind" => kind}, socket)
       when kind in ["block", "catch"] do
     point = socket.assigns.current_point
-    defender_token = socket.assigns.selected_defender_id
-    defender_id = id_or_nil(defender_token)
+    token = parse_player_token(raw)
+    id = id_or_nil(token)
 
     {type, passer_id, receiver_id} =
       case kind do
-        "block" -> {:block, defender_id, nil}
-        "catch" -> {:catch, nil, defender_id}
+        "block" -> {:block, id, nil}
+        "catch" -> {:catch, nil, id}
       end
 
     case Games.record_throw(point, type, passer_id, receiver_id) do
@@ -1167,9 +1265,7 @@ defmodule UltistatsWeb.GameLive.Show do
          |> assign(:events, events)
          |> track_event_recorded(event)
          |> assign(:possession, derive_possession(socket.assigns.game, point, events))
-         |> assign(:current_passer_id, defender_token)
-         |> assign(:selected_receiver_id, nil)
-         |> assign(:selected_defender_id, nil)}
+         |> assign(:current_passer_id, token)}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Could not record event.")}
@@ -1188,8 +1284,7 @@ defmodule UltistatsWeb.GameLive.Show do
          |> assign(:events, events)
          |> track_event_recorded(event)
          |> assign(:possession, derive_possession(socket.assigns.game, point, events))
-         |> assign(:current_passer_id, nil)
-         |> assign(:selected_receiver_id, nil)}
+         |> assign(:current_passer_id, nil)}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Could not record turnover.")}
@@ -1283,6 +1378,7 @@ defmodule UltistatsWeb.GameLive.Show do
            |> assign(:last_ended, nil)
            |> assign(:selected_user_ids, MapSet.new())
            |> assign(:selected_preset_id, nil)
+           |> assign_line_picker_state()
            |> put_flash(:info, "Goal undone")}
         else
           _ -> {:noreply, put_flash(socket, :error, "Could not undo goal.")}
@@ -1332,8 +1428,7 @@ defmodule UltistatsWeb.GameLive.Show do
     |> assign(:events, events)
     |> assign(:possession, derive_possession(socket.assigns.game, point, events))
     |> assign(:current_passer_id, derive_current_passer(events))
-    |> assign(:selected_receiver_id, nil)
-    |> assign(:selected_defender_id, nil)
+    |> assign(:throwaway_prompt, nil)
   end
 
   # Walks the (live) events for a point and returns the current passer
@@ -1359,30 +1454,16 @@ defmodule UltistatsWeb.GameLive.Show do
   ## helpers — outcome transitions
   ## ---------------------------------------------------------------------
 
-  # After a successful `record_throw_outcome`, update assigns based on
-  # the type:
-  #   :catch     receiver becomes new passer, clear receiver
-  #   :drop      possession flipped to :theirs (derive); clear both
-  #   :throwaway/:stall — same
-  #   :goal      end point :ours, transition back to between-points
-  defp apply_outcome_transition(socket, :catch, point, events) do
-    new_passer = socket.assigns.selected_receiver_id
-
-    {:noreply,
-     socket
-     |> assign(:possession, derive_possession(socket.assigns.game, point, events))
-     |> assign(:current_passer_id, new_passer)
-     |> assign(:selected_receiver_id, nil)}
-  end
-
+  # After a successful per-throw event, refresh derived state from the
+  # live event list. `:catch` makes the receiver the new current passer;
+  # `:drop`/`:throwaway`/`:stall` clear it (possession flips to :theirs).
+  # `:goal` ends the point and transitions to the line picker.
   defp apply_outcome_transition(socket, type, point, events)
-       when type in [:drop, :throwaway, :stall] do
+       when type in [:catch, :drop, :throwaway, :stall] do
     {:noreply,
      socket
      |> assign(:possession, derive_possession(socket.assigns.game, point, events))
-     |> assign(:current_passer_id, nil)
-     |> assign(:selected_receiver_id, nil)
-     |> assign(:selected_defender_id, nil)}
+     |> assign(:current_passer_id, derive_current_passer(events))}
   end
 
   defp apply_outcome_transition(socket, :goal, point, _events) do
@@ -1414,12 +1495,12 @@ defmodule UltistatsWeb.GameLive.Show do
       |> assign(:events, [])
       |> assign(:possession, nil)
       |> assign(:current_passer_id, nil)
-      |> assign(:selected_receiver_id, nil)
-      |> assign(:selected_defender_id, nil)
+      |> assign(:throwaway_prompt, nil)
       |> assign(:undo_stack, [])
       |> assign(:redo_stack, [])
       |> assign(:selected_user_ids, MapSet.new())
       |> assign(:selected_preset_id, nil)
+      |> assign_line_picker_state()
 
     if Games.hard_cap_reached?(game) do
       case Games.end_game(game) do
@@ -1475,33 +1556,6 @@ defmodule UltistatsWeb.GameLive.Show do
   defp passer_data_id(id) when is_binary(id), do: id
   defp passer_data_id(_), do: ""
 
-  # Highlight the row corresponding to the current passer when receiver
-  # picking is active, and the row corresponding to the selected receiver
-  # otherwise.
-  defp receiver_active?(user_id, true, _passer_id, selected_receiver_id) do
-    user_id == selected_receiver_id
-  end
-
-  defp receiver_active?(_, false, _passer_id, _), do: false
-
-  defp receiver_disabled?(user_id, true, current_passer_id) do
-    # Can't pick the same player as both passer and receiver; they
-    # already have the disc.
-    user_id == current_passer_id
-  end
-
-  defp receiver_disabled?(_, false, _), do: false
-
-  defp receiver_row_classes(user_id, true, current_passer_id, selected_receiver_id) do
-    cond do
-      user_id == selected_receiver_id -> "bg-primary/10"
-      user_id == current_passer_id -> "bg-success/15 ring-1 ring-success/40"
-      true -> ""
-    end
-  end
-
-  defp receiver_row_classes(_user_id, false, _current_passer_id, _selected_receiver_id), do: ""
-
   defp length_of_points(game) do
     case Games.get_game_with_points!(game.id).points do
       list when is_list(list) -> length(list)
@@ -1535,6 +1589,28 @@ defmodule UltistatsWeb.GameLive.Show do
   defp possession_banner_label(:ours), do: "Our possession"
   defp possession_banner_label(:theirs), do: "Their possession"
   defp possession_banner_label(_), do: "Possession unknown"
+
+  # Line-picker pull pill: "We pull" means we kick the disc to them, so
+  # we start the point on defense. The receiving side (:ours == we have
+  # the disc next) is offense.
+  defp starting_possession_label(:ours), do: "They pull → start on offense"
+  defp starting_possession_label(:theirs), do: "We pull → start on defense"
+  defp starting_possession_label(_), do: "Possession unknown"
+
+  defp starting_possession_pill_classes(:ours), do: "bg-success/15 text-success"
+  defp starting_possession_pill_classes(:theirs), do: "bg-error/10 text-error"
+  defp starting_possession_pill_classes(_), do: "bg-base-200 text-base-content/70"
+
+  defp starting_possession_icon(:ours), do: "hero-arrow-right-circle"
+  defp starting_possession_icon(:theirs), do: "hero-shield-check"
+  defp starting_possession_icon(_), do: "hero-question-mark-circle"
+
+  defp required_ratio_pill(nil), do: "Any composition"
+  defp required_ratio_pill(ratio), do: "Required: " <> Games.ratio_label(ratio)
+
+  defp ratio_mismatch_text(%{actual: %{m: m, f: f}, required: %{m: rm, f: rf}}) do
+    "Ratio mismatch — selected #{m}M / #{f}F, ruleset requires #{rm}M / #{rf}F."
+  end
 
   # Possession at the start of the point comes from the pull/receive rules
   # (`Games.starting_possession/2`); per-throw events flip per the table
