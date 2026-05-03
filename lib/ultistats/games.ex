@@ -310,10 +310,14 @@ defmodule Ultistats.Games do
   defp scope_player_ids_to_team(_ids, nil), do: []
 
   defp scope_player_ids_to_team(player_ids, team_id) when is_list(player_ids) do
-    Player
-    |> where([p], p.team_id == ^team_id and p.id in ^player_ids)
-    |> select([p], p.id)
-    |> Repo.all()
+    valid =
+      Player
+      |> where([p], p.team_id == ^team_id and p.id in ^player_ids)
+      |> select([p], p.id)
+      |> Repo.all()
+      |> MapSet.new()
+
+    Enum.filter(player_ids, &MapSet.member?(valid, &1))
   end
 
   defp validate_non_empty_line(changeset, []) do
