@@ -1,8 +1,6 @@
 defmodule UltistatsWeb.TeamLive.Show do
   use UltistatsWeb, :live_view
 
-  import UltistatsWeb.UIComponents, only: [line_preset_card: 1]
-
   alias Ultistats.Teams
   alias Ultistats.Teams.Player
 
@@ -31,7 +29,7 @@ defmodule UltistatsWeb.TeamLive.Show do
       <div
         role="tablist"
         aria-label="Team sections"
-        class="mt-2 inline-flex rounded-md border border-base-300 p-1 bg-base-100"
+        class="mt-4 flex gap-6 border-b border-base-200"
       >
         <button
           type="button"
@@ -42,7 +40,16 @@ defmodule UltistatsWeb.TeamLive.Show do
           phx-value-tab="roster"
           class={tab_classes(@active_tab == :roster)}
         >
-          Roster · <span class="tabular-nums">{length(@players)}</span>
+          Roster
+          <span class={[
+            "ml-1.5 tabular-nums text-xs px-1.5 py-0.5 rounded-full",
+            if(@active_tab == :roster,
+              do: "bg-primary/10 text-primary",
+              else: "bg-base-200 text-base-content/70"
+            )
+          ]}>
+            {length(@players)}
+          </span>
         </button>
         <button
           type="button"
@@ -53,20 +60,20 @@ defmodule UltistatsWeb.TeamLive.Show do
           phx-value-tab="presets"
           class={tab_classes(@active_tab == :presets)}
         >
-          Line presets · <span class="tabular-nums">{length(@line_presets)}</span>
+          Lines
+          <span class={[
+            "ml-1.5 tabular-nums text-xs px-1.5 py-0.5 rounded-full",
+            if(@active_tab == :presets,
+              do: "bg-primary/10 text-primary",
+              else: "bg-base-200 text-base-content/70"
+            )
+          ]}>
+            {length(@line_presets)}
+          </span>
         </button>
       </div>
 
-      <section :if={@active_tab == :roster} class="mt-4" aria-labelledby="tab-roster">
-        <div class="flex items-center justify-end mb-3">
-          <.button
-            variant="primary"
-            navigate={~p"/players/new?team_id=#{@team.id}&return_to=team"}
-          >
-            <.icon name="hero-plus" /> Add player
-          </.button>
-        </div>
-
+      <section :if={@active_tab == :roster} class="mt-4 pb-24" aria-labelledby="tab-roster">
         <ul :if={@players != []} id="team-roster" class="divide-y divide-base-300">
           <li
             :for={player <- @players}
@@ -86,18 +93,13 @@ defmodule UltistatsWeb.TeamLive.Show do
               </span>
               <span class="sr-only">{humanize_gender_role(player.gender_role)}</span>
             </div>
-            <div class="flex items-center gap-3 shrink-0">
-              <.link navigate={~p"/players/#{player}/edit?return_to=team"} class="link link-hover">
-                Edit
-              </.link>
-              <.link
-                phx-click={JS.push("delete_player", value: %{id: player.id})}
-                data-confirm="Remove this player from the roster?"
-                class="link link-hover text-error"
-              >
-                Delete
-              </.link>
-            </div>
+            <.link
+              navigate={~p"/players/#{player}/edit?return_to=team"}
+              aria-label={"Edit #{Player.display_name(player)}"}
+              class="shrink-0 min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              <.icon name="hero-pencil-square" class="size-5" />
+            </.link>
           </li>
         </ul>
 
@@ -106,39 +108,26 @@ defmodule UltistatsWeb.TeamLive.Show do
         </p>
       </section>
 
-      <section :if={@active_tab == :presets} class="mt-4" aria-labelledby="tab-presets">
-        <div class="flex items-center justify-end mb-3">
-          <.button
-            variant="primary"
-            navigate={~p"/line_presets/new?team_id=#{@team.id}&return_to=team"}
-          >
-            <.icon name="hero-plus" /> Add preset
-          </.button>
-        </div>
-
-        <ul :if={@line_presets != []} id="team-line-presets" class="flex flex-col gap-3">
+      <section :if={@active_tab == :presets} class="mt-4 pb-24" aria-labelledby="tab-presets">
+        <ul :if={@line_presets != []} id="team-line-presets" class="divide-y divide-base-300">
           <li
             :for={preset <- @line_presets}
             id={"line-preset-#{preset.id}"}
-            class="flex items-center gap-3"
+            class="flex items-center justify-between gap-3 py-3"
           >
-            <div class="flex-1 min-w-0">
-              <.line_preset_card
-                preset={preset}
-                selected?={false}
-                gender_warning?={false}
-                phx-click={JS.navigate(~p"/line_presets/#{preset}/edit?return_to=team")}
-              />
+            <div class="flex items-center gap-3 min-w-0">
+              <span class="inline-flex items-center justify-center min-w-8 h-7 px-2 rounded-full bg-base-200 text-base-content text-sm font-semibold tabular-nums shrink-0">
+                {length(preset.players)}
+              </span>
+              <span class="font-medium truncate">{preset.name}</span>
             </div>
-            <button
-              type="button"
-              phx-click={JS.push("delete_line_preset", value: %{id: preset.id})}
-              data-confirm={"Delete the \"#{preset.name}\" preset?"}
-              aria-label={"Delete preset #{preset.name}"}
-              class="min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-error active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary shrink-0"
+            <.link
+              navigate={~p"/line_presets/#{preset}/edit?return_to=team"}
+              aria-label={"Edit #{preset.name}"}
+              class="shrink-0 min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
-              <.icon name="hero-trash" class="size-5" />
-            </button>
+              <.icon name="hero-pencil-square" class="size-5" />
+            </.link>
           </li>
         </ul>
 
@@ -146,6 +135,24 @@ defmodule UltistatsWeb.TeamLive.Show do
           No line presets yet. Create your first to set lines quickly mid-game.
         </p>
       </section>
+
+      <.link
+        :if={@active_tab == :roster}
+        navigate={~p"/players/new?team_id=#{@team.id}&return_to=team"}
+        aria-label="Add player"
+        class="fixed bottom-6 right-6 z-40 size-14 rounded-full bg-primary text-primary-content shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:active:scale-100"
+      >
+        <.icon name="hero-plus" class="size-6" />
+      </.link>
+
+      <.link
+        :if={@active_tab == :presets}
+        navigate={~p"/line_presets/new?team_id=#{@team.id}&return_to=team"}
+        aria-label="Add line"
+        class="fixed bottom-6 right-6 z-40 size-14 rounded-full bg-primary text-primary-content shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:active:scale-100"
+      >
+        <.icon name="hero-plus" class="size-6" />
+      </.link>
     </Layouts.app>
     """
   end
@@ -172,33 +179,13 @@ defmodule UltistatsWeb.TeamLive.Show do
     {:noreply, assign(socket, :active_tab, :presets)}
   end
 
-  def handle_event("delete_player", %{"id" => id}, socket) do
-    player = Teams.get_player!(id)
-    {:ok, _} = Teams.delete_player(player)
-
-    {:noreply,
-     socket
-     |> put_flash(:info, "Player removed from roster")
-     |> assign(:players, Teams.list_players_for_team(socket.assigns.team))}
-  end
-
-  def handle_event("delete_line_preset", %{"id" => id}, socket) do
-    preset = Teams.get_line_preset!(id)
-    {:ok, _} = Teams.delete_line_preset(preset)
-
-    {:noreply,
-     socket
-     |> put_flash(:info, "Line preset deleted")
-     |> assign(:line_presets, Teams.list_line_presets_for_team(socket.assigns.team))}
-  end
-
   defp tab_classes(true),
     do:
-      "min-h-11 inline-flex items-center px-4 py-1.5 rounded text-sm font-medium bg-primary text-primary-content"
+      "min-h-11 inline-flex items-center pb-3 -mb-px text-sm font-medium text-primary border-b-2 border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 
   defp tab_classes(false),
     do:
-      "min-h-11 inline-flex items-center px-4 py-1.5 rounded text-sm font-medium text-base-content/70 hover:text-base-content"
+      "min-h-11 inline-flex items-center pb-3 -mb-px text-sm font-medium text-base-content/60 hover:text-base-content border-b-2 border-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 
   defp gender_glyph(:female_matching), do: "♀"
   defp gender_glyph(:male_matching), do: "♂"

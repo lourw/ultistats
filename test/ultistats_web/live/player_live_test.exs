@@ -92,6 +92,22 @@ defmodule UltistatsWeb.PlayerLiveTest do
       assert html =~ "Player updated successfully"
       assert html =~ "Some Updated"
     end
+
+    test "delete affordance on the edit form removes the player", %{conn: conn, player: player} do
+      {:ok, edit_live, _html} = live(conn, ~p"/players/#{player}/edit")
+
+      assert has_element?(edit_live, "#delete-player")
+
+      edit_live
+      |> element("#delete-player")
+      |> render_click()
+
+      assert_redirect(edit_live)
+
+      assert_raise Ecto.NoResultsError, fn ->
+        Ultistats.Teams.get_player!(player.id)
+      end
+    end
   end
 
   describe "Bulk add (/players/new?team_id=ID)" do

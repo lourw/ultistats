@@ -138,10 +138,7 @@ defmodule UltistatsWeb.PlayerLive.Form do
   defp render_edit(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <.header>
-        {@page_title}
-        <:subtitle>Use this form to manage player records in your database.</:subtitle>
-      </.header>
+      <.header>{@page_title}</.header>
 
       <.form for={@form} id="player-form" phx-change="validate" phx-submit="save">
         <.input field={@form[:first_name]} type="text" label="First name" />
@@ -160,10 +157,26 @@ defmodule UltistatsWeb.PlayerLive.Form do
 
         <.input field={@form[:team_id]} type="hidden" />
         <footer class="mt-4 flex items-center gap-3">
-          <.button phx-disable-with="Saving..." variant="primary">Save Player</.button>
+          <.button phx-disable-with="Saving..." variant="primary">Save</.button>
           <.button navigate={return_path(@return_to, @player)}>Cancel</.button>
         </footer>
       </.form>
+
+      <section class="mt-12 pt-6 border-t border-base-300">
+        <h2 class="text-sm font-semibold text-base-content">Danger zone</h2>
+        <p class="mt-1 text-sm text-base-content/70">
+          Removing a player drops them from the roster, line presets, and any pinned-player events on past games (events stay; their player attribution becomes empty).
+        </p>
+        <button
+          type="button"
+          id="delete-player"
+          phx-click={JS.push("delete_player", value: %{id: @player.id})}
+          data-confirm="Remove this player? This cannot be undone."
+          class="mt-3 min-h-11 inline-flex items-center px-4 rounded-md text-sm font-medium border border-error text-error hover:bg-error/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-error"
+        >
+          Remove player
+        </button>
+      </section>
     </Layouts.app>
     """
   end
@@ -326,6 +339,16 @@ defmodule UltistatsWeb.PlayerLive.Form do
 
   def handle_event("save", %{"player" => player_params}, socket) do
     save_player(socket, socket.assigns.live_action, player_params)
+  end
+
+  def handle_event("delete_player", %{"id" => id}, socket) do
+    player = Teams.get_player!(id)
+    {:ok, _} = Teams.delete_player(player)
+
+    {:noreply,
+     socket
+     |> put_flash(:info, "Player removed")
+     |> push_navigate(to: return_path(socket.assigns.return_to, player))}
   end
 
   defp sync_rows_from_params(rows, %{"row" => row_params}) do

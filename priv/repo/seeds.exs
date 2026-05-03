@@ -10,24 +10,26 @@ alias Ultistats.Teams.Team
 if Repo.aggregate(Team, :count, :id) == 0 do
   {:ok, team} = Teams.create_team(%{name: "The Misfits"})
 
-  # 6 female-matching, 8 male-matching = 14 total.
+  # 6 female-matching, 8 male-matching = 14 total. Jersey numbers are
+  # intentionally not in alphabetical order of first name so sort-by
+  # toggles produce visibly different orderings during testing.
   player_specs = [
-    # FMP (6)
-    {"Avery", "Stone", "1", :female_matching, :handler},
-    {"Brooke", "Lee", "2", :female_matching, :cutter},
-    {"Casey", "Park", "3", :female_matching, :cutter},
-    {"Devon", "Reed", "4", :female_matching, :hybrid},
-    {"Emery", "Vance", "5", :female_matching, :handler},
-    {"Frankie", "Holt", "6", :female_matching, :cutter},
+    # FMP (6) — jerseys intentionally shuffled vs first-name alpha order
+    {"Brooke", "Lee", "3", :female_matching, :cutter},
+    {"Avery", "Stone", "11", :female_matching, :handler},
+    {"Casey", "Park", "00", :female_matching, :cutter},
+    {"Frankie", "Holt", "1", :female_matching, :cutter},
+    {"Emery", "Vance", "21", :female_matching, :handler},
+    {"Devon", "Reed", "8", :female_matching, :hybrid},
     # MMP (8)
-    {"Gabe", "Quinn", "7", :male_matching, :handler},
-    {"Hayden", "Cole", "8", :male_matching, :cutter},
-    {"Ira", "Bell", "9", :male_matching, :hybrid},
-    {"Jordan", "Diaz", "10", :male_matching, :handler},
-    {"Kit", "Ng", "11", :male_matching, :cutter},
-    {"Logan", "West", "12", :male_matching, :cutter},
-    {"Marlowe", "Hart", "13", :male_matching, :handler},
-    {"Niko", "Pham", "14", :male_matching, :hybrid}
+    {"Niko", "Pham", "2", :male_matching, :hybrid},
+    {"Gabe", "Quinn", "17", :male_matching, :handler},
+    {"Marlowe", "Hart", "5", :male_matching, :handler},
+    {"Hayden", "Cole", "9", :male_matching, :cutter},
+    {"Logan", "West", "44", :male_matching, :cutter},
+    {"Ira", "Bell", "13", :male_matching, :hybrid},
+    {"Kit", "Ng", "7", :male_matching, :cutter},
+    {"Jordan", "Diaz", "23", :male_matching, :handler}
   ]
 
   players =
