@@ -2,29 +2,20 @@ defmodule UltistatsWeb.CoreComponents do
   @moduledoc """
   Provides core UI components.
 
-  At first glance, this module may seem daunting, but its goal is to provide
-  core building blocks for your application, such as tables, forms, and
-  inputs. The components consist mostly of markup and are well-documented
-  with doc strings and declarative assigns. You may customize and style
-  them in any way you want, based on your application growth and needs.
+  These are scaffold-grade primitives (flash, button, input, table, list,
+  header, icon) used by Phoenix-generated LiveViews and controllers. They
+  are styled with vanilla Tailwind v4 utilities and the semantic color
+  tokens declared in `assets/css/app.css` via `@theme`.
 
-  The foundation for styling is Tailwind CSS, a utility-first CSS framework,
-  augmented with daisyUI, a Tailwind CSS plugin that provides UI components
-  and themes. Here are useful references:
+  For project-specific game-flow primitives (action buttons, player chips,
+  score readouts, line preset cards, timeline rows) see
+  `UltistatsWeb.UIComponents`.
 
-    * [daisyUI](https://daisyui.com/docs/intro/) - a good place to get
-      started and see the available components.
+  Useful references:
 
-    * [Tailwind CSS](https://tailwindcss.com) - the foundational framework
-      we build on. You will use it for layout, sizing, flexbox, grid, and
-      spacing.
-
-    * [Heroicons](https://heroicons.com) - see `icon/1` for usage.
-
-    * [Phoenix.Component](https://hexdocs.pm/phoenix_live_view/Phoenix.Component.html) -
-      the component system used by Phoenix. Some components, such as `<.link>`
-      and `<.form>`, are defined there.
-
+    * [Tailwind CSS](https://tailwindcss.com) — utility-first CSS framework.
+    * [Heroicons](https://heroicons.com) — see `icon/1`.
+    * [Phoenix.Component](https://hexdocs.pm/phoenix_live_view/Phoenix.Component.html).
   """
   use Phoenix.Component
 
@@ -55,23 +46,26 @@ defmodule UltistatsWeb.CoreComponents do
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
-      class="toast toast-top toast-end z-50"
+      class="fixed top-4 right-4 z-50 w-80 sm:w-96 max-w-[calc(100vw-2rem)]"
       {@rest}
     >
       <div class={[
-        "alert w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap",
-        @kind == :info && "alert-info",
-        @kind == :error && "alert-error"
+        "flex items-start gap-3 rounded-md border p-3 text-sm shadow-lg",
+        @kind == :info && "bg-info/10 text-info border-info/20",
+        @kind == :error && "bg-error/10 text-error border-error/20"
       ]}>
         <.icon :if={@kind == :info} name="hero-information-circle" class="size-5 shrink-0" />
         <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0" />
-        <div>
+        <div class="flex-1 min-w-0">
           <p :if={@title} class="font-semibold">{@title}</p>
-          <p>{msg}</p>
+          <p class="text-wrap break-words">{msg}</p>
         </div>
-        <div class="flex-1" />
-        <button type="button" class="group self-start cursor-pointer" aria-label="close">
-          <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
+        <button
+          type="button"
+          class="shrink-0 -m-1 p-1 rounded opacity-60 hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
+          aria-label="close"
+        >
+          <.icon name="hero-x-mark" class="size-5" />
         </button>
       </div>
     </div>
@@ -88,27 +82,37 @@ defmodule UltistatsWeb.CoreComponents do
       <.button navigate={~p"/"}>Home</.button>
   """
   attr :rest, :global, include: ~w(href navigate patch method download name value disabled)
-  attr :class, :any
+  attr :class, :any, default: nil
   attr :variant, :string, values: ~w(primary)
   slot :inner_block, required: true
 
   def button(%{rest: rest} = assigns) do
-    variants = %{"primary" => "btn-primary", nil => "btn-primary btn-soft"}
+    base_classes = [
+      "inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium",
+      "min-h-11",
+      "transition-colors active:scale-[0.98]",
+      "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+      "disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100",
+      "motion-reduce:transition-none motion-reduce:active:scale-100"
+    ]
 
-    assigns =
-      assign_new(assigns, :class, fn ->
-        ["btn", Map.fetch!(variants, assigns[:variant])]
-      end)
+    variant_classes =
+      case assigns[:variant] do
+        "primary" -> "bg-primary text-primary-content active:bg-primary/80"
+        _ -> "bg-base-200 text-base-content border border-base-300 active:bg-base-300"
+      end
+
+    assigns = assign(assigns, :computed_class, [base_classes, variant_classes, assigns[:class]])
 
     if rest[:href] || rest[:navigate] || rest[:patch] do
       ~H"""
-      <.link class={@class} {@rest}>
+      <.link class={@computed_class} {@rest}>
         {render_slot(@inner_block)}
       </.link>
       """
     else
       ~H"""
-      <button class={@class} {@rest}>
+      <button class={@computed_class} {@rest}>
         {render_slot(@inner_block)}
       </button>
       """
@@ -204,8 +208,8 @@ defmodule UltistatsWeb.CoreComponents do
       end)
 
     ~H"""
-    <div class="fieldset mb-2">
-      <label for={@id}>
+    <div class="space-y-1 mb-2">
+      <label for={@id} class="inline-flex items-center gap-2 text-sm text-base-content min-h-11">
         <input
           type="hidden"
           name={@name}
@@ -213,17 +217,19 @@ defmodule UltistatsWeb.CoreComponents do
           disabled={@rest[:disabled]}
           form={@rest[:form]}
         />
-        <span class="label">
-          <input
-            type="checkbox"
-            id={@id}
-            name={@name}
-            value="true"
-            checked={@checked}
-            class={@class || "checkbox checkbox-sm"}
-            {@rest}
-          />{@label}
-        </span>
+        <input
+          type="checkbox"
+          id={@id}
+          name={@name}
+          value="true"
+          checked={@checked}
+          class={
+            @class ||
+              "size-5 accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          }
+          {@rest}
+        />
+        <span>{@label}</span>
       </label>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
@@ -232,20 +238,24 @@ defmodule UltistatsWeb.CoreComponents do
 
   def input(%{type: "select"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
-      <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
-        <select
-          id={@id}
-          name={@name}
-          class={[@class || "w-full select", @errors != [] && (@error_class || "select-error")]}
-          multiple={@multiple}
-          {@rest}
-        >
-          <option :if={@prompt} value="">{@prompt}</option>
-          {Phoenix.HTML.Form.options_for_select(@options, @value)}
-        </select>
+    <div class="space-y-1 mb-2">
+      <label :if={@label} for={@id} class="block text-sm font-medium text-base-content">
+        {@label}
       </label>
+      <select
+        id={@id}
+        name={@name}
+        class={[
+          @class ||
+            "block w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content min-h-11 focus:outline-2 focus:outline-offset-2 focus:outline-primary disabled:opacity-50",
+          @errors != [] && (@error_class || "border-error focus:outline-error")
+        ]}
+        multiple={@multiple}
+        {@rest}
+      >
+        <option :if={@prompt} value="">{@prompt}</option>
+        {Phoenix.HTML.Form.options_for_select(@options, @value)}
+      </select>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -253,19 +263,20 @@ defmodule UltistatsWeb.CoreComponents do
 
   def input(%{type: "textarea"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
-      <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
-        <textarea
-          id={@id}
-          name={@name}
-          class={[
-            @class || "w-full textarea",
-            @errors != [] && (@error_class || "textarea-error")
-          ]}
-          {@rest}
-        >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
+    <div class="space-y-1 mb-2">
+      <label :if={@label} for={@id} class="block text-sm font-medium text-base-content">
+        {@label}
       </label>
+      <textarea
+        id={@id}
+        name={@name}
+        class={[
+          @class ||
+            "block w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content placeholder:text-base-content/50 min-h-24 focus:outline-2 focus:outline-offset-2 focus:outline-primary disabled:opacity-50",
+          @errors != [] && (@error_class || "border-error focus:outline-error")
+        ]}
+        {@rest}
+      >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -274,21 +285,22 @@ defmodule UltistatsWeb.CoreComponents do
   # All other inputs text, datetime-local, url, password, etc. are handled here...
   def input(assigns) do
     ~H"""
-    <div class="fieldset mb-2">
-      <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
-        <input
-          type={@type}
-          name={@name}
-          id={@id}
-          value={Phoenix.HTML.Form.normalize_value(@type, @value)}
-          class={[
-            @class || "w-full input",
-            @errors != [] && (@error_class || "input-error")
-          ]}
-          {@rest}
-        />
+    <div class="space-y-1 mb-2">
+      <label :if={@label} for={@id} class="block text-sm font-medium text-base-content">
+        {@label}
       </label>
+      <input
+        type={@type}
+        name={@name}
+        id={@id}
+        value={Phoenix.HTML.Form.normalize_value(@type, @value)}
+        class={[
+          @class ||
+            "block w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content placeholder:text-base-content/50 min-h-11 focus:outline-2 focus:outline-offset-2 focus:outline-primary disabled:opacity-50",
+          @errors != [] && (@error_class || "border-error focus:outline-error")
+        ]}
+        {@rest}
+      />
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -297,8 +309,8 @@ defmodule UltistatsWeb.CoreComponents do
   # Helper used by inputs to generate form errors
   defp error(assigns) do
     ~H"""
-    <p class="mt-1.5 flex gap-2 items-center text-sm text-error">
-      <.icon name="hero-exclamation-circle" class="size-5" />
+    <p class="mt-1 flex gap-2 items-center text-sm text-error">
+      <.icon name="hero-exclamation-circle" class="size-5 shrink-0" />
       {render_slot(@inner_block)}
     </p>
     """
@@ -315,7 +327,7 @@ defmodule UltistatsWeb.CoreComponents do
     ~H"""
     <header class={[@actions != [] && "flex items-center justify-between gap-6", "pb-4"]}>
       <div>
-        <h1 class="text-lg font-semibold leading-8">
+        <h1 class="text-lg font-semibold leading-8 text-base-content">
           {render_slot(@inner_block)}
         </h1>
         <p :if={@subtitle != []} class="text-sm text-base-content/70">
@@ -359,34 +371,44 @@ defmodule UltistatsWeb.CoreComponents do
       end
 
     ~H"""
-    <table class="table table-zebra">
-      <thead>
-        <tr>
-          <th :for={col <- @col}>{col[:label]}</th>
-          <th :if={@action != []}>
-            <span class="sr-only">Actions</span>
-          </th>
-        </tr>
-      </thead>
-      <tbody id={@id} phx-update={is_struct(@rows, Phoenix.LiveView.LiveStream) && "stream"}>
-        <tr :for={row <- @rows} id={@row_id && @row_id.(row)}>
-          <td
-            :for={col <- @col}
-            phx-click={@row_click && @row_click.(row)}
-            class={@row_click && "hover:cursor-pointer"}
+    <div class="overflow-x-auto">
+      <table class="w-full border-collapse text-left text-sm">
+        <thead class="border-b border-base-300 text-base-content/70 font-semibold">
+          <tr>
+            <th :for={col <- @col} class="p-3">{col[:label]}</th>
+            <th :if={@action != []} class="p-3">
+              <span class="sr-only">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody
+          id={@id}
+          phx-update={is_struct(@rows, Phoenix.LiveView.LiveStream) && "stream"}
+          class="text-base-content"
+        >
+          <tr
+            :for={row <- @rows}
+            id={@row_id && @row_id.(row)}
+            class="border-b border-base-200 hover:bg-base-200"
           >
-            {render_slot(col, @row_item.(row))}
-          </td>
-          <td :if={@action != []} class="w-0 font-semibold">
-            <div class="flex gap-4">
-              <%= for action <- @action do %>
-                {render_slot(action, @row_item.(row))}
-              <% end %>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+            <td
+              :for={col <- @col}
+              phx-click={@row_click && @row_click.(row)}
+              class={["p-3", @row_click && "hover:cursor-pointer"]}
+            >
+              {render_slot(col, @row_item.(row))}
+            </td>
+            <td :if={@action != []} class="p-3 w-0 font-semibold">
+              <div class="flex gap-4">
+                <%= for action <- @action do %>
+                  {render_slot(action, @row_item.(row))}
+                <% end %>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
     """
   end
 
@@ -406,14 +428,14 @@ defmodule UltistatsWeb.CoreComponents do
 
   def list(assigns) do
     ~H"""
-    <ul class="list">
-      <li :for={item <- @item} class="list-row">
-        <div class="list-col-grow">
-          <div class="font-bold">{item.title}</div>
-          <div>{render_slot(item)}</div>
-        </div>
-      </li>
-    </ul>
+    <dl class="divide-y divide-base-200">
+      <div :for={item <- @item} class="py-3 flex flex-col gap-1 sm:flex-row sm:gap-4">
+        <dt class="text-sm font-medium text-base-content/70 sm:w-40 shrink-0">
+          {item.title}
+        </dt>
+        <dd class="text-base text-base-content">{render_slot(item)}</dd>
+      </div>
+    </dl>
     """
   end
 

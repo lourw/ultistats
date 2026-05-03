@@ -5,43 +5,23 @@
 
 @plugin "../vendor/heroicons";
 
-/* daisyUI provides the components used by Phoenix's scaffolded
-   core_components.ex (btn, input, fieldset, etc.). Kept scoped to scaffold
-   styling — our project ui_components.ex uses vanilla Tailwind utilities
-   plus the @theme color tokens below. */
-@plugin "../vendor/daisyui" {
-  themes: false;
-}
-
-@plugin "../vendor/daisyui-theme" {
-  name: "light";
-  default: true;
-  prefersdark: false;
-  color-scheme: "light";
-  --color-base-100: oklch(98% 0 0);
-  --color-base-200: oklch(96% 0.001 286.375);
-  --color-base-300: oklch(92% 0.004 286.32);
-  --color-base-content: oklch(21% 0.006 285.885);
+/* Semantic color tokens exposed as Tailwind v4 utilities (bg-primary,
+   text-base-content, bg-success/10, etc.). See docs/UI_DESIGN.md §Color. */
+@theme {
   --color-primary: oklch(58% 0.233 277.117);
   --color-primary-content: white;
-  --color-secondary: oklch(55% 0.027 264.364);
-  --color-secondary-content: white;
-  --color-accent: oklch(0% 0 0);
-  --color-accent-content: white;
-  --color-neutral: oklch(44% 0.017 285.786);
-  --color-neutral-content: oklch(98% 0 0);
-  --color-info: oklch(58% 0.158 241.966);
-  --color-info-content: white;
   --color-success: oklch(60% 0.118 184.704);
   --color-success-content: white;
+  --color-info: oklch(58% 0.158 241.966);
+  --color-info-content: white;
   --color-warning: oklch(66% 0.179 58.318);
   --color-warning-content: white;
   --color-error: oklch(58% 0.253 17.585);
   --color-error-content: white;
-  --radius-selector: 0.25rem;
-  --radius-field: 0.25rem;
-  --radius-box: 0.5rem;
-  --border: 1.5px;
+  --color-base-100: oklch(98% 0 0);
+  --color-base-200: oklch(96% 0.001 286.375);
+  --color-base-300: oklch(92% 0.004 286.32);
+  --color-base-content: oklch(21% 0.006 285.885);
 }
 
 /* LiveView phx-* state variants */
