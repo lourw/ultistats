@@ -14,6 +14,12 @@ defmodule UltistatsWeb.TeamLive.Form do
 
       <.form for={@form} id="team-form" phx-change="validate" phx-submit="save">
         <.input field={@form[:name]} type="text" label="Name" />
+        <.input
+          field={@form[:division]}
+          type="select"
+          label="Division"
+          options={division_options()}
+        />
         <footer>
           <.button phx-disable-with="Saving..." variant="primary">Save</.button>
           <.button navigate={return_path(@return_to, @team)}>Cancel</.button>
@@ -147,4 +153,8 @@ defmodule UltistatsWeb.TeamLive.Form do
 
   defp return_path("index", _team), do: ~p"/teams"
   defp return_path("show", team), do: ~p"/teams/#{team}"
+
+  defp division_options do
+    [{"Open", :open}, {"Women's", :womens}, {"Mixed", :mixed}]
+  end
 end

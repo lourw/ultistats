@@ -76,6 +76,13 @@ defmodule UltistatsWeb.RulesetLive.Form do
           inputmode="numeric"
         />
 
+        <.input
+          field={@form[:division]}
+          type="select"
+          label="Division"
+          options={division_options()}
+        />
+
         <div class="space-y-1 mb-2">
           <p class="block text-sm font-medium text-base-content">Gender ratio rule</p>
           <.gender_ratio_radio field={@form[:gender_ratio_rule]} phx-click="set_ratio_rule" />
@@ -150,9 +157,12 @@ defmodule UltistatsWeb.RulesetLive.Form do
         |> Phoenix.LiveView.push_navigate(to: ~p"/teams/#{team_id}")
 
       true ->
+        team = Teams.get_team!(team_id)
+
         ruleset = %Ruleset{
           team_id: team_id,
           kind: :template,
+          division: team.division || :open,
           timeouts_per_half: 2,
           gender_ratio_rule: :endzone,
           default_starting_ratio: :four_men_three_women
@@ -275,4 +285,8 @@ defmodule UltistatsWeb.RulesetLive.Form do
     do: ~p"/teams/#{team_id}"
 
   defp return_path("team", _ruleset), do: ~p"/rulesets"
+
+  defp division_options do
+    [{"Open", :open}, {"Women's", :womens}, {"Mixed", :mixed}]
+  end
 end

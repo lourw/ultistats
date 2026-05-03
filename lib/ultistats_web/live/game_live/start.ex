@@ -100,9 +100,6 @@ defmodule UltistatsWeb.GameLive.Start do
               {label}
             </button>
           </div>
-          <p class="mt-1 text-xs text-base-content/60">
-            Open and Women's skip the gender-ratio rule. Mixed defaults to USAU 4M/3F.
-          </p>
         </fieldset>
 
         <.input
@@ -226,6 +223,7 @@ defmodule UltistatsWeb.GameLive.Start do
     requested_team_id = params["team_id"]
 
     selected_team_id = pick_team_id(teams, requested_team_id)
+    division = team_division(teams, selected_team_id)
 
     game = %Game{
       team_id: selected_team_id,
@@ -238,10 +236,10 @@ defmodule UltistatsWeb.GameLive.Start do
      |> assign(:page_title, "Start a game")
      |> assign(:teams, teams)
      |> assign(:cancel_team_id, selected_team_id)
-     |> assign(:team_rulesets, list_rulesets(selected_team_id))
+     |> assign(:team_rulesets, list_rulesets(selected_team_id, division))
      |> assign(:selected_ruleset_id, "")
-     |> assign(:division, "open")
-     |> assign(:rule_overrides, @open_defaults)
+     |> assign(:division, division)
+     |> assign(:rule_overrides, defaults_for_division(division))
      |> assign(:ruleset_error, nil)
      |> assign(:form, to_form(Games.change_game(game)))}
   end
@@ -258,9 +256,16 @@ defmodule UltistatsWeb.GameLive.Start do
 
     new_ruleset_id = Map.get(game_params, "ruleset_id", "")
 
+    division =
+      if new_team_id != socket.assigns.cancel_team_id do
+        team_division(socket.assigns.teams, new_team_id)
+      else
+        socket.assigns.division
+      end
+
     team_rulesets =
       if new_team_id != socket.assigns.cancel_team_id do
-        list_rulesets(new_team_id)
+        list_rulesets(new_team_id, division)
       else
         socket.assigns.team_rulesets
       end
@@ -268,9 +273,9 @@ defmodule UltistatsWeb.GameLive.Start do
     rule_overrides =
       cond do
         # Team changed — the previously-selected ruleset is no longer
-        # valid. Reset to defaults.
+        # valid. Reset to division-appropriate defaults.
         new_team_id != socket.assigns.cancel_team_id ->
-          @usau_defaults
+          defaults_for_division(division)
 
         # Ruleset selection changed — prefill from the new selection.
         new_ruleset_id != socket.assigns.selected_ruleset_id ->
@@ -289,6 +294,7 @@ defmodule UltistatsWeb.GameLive.Start do
     {:noreply,
      socket
      |> assign(:cancel_team_id, new_team_id)
+     |> assign(:division, division)
      |> assign(:team_rulesets, team_rulesets)
      |> assign(:selected_ruleset_id, new_ruleset_id)
      |> assign(:rule_overrides, rule_overrides)
@@ -345,10 +351,14 @@ defmodule UltistatsWeb.GameLive.Start do
           |> Map.put("default_starting_ratio", "")
       end
 
+    team_rulesets = list_rulesets(socket.assigns.cancel_team_id, division)
+
     {:noreply,
      socket
      |> assign(:division, division)
-     |> assign(:rule_overrides, overrides)}
+     |> assign(:rule_overrides, overrides)
+     |> assign(:team_rulesets, team_rulesets)
+     |> assign(:selected_ruleset_id, "")}
   end
 
   # Force MVP-fixed defaults regardless of what the form posts (format hidden,
@@ -377,7 +387,10 @@ defmodule UltistatsWeb.GameLive.Start do
   end
 
   defp first_pull_options do
-    [{"We pull", :ours}, {"They pull", :theirs}]
+    [
+      {"We pull (start on defense)", :ours},
+      {"They pull (start on offense)", :theirs}
+    ]
   end
 
   defp division_options do
@@ -410,6 +423,32 @@ defmodule UltistatsWeb.GameLive.Start do
 
   defp list_rulesets(nil), do: []
   defp list_rulesets(team_id) when is_binary(team_id), do: Games.list_rulesets_for_team(team_id)
+
+  defp list_rulesets(nil, _division), do: []
+
+  defp list_rulesets(team_id, division)
+       when is_binary(team_id) and division in ["open", "mixed", "womens"] do
+    Games.list_rulesets_for_team(team_id, String.to_existing_atom(division))
+  end
+
+  defp list_rulesets(team_id, division)
+       when is_binary(team_id) and division in [:open, :mixed, :womens] do
+    Games.list_rulesets_for_team(team_id, division)
+  end
+
+  defp list_rulesets(team_id, _division), do: list_rulesets(team_id)
+
+  defp team_division(_teams, nil), do: "open"
+
+  defp team_division(teams, team_id) do
+    case Enum.find(teams, &(&1.id == team_id)) do
+      %{division: division} when not is_nil(division) -> Atom.to_string(division)
+      _ -> "open"
+    end
+  end
+
+  defp defaults_for_division("mixed"), do: Map.merge(@open_defaults, @mixed_overrides)
+  defp defaults_for_division(_other), do: @open_defaults
 
   defp prefill_overrides("", _team_rulesets), do: @usau_defaults
 
