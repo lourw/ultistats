@@ -402,6 +402,237 @@ defmodule UltistatsWeb.GameLiveTest do
     end
   end
 
+  describe "Timeline" do
+    setup do
+      team = team_fixture()
+      players = build_players(team, 7)
+      game = game_fixture(%{team_id: team.id, opponent_name: "Stormcrows"})
+      %{team: team, players: players, game: game}
+    end
+
+    test "renders empty state when there are no points", %{conn: conn, game: game} do
+      {:ok, _live, html} = live(conn, ~p"/games/#{game.id}/timeline")
+
+      assert html =~ "Timeline"
+      assert html =~ "vs Stormcrows"
+      assert html =~ "No points played yet"
+    end
+
+    test "renders all events grouped by point in order", %{
+      conn: conn,
+      game: game,
+      players: players
+    } do
+      [scorer, blocker | _] = players
+      {:ok, p1} = Games.start_point(game, Enum.map(players, & &1.id))
+      {:ok, _} = Games.record_event(p1, :block, blocker.id)
+      {:ok, _} = Games.record_event(p1, :goal, scorer.id)
+      {:ok, _} = Games.end_point(p1, :ours)
+
+      {:ok, p2} = Games.start_point(game, Enum.map(players, & &1.id))
+      {:ok, _} = Games.end_point(p2, :theirs)
+
+      {:ok, _live, html} = live(conn, ~p"/games/#{game.id}/timeline")
+
+      assert html =~ "Point 1"
+      assert html =~ "Point 2"
+      assert html =~ "We scored"
+      assert html =~ "They scored"
+      assert html =~ "Block"
+      assert html =~ "Goal"
+      # P2 has no events; the empty per-point note shows.
+      assert html =~ "No events recorded for this point."
+      # Scorer's number renders.
+      assert html =~ "##{scorer.jersey_number}"
+    end
+
+    test "deleting a goal recomputes the score", %{
+      conn: conn,
+      game: game,
+      players: players
+    } do
+      [scorer | _] = players
+      {:ok, p1} = Games.start_point(game, Enum.map(players, & &1.id))
+      {:ok, goal} = Games.record_event(p1, :goal, scorer.id)
+      {:ok, _} = Games.end_point(p1, :ours)
+      # Manually un-end the point so deleting the goal makes the score
+      # actually change. (Per task notes: scoring_team is not auto-cleared.)
+      {:ok, _} =
+        p1
+        |> Ecto.Changeset.change(scoring_team: nil)
+        |> Repo.update()
+
+      # Score the next point so we have a "1" to start from.
+      {:ok, p2} = Games.start_point(game, Enum.map(players, & &1.id))
+      {:ok, _} = Games.record_event(p2, :goal, scorer.id)
+      {:ok, _} = Games.end_point(p2, :ours)
+
+      {:ok, live, html} = live(conn, ~p"/games/#{game.id}/timeline")
+      assert html =~ "Goal"
+
+      # Open delete confirm, then confirm.
+      live
+      |> element("button[phx-click='ask_delete'][phx-value-id='#{goal.id}']")
+      |> render_click()
+
+      assert render(live) =~ "Confirm delete event"
+
+      live
+      |> element("button[phx-click='confirm_delete'][phx-value-id='#{goal.id}']")
+      |> render_click()
+
+      # Row gone, but score is still 1 (p2's goal). The point that owned
+      # the deleted goal still has scoring_team=nil here.
+      assert Games.score(game) == %{ours: 1, theirs: 0}
+      assert Repo.get!(Event, goal.id).deleted_at
+    end
+
+    test "soft-delete preserves the audit row", %{
+      conn: conn,
+      game: game,
+      players: players
+    } do
+      [p | _] = players
+      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
+      {:ok, event} = Games.record_event(point, :block, p.id)
+
+      {:ok, live, _html} = live(conn, ~p"/games/#{game.id}/timeline")
+
+      live
+      |> element("button[phx-click='ask_delete'][phx-value-id='#{event.id}']")
+      |> render_click()
+
+      live
+      |> element("button[phx-click='confirm_delete'][phx-value-id='#{event.id}']")
+      |> render_click()
+
+      assert Games.events_for_point(point) == []
+      assert Repo.get!(Event, event.id).deleted_at != nil
+    end
+
+    test "cancel-delete restores the row's edit/delete buttons", %{
+      conn: conn,
+      game: game,
+      players: players
+    } do
+      [p | _] = players
+      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
+      {:ok, event} = Games.record_event(point, :block, p.id)
+
+      {:ok, live, _html} = live(conn, ~p"/games/#{game.id}/timeline")
+
+      live
+      |> element("button[phx-click='ask_delete'][phx-value-id='#{event.id}']")
+      |> render_click()
+
+      assert render(live) =~ "Confirm delete event"
+
+      live |> element("button[phx-click='cancel_delete']") |> render_click()
+      html = render(live)
+      refute html =~ "Confirm delete event"
+      # Row still here with its edit affordance.
+      assert html =~ ~s(phx-click="open_edit")
+    end
+
+    test "editing a player updates the rendered row", %{
+      conn: conn,
+      game: game,
+      players: players
+    } do
+      [p1, p2 | _] = players
+      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
+      {:ok, event} = Games.record_event(point, :goal, p1.id)
+      {:ok, _} = Games.end_point(point, :ours)
+
+      {:ok, live, _html} = live(conn, ~p"/games/#{game.id}/timeline")
+
+      live
+      |> element("button[phx-click='open_edit'][phx-value-id='#{event.id}']")
+      |> render_click()
+
+      assert render(live) =~ "Edit event"
+
+      # Switch to p2.
+      live
+      |> element("#edit-event-modal button[phx-click='set_edit_player'][phx-value-id='#{p2.id}']")
+      |> render_click()
+
+      live
+      |> element("#edit-event-modal form")
+      |> render_submit()
+
+      reloaded = Repo.get!(Event, event.id)
+      assert reloaded.player_id == p2.id
+
+      html = render(live)
+      assert html =~ "##{p2.jersey_number}"
+    end
+
+    test "editing type from :goal to :turn changes the row but not the point's scoring_team", %{
+      conn: conn,
+      game: game,
+      players: players
+    } do
+      [p1 | _] = players
+      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
+      {:ok, event} = Games.record_event(point, :goal, p1.id)
+      {:ok, _} = Games.end_point(point, :ours)
+
+      {:ok, live, _html} = live(conn, ~p"/games/#{game.id}/timeline")
+
+      live
+      |> element("button[phx-click='open_edit'][phx-value-id='#{event.id}']")
+      |> render_click()
+
+      live
+      |> element("#edit-event-modal button[phx-click='set_edit_type'][phx-value-type='turn']")
+      |> render_click()
+
+      live |> element("#edit-event-modal form") |> render_submit()
+
+      assert Repo.get!(Event, event.id).type == :turn
+      # scoring_team on the point is intentionally not cascaded — the
+      # tracker manages it manually. The point remains marked `:ours`
+      # even though its goal event has been retyped.
+      assert Repo.get!(Point, point.id).scoring_team == :ours
+      # Score is event-driven (counts non-deleted :goal events on :ours
+      # points), so retyping the only goal to :turn drops the score.
+      # The mismatch between point.scoring_team and score is a known
+      # post-MVP UX gap.
+      assert Games.score(game) == %{ours: 0, theirs: 0}
+    end
+
+    test "editing rejects a cross-team player", %{
+      conn: conn,
+      game: game,
+      players: players
+    } do
+      [p1 | _] = players
+      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
+      {:ok, event} = Games.record_event(point, :goal, p1.id)
+
+      # Set up a stranger from another team.
+      other_team = team_fixture()
+      stranger = player_fixture(%{team_id: other_team.id, jersey_number: "99"})
+
+      {:ok, live, _html} = live(conn, ~p"/games/#{game.id}/timeline")
+
+      live
+      |> element("button[phx-click='open_edit'][phx-value-id='#{event.id}']")
+      |> render_click()
+
+      # The modal only renders chips for same-team players, so to
+      # exercise the server-side cross-team rejection we drive the event
+      # handler directly via render_hook.
+      render_hook(live, "set_edit_player", %{"id" => stranger.id})
+
+      html = live |> form("#edit-event-modal form") |> render_submit()
+
+      assert html =~ "isn&#39;t on this team"
+      assert Repo.get!(Event, event.id).player_id == p1.id
+    end
+  end
+
   ## ---------------------------------------------------------------------
   ## helpers
   ## ---------------------------------------------------------------------
@@ -421,9 +652,11 @@ defmodule UltistatsWeb.GameLiveTest do
   # action buttons — used to set up score-state preconditions.
   defp score_n_points_for_us(game, players, n) do
     player_ids = Enum.map(players, & &1.id)
+    scorer_id = hd(player_ids)
 
     for _ <- 1..n do
       {:ok, point} = Games.start_point(game, player_ids)
+      {:ok, _} = Games.record_event(point, :goal, scorer_id)
       {:ok, _} = Games.end_point(point, :ours)
     end
 

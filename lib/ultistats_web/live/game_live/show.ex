@@ -146,21 +146,30 @@ defmodule UltistatsWeb.GameLive.Show do
             vs {@game.opponent_name}
           </p>
         </div>
-        <button
-          type="button"
-          phx-click="they_scored"
-          disabled={is_nil(@current_point) or @disconnected? or @finished?}
-          aria-label="Record that the other team scored"
-          class={[
-            "min-h-11 px-3 py-2 rounded-lg text-sm font-semibold",
-            "border-2 border-base-300 bg-base-100 text-base-content",
-            "active:bg-base-200 transition-colors motion-reduce:transition-none",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            "disabled:opacity-50 disabled:cursor-not-allowed"
-          ]}
-        >
-          They scored
-        </button>
+        <div class="flex items-center gap-2 shrink-0">
+          <.link
+            navigate={~p"/games/#{@game.id}/timeline"}
+            aria-label="Open timeline"
+            class="min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg border-2 border-base-300 bg-base-100 text-base-content active:bg-base-200 transition-colors motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <.icon name="hero-list-bullet" class="size-5" />
+          </.link>
+          <button
+            type="button"
+            phx-click="they_scored"
+            disabled={is_nil(@current_point) or @disconnected? or @finished?}
+            aria-label="Record that the other team scored"
+            class={[
+              "min-h-11 px-3 py-2 rounded-lg text-sm font-semibold",
+              "border-2 border-base-300 bg-base-100 text-base-content",
+              "active:bg-base-200 transition-colors motion-reduce:transition-none",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              "disabled:opacity-50 disabled:cursor-not-allowed"
+            ]}
+          >
+            They scored
+          </button>
+        </div>
       </div>
     </div>
     """

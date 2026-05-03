@@ -36,6 +36,18 @@ defmodule Ultistats.Games.Event do
     |> maybe_assoc_constraint_player()
   end
 
+  @doc """
+  Changeset for the timeline edit flow — only `:type` and `:player_id`
+  are editable. `:sequence`, `:occurred_at`, and `:deleted_at` are
+  intentionally not cast.
+  """
+  def update_changeset(event, attrs) do
+    event
+    |> cast(attrs, [:type, :player_id])
+    |> validate_required([:type])
+    |> maybe_assoc_constraint_player()
+  end
+
   defp maybe_assoc_constraint_player(changeset) do
     case get_field(changeset, :player_id) do
       nil -> changeset

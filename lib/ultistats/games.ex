@@ -215,6 +215,35 @@ defmodule Ultistats.Games do
   end
 
   @doc """
+  Updates an event's `type` and/or `player_id`. Used by the timeline
+  edit flow. Other fields are not editable from the timeline (sequence
+  and occurred_at are stable; deleted_at is set via
+  `soft_delete_event/1`).
+
+  When `:player_id` is provided (non-nil), it must belong to the same
+  team as the event's point's game; otherwise `{:error,
+  :player_not_on_team}` is returned without touching the row.
+  """
+  def update_event(%Event{} = event, attrs) do
+    attrs = normalize_keys(attrs)
+    player_id = Map.get(attrs, :player_id, :unset)
+
+    with :ok <- validate_event_player(event, player_id) do
+      event
+      |> Event.update_changeset(attrs)
+      |> Repo.update()
+    end
+  end
+
+  defp validate_event_player(_event, :unset), do: :ok
+  defp validate_event_player(_event, nil), do: :ok
+
+  defp validate_event_player(%Event{point_id: point_id}, player_id) when is_binary(player_id) do
+    point = Repo.get!(Point, point_id)
+    validate_player_on_team(point, player_id)
+  end
+
+  @doc """
   Returns events for `point` filtered to live (non-deleted) rows,
   ordered by `sequence`.
   """
@@ -250,20 +279,29 @@ defmodule Ultistats.Games do
   Counts only points that have ended (`scoring_team` is not nil).
   """
   def score(%Game{id: game_id}) do
-    rows =
-      Point
-      |> where([p], p.game_id == ^game_id and not is_nil(p.scoring_team))
-      |> group_by([p], p.scoring_team)
-      |> select([p], {p.scoring_team, count(p.id)})
-      |> Repo.all()
+    # `:ours` is counted via non-deleted goal events on `:ours` points so
+    # soft-deleting a goal in the timeline recomputes the score (per
+    # MVP_SPEC.md step 7). `:theirs` is counted via points alone — opposing
+    # goals don't have player-attributed events.
+    ours =
+      from(e in Event,
+        join: p in Point,
+        on: p.id == e.point_id,
+        where:
+          p.game_id == ^game_id and
+            p.scoring_team == :ours and
+            e.type == :goal and
+            is_nil(e.deleted_at)
+      )
+      |> Repo.aggregate(:count, :id)
 
-    base = %{ours: 0, theirs: 0}
+    theirs =
+      from(p in Point,
+        where: p.game_id == ^game_id and p.scoring_team == :theirs
+      )
+      |> Repo.aggregate(:count, :id)
 
-    Enum.reduce(rows, base, fn
-      {:ours, n}, acc -> %{acc | ours: n}
-      {:theirs, n}, acc -> %{acc | theirs: n}
-      _, acc -> acc
-    end)
+    %{ours: ours, theirs: theirs}
   end
 
   @doc """

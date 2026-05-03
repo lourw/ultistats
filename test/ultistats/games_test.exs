@@ -312,6 +312,76 @@ defmodule Ultistats.GamesTest do
     end
   end
 
+  describe "update_event/2" do
+    setup do
+      team = team_fixture()
+      game = game_fixture(team_id: team.id)
+      player = player_fixture(team_id: team.id)
+      other_player = player_fixture(team_id: team.id, jersey_number: "9")
+      {:ok, point} = Games.start_point(game, [player.id, other_player.id])
+      {:ok, event} = Games.record_event(point, :goal, player.id)
+
+      %{
+        team: team,
+        game: game,
+        player: player,
+        other_player: other_player,
+        point: point,
+        event: event
+      }
+    end
+
+    test "updates :type", %{event: event} do
+      assert {:ok, updated} = Games.update_event(event, %{type: :turn})
+      assert updated.type == :turn
+      assert Repo.get!(Event, event.id).type == :turn
+    end
+
+    test "updates :player_id to a same-team player", %{event: event, other_player: other_player} do
+      assert {:ok, updated} = Games.update_event(event, %{player_id: other_player.id})
+      assert updated.player_id == other_player.id
+    end
+
+    test "rejects a :player_id from a different team's roster", %{event: event} do
+      other_team = team_fixture()
+      stranger = player_fixture(team_id: other_team.id, jersey_number: "99")
+
+      assert {:error, :player_not_on_team} =
+               Games.update_event(event, %{player_id: stranger.id})
+
+      # No fields touched.
+      reloaded = Repo.get!(Event, event.id)
+      assert reloaded.player_id == event.player_id
+      assert reloaded.type == event.type
+    end
+
+    test "does not touch :sequence, :occurred_at, or :deleted_at", %{event: event} do
+      original_seq = event.sequence
+      original_at = event.occurred_at
+
+      assert {:ok, updated} =
+               Games.update_event(event, %{
+                 type: :assist,
+                 sequence: 99,
+                 occurred_at: ~U[2030-01-01 00:00:00Z],
+                 deleted_at: ~U[2030-01-01 00:00:00Z]
+               })
+
+      assert updated.sequence == original_seq
+      assert DateTime.compare(updated.occurred_at, original_at) == :eq
+      assert is_nil(updated.deleted_at)
+    end
+
+    test "accepts player_id=nil to clear the attribution", %{event: event} do
+      assert {:ok, updated} = Games.update_event(event, %{player_id: nil})
+      assert is_nil(updated.player_id)
+    end
+
+    test "validates :type presence — bogus type is rejected", %{event: event} do
+      assert {:error, %Ecto.Changeset{}} = Games.update_event(event, %{type: nil})
+    end
+  end
+
   describe "soft_delete_event/1 + events_for_point/1" do
     setup do
       team = team_fixture()
@@ -345,6 +415,13 @@ defmodule Ultistats.GamesTest do
   defp score_n_points(game, player, scoring_team, n) do
     Enum.each(1..n, fn _ ->
       {:ok, pt} = Games.start_point(game, [player.id])
+      # `:ours` points always have a goal event in production; mirror that
+      # in the helper so Games.score/1 (which counts non-deleted goal
+      # events on the `:ours` side) reports correctly.
+      if scoring_team == :ours do
+        {:ok, _} = Games.record_event(pt, :goal, player.id)
+      end
+
       {:ok, _} = Games.end_point(pt, scoring_team)
     end)
   end
