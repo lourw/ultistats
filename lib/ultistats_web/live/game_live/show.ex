@@ -362,18 +362,14 @@ defmodule UltistatsWeb.GameLive.Show do
 
     ~H"""
     <div class="space-y-2">
+      <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
+        Actions from our team
+      </h3>
+
       <.current_passer_card
         current_passer_id={@current_passer_id}
         player_lookup={@player_lookup}
       />
-
-      <p class="text-xs text-base-content/70" aria-live="polite">
-        <%= if @passer_set? do %>
-          Tap who caught (or attempted to catch) the throw.
-        <% else %>
-          Tap who has the disc.
-        <% end %>
-      </p>
 
       <.receiver_grid
         on_field={@on_field}
@@ -387,6 +383,48 @@ defmodule UltistatsWeb.GameLive.Show do
         receiver_set?={@receiver_set?}
         disconnected?={@disconnected?}
       />
+
+      <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60 pt-1">
+        Actions from their team
+      </h3>
+      <div class="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          phx-click="record_throw_outcome"
+          phx-value-type="throwaway"
+          disabled={@disconnected? or not @passer_set?}
+          aria-label="Record an opponent block"
+          class={[
+            "min-h-9 px-2 py-1 rounded-md border border-base-300",
+            "inline-flex items-center justify-center gap-1.5",
+            "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
+            "transition-colors motion-reduce:transition-none",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+            "disabled:opacity-50 disabled:cursor-not-allowed"
+          ]}
+        >
+          <.icon name="hero-shield-check" class="size-4" />
+          <span>Block</span>
+        </button>
+        <button
+          type="button"
+          phx-click="record_throw_outcome"
+          phx-value-type="throwaway"
+          disabled={@disconnected? or not @passer_set?}
+          aria-label="Record an opponent interception"
+          class={[
+            "min-h-9 px-2 py-1 rounded-md border border-base-300",
+            "inline-flex items-center justify-center gap-1.5",
+            "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
+            "transition-colors motion-reduce:transition-none",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+            "disabled:opacity-50 disabled:cursor-not-allowed"
+          ]}
+        >
+          <.icon name="hero-check" class="size-4" />
+          <span>Catch</span>
+        </button>
+      </div>
     </div>
     """
   end
@@ -537,9 +575,9 @@ defmodule UltistatsWeb.GameLive.Show do
       |> assign(:passer_only_disabled?, passer_only_disabled?)
 
     ~H"""
-    <div class="space-y-3">
+    <div class="space-y-2">
       <%!-- Catch / Drop / Goal — require both passer + receiver. --%>
-      <div class="grid grid-cols-3 gap-3">
+      <div class="grid grid-cols-3 gap-2">
         <button
           type="button"
           phx-click="record_throw_outcome"
@@ -547,17 +585,16 @@ defmodule UltistatsWeb.GameLive.Show do
           disabled={@catch_disabled?}
           aria-label="Record a catch"
           class={[
-            "min-h-14 px-3 py-2 rounded-xl",
-            "flex flex-col items-center justify-center gap-1",
-            "text-base font-semibold leading-tight",
-            "bg-success text-success-content",
-            "active:scale-[0.98] motion-reduce:active:scale-100 active:bg-success/80",
+            "min-h-11 px-3 py-1.5 rounded-lg",
+            "inline-flex items-center justify-center gap-1.5",
+            "text-sm font-semibold",
+            "bg-success text-success-content active:bg-success/80",
             "transition-colors motion-reduce:transition-none",
             "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            "disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+            "disabled:opacity-50 disabled:cursor-not-allowed"
           ]}
         >
-          <.icon name="hero-check" class="size-6" />
+          <.icon name="hero-check" class="size-4" />
           <span>Catch</span>
         </button>
         <button
@@ -567,31 +604,41 @@ defmodule UltistatsWeb.GameLive.Show do
           disabled={@catch_disabled?}
           aria-label="Record a drop"
           class={[
-            "min-h-14 px-3 py-2 rounded-xl",
-            "flex flex-col items-center justify-center gap-1",
-            "text-base font-semibold leading-tight",
-            "bg-error text-error-content",
-            "active:scale-[0.98] motion-reduce:active:scale-100 active:bg-error/80",
+            "min-h-11 px-3 py-1.5 rounded-lg",
+            "inline-flex items-center justify-center gap-1.5",
+            "text-sm font-semibold",
+            "bg-error text-error-content active:bg-error/80",
             "transition-colors motion-reduce:transition-none",
             "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            "disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+            "disabled:opacity-50 disabled:cursor-not-allowed"
           ]}
         >
-          <.icon name="hero-arrow-down-tray" class="size-6" />
+          <.icon name="hero-arrow-down-tray" class="size-4" />
           <span>Drop</span>
         </button>
-        <.action_button
-          kind={:goal}
+        <button
+          type="button"
           phx-click="record_throw_outcome"
           phx-value-type="goal"
-          disabled?={@catch_disabled?}
+          disabled={@catch_disabled?}
+          aria-label="Record a goal"
+          class={[
+            "min-h-11 px-3 py-1.5 rounded-lg",
+            "inline-flex items-center justify-center gap-1.5",
+            "text-sm font-semibold",
+            "bg-primary text-primary-content active:bg-primary/80",
+            "transition-colors motion-reduce:transition-none",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+            "disabled:opacity-50 disabled:cursor-not-allowed"
+          ]}
         >
-          Goal
-        </.action_button>
+          <.icon name="hero-trophy" class="size-4" />
+          <span>Goal</span>
+        </button>
       </div>
 
-      <%!-- Throwaway / Stall — passer-only, receiver implicit nil. --%>
-      <div class="grid grid-cols-2 gap-3">
+      <%!-- Throwaway / Stall — passer-only, calls-style. --%>
+      <div class="grid grid-cols-2 gap-2">
         <button
           type="button"
           phx-click="record_throw_outcome"
@@ -599,17 +646,15 @@ defmodule UltistatsWeb.GameLive.Show do
           disabled={@passer_only_disabled?}
           aria-label="Record a throwaway"
           class={[
-            "min-h-14 px-3 py-2 rounded-xl border-2 border-error/40",
-            "flex items-center justify-center gap-2",
-            "text-base font-semibold",
-            "bg-base-100 text-error active:bg-error/10",
+            "min-h-9 px-2 py-1 rounded-md border border-base-300",
+            "inline-flex items-center justify-center gap-1.5",
+            "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
             "transition-colors motion-reduce:transition-none",
-            "active:scale-[0.99] motion-reduce:active:scale-100",
             "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            "disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+            "disabled:opacity-50 disabled:cursor-not-allowed"
           ]}
         >
-          <.icon name="hero-arrow-path-rounded-square" class="size-5" />
+          <.icon name="hero-arrow-path-rounded-square" class="size-4" />
           <span>Throwaway</span>
         </button>
         <button
@@ -619,17 +664,15 @@ defmodule UltistatsWeb.GameLive.Show do
           disabled={@passer_only_disabled?}
           aria-label="Record a stall"
           class={[
-            "min-h-14 px-3 py-2 rounded-xl border-2 border-error/40",
-            "flex items-center justify-center gap-2",
-            "text-base font-semibold",
-            "bg-base-100 text-error active:bg-error/10",
+            "min-h-9 px-2 py-1 rounded-md border border-base-300",
+            "inline-flex items-center justify-center gap-1.5",
+            "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
             "transition-colors motion-reduce:transition-none",
-            "active:scale-[0.99] motion-reduce:active:scale-100",
             "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            "disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+            "disabled:opacity-50 disabled:cursor-not-allowed"
           ]}
         >
-          <.icon name="hero-clock" class="size-5" />
+          <.icon name="hero-clock" class="size-4" />
           <span>Stall</span>
         </button>
       </div>
