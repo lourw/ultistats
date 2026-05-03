@@ -150,3 +150,85 @@ else
     "Seeded: #{team.name} · admin=#{admin.email} · 14 stub-user players · 2 line presets · 2 rulesets"
   )
 end
+
+# A second, single-gender (open) team for the most common 7v7 use case —
+# 14 male-matching members, no ratio enforcement.
+if Repo.get_by(Team, name: "The Open Squad") do
+  IO.puts("Seeds: 'The Open Squad' already present, skipping")
+else
+  admin =
+    Repo.get_by(Ultistats.Accounts.User, email: "admin@admin.com") ||
+      raise "Expected admin user to be seeded by the Misfits block above"
+
+  {:ok, %{team: team, membership: admin_membership}} =
+    Teams.create_team_with_admin(%{name: "The Open Squad"}, admin)
+
+  {:ok, _} =
+    Teams.update_team_membership(admin_membership, %{jersey_number: "00"})
+
+  open_specs = [
+    {"Sam", "Reyes", "1", :male_matching, :handler},
+    {"Alex", "Park", "3", :male_matching, :handler},
+    {"Charlie", "Mendez", "5", :male_matching, :hybrid},
+    {"Drew", "Okonkwo", "7", :male_matching, :cutter},
+    {"Eli", "Vargas", "9", :male_matching, :cutter},
+    {"Finn", "Mori", "11", :male_matching, :handler},
+    {"Greyson", "Tate", "13", :male_matching, :hybrid},
+    {"Harper", "Ito", "15", :male_matching, :cutter},
+    {"Indy", "Bauer", "17", :male_matching, :cutter},
+    {"Jules", "Khan", "19", :male_matching, :handler},
+    {"Kade", "Soto", "21", :male_matching, :hybrid},
+    {"Lior", "Webb", "23", :male_matching, :cutter},
+    {"Milo", "Frost", "25", :male_matching, :cutter},
+    {"Nate", "Brooks", "27", :male_matching, :handler}
+  ]
+
+  open_results =
+    Enum.map(open_specs, fn {first, last, jersey, gender, position} ->
+      {:ok, %{user: user}} =
+        Teams.create_member_with_stub_user(team, %{
+          first_name: first,
+          last_name: last,
+          gender_role: gender,
+          position: position,
+          role: :member,
+          is_player: true,
+          jersey_number: jersey
+        })
+
+      {first, user}
+    end)
+
+  by_first_open = fn name ->
+    {_, user} = Enum.find(open_results, fn {f, _} -> f == name end)
+    user
+  end
+
+  o_ids =
+    ["Sam", "Alex", "Charlie", "Drew", "Eli", "Finn", "Greyson"]
+    |> Enum.map(&by_first_open.(&1).id)
+
+  d_ids =
+    ["Harper", "Indy", "Jules", "Kade", "Lior", "Milo", "Nate"]
+    |> Enum.map(&by_first_open.(&1).id)
+
+  {:ok, _} = Teams.create_line_preset(%{team_id: team.id, name: "O-line", user_ids: o_ids})
+  {:ok, _} = Teams.create_line_preset(%{team_id: team.id, name: "D-line", user_ids: d_ids})
+
+  {:ok, _} =
+    Games.create_ruleset(%{
+      team_id: team.id,
+      kind: :template,
+      name: "Open Standard",
+      score_cap: 15,
+      halftime_target: 8,
+      halftime_cap_minutes: nil,
+      soft_cap_minutes: nil,
+      hard_cap_minutes: nil,
+      timeouts_per_half: 2,
+      gender_ratio_rule: :none,
+      default_starting_ratio: nil
+    })
+
+  IO.puts("Seeded: #{team.name} · 14 male-matching members · 2 line presets · 1 :none ruleset")
+end

@@ -82,8 +82,36 @@ defmodule UltistatsWeb.GameLive.Show do
        # Disconnect-driven button-disable is wired via JS hook in a later
        # task; assigns stays at false until the hook lands. The flash
        # banner from `Layouts.flash_group/1` already covers visual feedback.
-       |> assign(:disconnected?, false)}
+       |> assign(:disconnected?, false)
+       |> assign_line_picker_state()}
     end
+  end
+
+  # Refreshes everything the between-points line picker reads:
+  #   * `:next_point_sequence`            — 1-based number of the upcoming point.
+  #   * `:required_ratio`                 — atom or nil from the ruleset.
+  #   * `:starting_possession_preview`    — :ours / :theirs (O-line vs D-line).
+  #   * `:ratio_violation`                — nil, or %{actual:, required:} on mismatch.
+  # Called from mount + every state transition that flips between
+  # in-point and between-points OR changes selection.
+  defp assign_line_picker_state(socket) do
+    game = socket.assigns.game
+    next_seq = length_of_points(game) + 1
+    required = Games.required_ratio_for_point(game, next_seq)
+    starting = Games.starting_possession_for_next_point(game)
+
+    selected = selected_memberships(socket.assigns.team_players, socket.assigns.selected_user_ids)
+    violation = Games.line_ratio_violation(selected, required)
+
+    socket
+    |> assign(:next_point_sequence, next_seq)
+    |> assign(:required_ratio, required)
+    |> assign(:starting_possession_preview, starting)
+    |> assign(:ratio_violation, violation)
+  end
+
+  defp selected_memberships(team_players, selected_ids) do
+    Enum.filter(team_players, &MapSet.member?(selected_ids, &1.user_id))
   end
 
   ## ---------------------------------------------------------------------
@@ -143,6 +171,9 @@ defmodule UltistatsWeb.GameLive.Show do
               team_players={@team_players}
               selected_user_ids={@selected_user_ids}
               selected_preset_id={@selected_preset_id}
+              required_ratio={@required_ratio}
+              starting_possession_preview={@starting_possession_preview}
+              ratio_violation={@ratio_violation}
             />
         <% end %>
 
@@ -291,6 +322,9 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :team_players, :list, required: true
   attr :selected_user_ids, :any, required: true
   attr :selected_preset_id, :any, required: true
+  attr :required_ratio, :any, required: true
+  attr :starting_possession_preview, :atom, required: true
+  attr :ratio_violation, :any, required: true
 
   defp between_points_view(assigns) do
     ~H"""
@@ -298,6 +332,28 @@ defmodule UltistatsWeb.GameLive.Show do
       class="flex-1 min-h-0 flex flex-col gap-3 px-4 py-3 overflow-hidden"
       aria-label="Line picker"
     >
+      <div class="flex flex-wrap items-center gap-2">
+        <span class={[
+          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+          starting_possession_pill_classes(@starting_possession_preview)
+        ]}>
+          <.icon name={starting_possession_icon(@starting_possession_preview)} class="size-3.5" />
+          <span>{starting_possession_label(@starting_possession_preview)}</span>
+        </span>
+        <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold bg-base-200 text-base-content/80">
+          {required_ratio_pill(@required_ratio)}
+        </span>
+      </div>
+
+      <div
+        :if={@ratio_violation}
+        class="-mx-4 flex items-center gap-2 px-4 py-1.5 text-xs font-medium bg-warning/10 text-warning"
+        role="status"
+      >
+        <.icon name="hero-exclamation-triangle-solid" class="size-4 shrink-0" />
+        <span>{ratio_mismatch_text(@ratio_violation)}</span>
+      </div>
+
       <div :if={@line_presets != []} class="-mx-4 px-4 overflow-x-auto">
         <div class="flex gap-2 w-max">
           <button
@@ -1024,7 +1080,8 @@ defmodule UltistatsWeb.GameLive.Show do
     {:noreply,
      socket
      |> assign(:selected_user_ids, selected)
-     |> assign(:selected_preset_id, nil)}
+     |> assign(:selected_preset_id, nil)
+     |> assign_line_picker_state()}
   end
 
   def handle_event("select_preset", %{"id" => preset_id}, socket) do
@@ -1038,7 +1095,8 @@ defmodule UltistatsWeb.GameLive.Show do
         {:noreply,
          socket
          |> assign(:selected_user_ids, ids)
-         |> assign(:selected_preset_id, preset_id)}
+         |> assign(:selected_preset_id, preset_id)
+         |> assign_line_picker_state()}
     end
   end
 
@@ -1059,7 +1117,8 @@ defmodule UltistatsWeb.GameLive.Show do
          |> assign(:redo_stack, [])
          |> assign(:last_ended, nil)
          |> assign(:selected_user_ids, MapSet.new())
-         |> assign(:selected_preset_id, nil)}
+         |> assign(:selected_preset_id, nil)
+         |> assign_line_picker_state()}
 
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Could not start point — pick at least one player.")}
@@ -1093,6 +1152,7 @@ defmodule UltistatsWeb.GameLive.Show do
          |> assign(:undo_stack, [])
          |> assign(:redo_stack, [])
          |> assign(:last_ended, nil)
+         |> assign_line_picker_state()
          |> put_flash(:info, "Point cancelled")}
     end
   end
@@ -1283,6 +1343,7 @@ defmodule UltistatsWeb.GameLive.Show do
            |> assign(:last_ended, nil)
            |> assign(:selected_user_ids, MapSet.new())
            |> assign(:selected_preset_id, nil)
+           |> assign_line_picker_state()
            |> put_flash(:info, "Goal undone")}
         else
           _ -> {:noreply, put_flash(socket, :error, "Could not undo goal.")}
@@ -1420,6 +1481,7 @@ defmodule UltistatsWeb.GameLive.Show do
       |> assign(:redo_stack, [])
       |> assign(:selected_user_ids, MapSet.new())
       |> assign(:selected_preset_id, nil)
+      |> assign_line_picker_state()
 
     if Games.hard_cap_reached?(game) do
       case Games.end_game(game) do
@@ -1535,6 +1597,28 @@ defmodule UltistatsWeb.GameLive.Show do
   defp possession_banner_label(:ours), do: "Our possession"
   defp possession_banner_label(:theirs), do: "Their possession"
   defp possession_banner_label(_), do: "Possession unknown"
+
+  # Line-picker pull pill: "We pull" means we kick the disc to them, so
+  # we start the point on defense. The receiving side (:ours == we have
+  # the disc next) is offense.
+  defp starting_possession_label(:ours), do: "They pull → start on offense"
+  defp starting_possession_label(:theirs), do: "We pull → start on defense"
+  defp starting_possession_label(_), do: "Possession unknown"
+
+  defp starting_possession_pill_classes(:ours), do: "bg-success/15 text-success"
+  defp starting_possession_pill_classes(:theirs), do: "bg-error/10 text-error"
+  defp starting_possession_pill_classes(_), do: "bg-base-200 text-base-content/70"
+
+  defp starting_possession_icon(:ours), do: "hero-arrow-right-circle"
+  defp starting_possession_icon(:theirs), do: "hero-shield-check"
+  defp starting_possession_icon(_), do: "hero-question-mark-circle"
+
+  defp required_ratio_pill(nil), do: "Any composition"
+  defp required_ratio_pill(ratio), do: "Required: " <> Games.ratio_label(ratio)
+
+  defp ratio_mismatch_text(%{actual: %{m: m, f: f}, required: %{m: rm, f: rf}}) do
+    "Ratio mismatch — selected #{m}M / #{f}F, ruleset requires #{rm}M / #{rf}F."
+  end
 
   # Possession at the start of the point comes from the pull/receive rules
   # (`Games.starting_possession/2`); per-throw events flip per the table

@@ -501,6 +501,108 @@ defmodule Ultistats.Games do
     fetch_ruleset_field(game, :score_cap)
   end
 
+  @doc """
+  Required gender ratio for a given point of a game, derived from the
+  game's ruleset. Returns `:four_men_three_women`, `:three_men_four_women`,
+  or `nil` (when the rule is `:none` or the ratio is otherwise irrelevant).
+
+  Accepts either a `%Point{}` (uses `point.sequence`) or a 1-based integer
+  for the next-point sequence (callable from the line picker before a
+  point exists).
+  """
+  def required_ratio_for_point(%Game{} = game, %Point{sequence: seq}),
+    do: required_ratio_for_point(game, seq)
+
+  def required_ratio_for_point(%Game{} = game, seq) when is_integer(seq) and seq >= 1 do
+    rule = fetch_ruleset_field(game, :gender_ratio_rule)
+    starting = fetch_ruleset_field(game, :default_starting_ratio)
+
+    case rule do
+      :none -> nil
+      :fixed -> starting
+      r when r in [:endzone, :alternating] -> ratio_for_sequence(starting, seq)
+      _ -> nil
+    end
+  end
+
+  defp ratio_for_sequence(nil, _seq), do: nil
+  defp ratio_for_sequence(starting, seq) when rem(seq, 2) == 1, do: starting
+  defp ratio_for_sequence(starting, _seq), do: opposite_ratio(starting)
+
+  defp opposite_ratio(:four_men_three_women), do: :three_men_four_women
+  defp opposite_ratio(:three_men_four_women), do: :four_men_three_women
+  defp opposite_ratio(_), do: nil
+
+  defp ratio_split(:four_men_three_women), do: %{m: 4, f: 3}
+  defp ratio_split(:three_men_four_women), do: %{m: 3, f: 4}
+
+  @doc """
+  Counts gender roles in a list. Accepts either `%TeamMembership{}` (reads
+  `member.user.gender_role`) or `%User{}` shapes (reads `user.gender_role`).
+  Returns `%{male_matching: n, female_matching: n}`.
+  """
+  def line_ratio_summary(line) when is_list(line) do
+    Enum.reduce(line, %{male_matching: 0, female_matching: 0}, fn entry, acc ->
+      role = gender_role_of(entry)
+
+      case role do
+        :male_matching -> %{acc | male_matching: acc.male_matching + 1}
+        :female_matching -> %{acc | female_matching: acc.female_matching + 1}
+        _ -> acc
+      end
+    end)
+  end
+
+  defp gender_role_of(%{user: %{gender_role: role}}), do: role
+  defp gender_role_of(%{gender_role: role}), do: role
+  defp gender_role_of(_), do: nil
+
+  @doc """
+  Returns `nil` when `line` matches the required ratio (or no ratio is
+  required), otherwise `%{actual: %{m:, f:}, required: %{m:, f:}}` for the
+  caller to render a non-blocking warning.
+  """
+  def line_ratio_violation(_line, nil), do: nil
+
+  def line_ratio_violation(line, required)
+      when required in [:four_men_three_women, :three_men_four_women] do
+    %{male_matching: m, female_matching: f} = line_ratio_summary(line)
+    required_split = ratio_split(required)
+
+    if m == required_split.m and f == required_split.f do
+      nil
+    else
+      %{actual: %{m: m, f: f}, required: required_split}
+    end
+  end
+
+  @doc "Human label for a required ratio (or 'Any composition' when nil)."
+  def ratio_label(:four_men_three_women), do: "4M / 3F"
+  def ratio_label(:three_men_four_women), do: "3M / 4F"
+  def ratio_label(nil), do: "Any composition"
+
+  @doc """
+  The `:ours`/`:theirs` possession the *next* point will start with,
+  computed without needing a `%Point{}` to exist yet. Mirrors
+  `starting_possession/2`: point 1 derives from `game.first_pull`; later
+  points invert the most recently scored point's `scoring_team`.
+  """
+  def starting_possession_for_next_point(%Game{} = game) do
+    last =
+      Point
+      |> where([p], p.game_id == ^game.id and not is_nil(p.scoring_team))
+      |> order_by([p], desc: p.sequence)
+      |> limit(1)
+      |> Repo.one()
+
+    case last do
+      nil -> receiving_side(game.first_pull)
+      %Point{scoring_team: :ours} -> :theirs
+      %Point{scoring_team: :theirs} -> :ours
+      _ -> :ours
+    end
+  end
+
   defp fetch_ruleset_field(%Game{ruleset_id: nil}, key) do
     Map.get(usau_standard_attrs(), key)
   end
