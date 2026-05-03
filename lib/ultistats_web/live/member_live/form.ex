@@ -119,15 +119,15 @@ defmodule UltistatsWeb.MemberLive.Form do
 
             <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
               <label class="inline-flex items-center gap-2 min-h-11 cursor-pointer">
-                <input type="hidden" name={"row[#{row.key}][is_player]"} value="false" />
+                <input type="hidden" name={"row[#{row.key}][is_player]"} value="true" />
                 <input
                   type="checkbox"
                   name={"row[#{row.key}][is_player]"}
-                  value="true"
-                  checked={row.is_player}
+                  value="false"
+                  checked={not row.is_player}
                   class="accent-primary size-5"
                 />
-                <span class="text-sm">Include in lines</span>
+                <span class="text-sm">Non-player</span>
               </label>
               <label class="inline-flex items-center gap-2 min-h-11 cursor-pointer">
                 <input type="hidden" name={"row[#{row.key}][is_admin]"} value="false" />
@@ -202,20 +202,20 @@ defmodule UltistatsWeb.MemberLive.Form do
         </div>
 
         <div class="space-y-1">
-          <p class="block text-sm font-medium text-base-content">Include in lines</p>
           <label class="inline-flex items-center gap-2 min-h-11 cursor-pointer">
-            <input type="hidden" name="member[is_player]" value="false" />
+            <input type="hidden" name="member[is_player]" value="true" />
             <input
               type="checkbox"
               name="member[is_player]"
-              value="true"
-              checked={@form[:is_player].value in [true, "true"]}
+              value="false"
+              checked={@form[:is_player].value in [false, "false"]}
               class="accent-primary size-5"
             />
-            <span class="text-sm text-base-content/70">
-              Non-players don't show up in line selection or in line presets.
-            </span>
+            <span class="text-sm font-medium text-base-content">Non-player</span>
           </label>
+          <p class="text-xs text-base-content/70">
+            Non-players don't show up in line selection or in line presets.
+          </p>
         </div>
 
         <footer class="sticky bottom-0 -mx-4 mt-8 flex items-center gap-3 border-t border-base-300 bg-base-100/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-base-100/80">
