@@ -136,6 +136,13 @@ defmodule UltistatsWeb.TeamLive.Show do
               {length(preset.users)}
             </span>
             <span class="font-medium text-sm truncate flex-1 leading-tight">{preset.name}</span>
+            <span
+              class="text-[11px] tabular-nums text-base-content/60 shrink-0 inline-flex items-center gap-1.5"
+              aria-label={"#{role_count(preset, :male_matching)} male-matching, #{role_count(preset, :female_matching)} female-matching"}
+            >
+              <span aria-hidden="true">♂</span> {role_count(preset, :male_matching)}
+              <span aria-hidden="true">♀</span> {role_count(preset, :female_matching)}
+            </span>
             <.link
               :if={@is_admin?}
               navigate={~p"/line_presets/#{preset}/edit?return_to=team"}
@@ -296,6 +303,10 @@ defmodule UltistatsWeb.TeamLive.Show do
   defp tab_classes(false),
     do:
       "min-h-11 inline-flex items-center pb-3 -mb-px text-sm font-medium text-base-content/60 hover:text-base-content border-b-2 border-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+
+  defp role_count(preset, role) do
+    Enum.count(preset.users, &(&1.gender_role == role))
+  end
 
   defp gender_glyph(:female_matching), do: "♀"
   defp gender_glyph(:male_matching), do: "♂"

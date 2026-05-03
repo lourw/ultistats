@@ -44,10 +44,7 @@ defmodule UltistatsWeb.TeamLive.Index do
               <span>♂ {s.male_matching}</span>
               <span>♀ {s.female_matching}</span>
               <span aria-hidden="true">·</span>
-              <span>{format_record(s)}</span>
-              <span :if={s.games_in_progress > 0} class="text-info">
-                {s.games_in_progress} in progress
-              </span>
+              <span>{games_label(total_games(s))}</span>
             </div>
           </.link>
         </li>
@@ -66,13 +63,10 @@ defmodule UltistatsWeb.TeamLive.Index do
      |> assign(:teams_with_stats, Teams.list_teams_with_stats_for_user(user))}
   end
 
-  # Record formatting:
-  # - "W–L" (en dash) for the common case of finished wins/losses
-  # - "W–L–T" when ties exist
-  # - "No games yet" when there are zero games at all
-  # - "" when only in-progress games exist (the "in progress" badge carries the info)
-  defp format_record(%{wins: 0, losses: 0, ties: 0, games_in_progress: 0}), do: "No games yet"
-  defp format_record(%{wins: 0, losses: 0, ties: 0}), do: ""
-  defp format_record(%{wins: w, losses: l, ties: 0}), do: "#{w}–#{l}"
-  defp format_record(%{wins: w, losses: l, ties: t}), do: "#{w}–#{l}–#{t}"
+  defp total_games(%{wins: w, losses: l, ties: t, games_in_progress: ip}),
+    do: w + l + t + ip
+
+  defp games_label(0), do: "No games yet"
+  defp games_label(1), do: "1 game"
+  defp games_label(n), do: "#{n} games"
 end
