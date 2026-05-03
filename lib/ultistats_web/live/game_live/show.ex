@@ -86,14 +86,14 @@ defmodule UltistatsWeb.GameLive.Show do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <div class="flex flex-col min-h-[calc(100vh-3rem)] -mt-6 -mb-6">
-        <div
-          class={[
-            "sticky z-20 -mx-4 px-4 backdrop-blur border-b transition-[top,background-color] duration-200 motion-reduce:transition-none",
-            top_bar_classes(@current_point, @possession)
-          ]}
-          style="top: var(--nav-offset, 3.5rem)"
-        >
+      <div
+        class="flex flex-col -mx-4 -mt-6 -mb-6 transition-[height] duration-200 motion-reduce:transition-none"
+        style="height: calc(100dvh - var(--nav-offset, 3.5rem))"
+      >
+        <div class={[
+          "border-b transition-colors duration-200 motion-reduce:transition-none",
+          top_bar_classes(@current_point, @possession)
+        ]}>
           <.compact_header
             game={@game}
             score={@score}
@@ -132,13 +132,6 @@ defmodule UltistatsWeb.GameLive.Show do
           team_players={@team_players}
           disconnected?={@disconnected?}
         />
-
-        <div
-          :if={@current_point}
-          class="sticky bottom-0 -mx-4 px-4 pb-safe bg-base-100/95 backdrop-blur border-t border-base-200"
-        >
-          <.calls_bar disconnected?={@disconnected?} />
-        </div>
       </div>
     </Layouts.app>
     """
@@ -162,14 +155,14 @@ defmodule UltistatsWeb.GameLive.Show do
     <div
       :if={@current_point}
       class={[
-        "-mx-4 px-4 py-1 text-center text-xs font-semibold uppercase tracking-wide",
+        "py-1 text-center text-xs font-semibold uppercase tracking-wide",
         possession_banner_classes(@possession)
       ]}
     >
       {possession_banner_label(@possession)}
     </div>
 
-    <div :if={@halftime?} class="pt-2">
+    <div :if={@halftime?} class="px-4 pt-2">
       <div
         role="status"
         class="flex items-center gap-2 rounded-md bg-warning text-warning-content px-2 py-1.5 text-xs"
@@ -189,7 +182,7 @@ defmodule UltistatsWeb.GameLive.Show do
       </div>
     </div>
 
-    <div class="flex items-center justify-between gap-2 py-2">
+    <div class="flex items-center justify-between gap-2 px-4 py-2">
       <button
         :if={@current_point}
         type="button"
@@ -250,7 +243,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
   defp between_points_view(assigns) do
     ~H"""
-    <section class="flex-1 py-3 space-y-3" aria-label="Line picker">
+    <section class="flex-1 px-4 py-3 space-y-3" aria-label="Line picker">
       <div :if={@line_presets != []} class="-mx-4 px-4 overflow-x-auto">
         <div class="flex gap-2 w-max">
           <button
@@ -325,7 +318,10 @@ defmodule UltistatsWeb.GameLive.Show do
       |> assign(:player_lookup, player_lookup)
 
     ~H"""
-    <section class="flex-1 py-2 space-y-3" aria-label="Current point">
+    <section
+      class="flex-1 min-h-0 px-4 py-2 space-y-2 overflow-hidden"
+      aria-label="Current point"
+    >
       <%= if @possession == :ours do %>
         <.our_possession_view
           on_field={@on_field}
@@ -341,6 +337,8 @@ defmodule UltistatsWeb.GameLive.Show do
           disconnected?={@disconnected?}
         />
       <% end %>
+
+      <.calls_bar disconnected?={@disconnected?} />
     </section>
     """
   end
@@ -478,7 +476,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
     ~H"""
     <ul
-      class="rounded-lg border border-base-200 divide-y divide-base-200"
+      class="-mx-4 border-y border-base-200 divide-y divide-base-200"
       role="list"
       aria-label="On-field players"
     >
@@ -494,7 +492,7 @@ defmodule UltistatsWeb.GameLive.Show do
           }
           disabled={receiver_disabled?(player.id, @passer_set?, @current_passer_id)}
           class={[
-            "w-full min-h-9 px-2 py-0.5 flex items-center gap-2 text-left",
+            "w-full min-h-9 px-4 py-0.5 flex items-center gap-2 text-left",
             "transition-colors motion-reduce:transition-none active:bg-base-200",
             "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
             "disabled:opacity-50 disabled:cursor-not-allowed",
@@ -536,7 +534,7 @@ defmodule UltistatsWeb.GameLive.Show do
             )
           }
           class={[
-            "w-full min-h-9 px-2 py-0.5 flex items-center gap-2 text-left italic",
+            "w-full min-h-9 px-4 py-0.5 flex items-center gap-2 text-left italic",
             "border-t-2 border-dashed border-base-300",
             "transition-colors motion-reduce:transition-none active:bg-base-200",
             "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
@@ -695,7 +693,7 @@ defmodule UltistatsWeb.GameLive.Show do
       </h3>
 
       <ul
-        class="rounded-lg border border-base-200 divide-y divide-base-200"
+        class="-mx-4 border-y border-base-200 divide-y divide-base-200"
         role="list"
         aria-label="On-field defenders"
       >
@@ -706,7 +704,7 @@ defmodule UltistatsWeb.GameLive.Show do
             phx-value-id={player.id}
             aria-pressed={to_string(@selected_defender_id == player.id)}
             class={[
-              "w-full min-h-9 px-2 py-0.5 flex items-center gap-2 text-left",
+              "w-full min-h-9 px-4 py-0.5 flex items-center gap-2 text-left",
               "transition-colors motion-reduce:transition-none active:bg-base-200",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
               if(@selected_defender_id == player.id, do: "bg-primary/10", else: "")
@@ -742,7 +740,7 @@ defmodule UltistatsWeb.GameLive.Show do
             phx-value-id="unknown"
             aria-pressed={to_string(@selected_defender_id == :unknown)}
             class={[
-              "w-full min-h-9 px-2 py-0.5 flex items-center gap-2 text-left italic",
+              "w-full min-h-9 px-4 py-0.5 flex items-center gap-2 text-left italic",
               "border-t-2 border-dashed border-base-300",
               "transition-colors motion-reduce:transition-none active:bg-base-200",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
@@ -853,7 +851,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
   defp calls_bar(assigns) do
     ~H"""
-    <div class="py-2 space-y-1" aria-label="Calls">
+    <div class="space-y-1" aria-label="Calls">
       <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
         Calls
       </h3>
@@ -909,7 +907,7 @@ defmodule UltistatsWeb.GameLive.Show do
     ~H"""
     <div
       :if={@game.status != :finished and is_nil(@current_point)}
-      class="sticky bottom-0 -mx-4 px-4 pb-safe bg-base-100/95 backdrop-blur border-t border-base-200"
+      class="sticky bottom-0 px-4 pb-safe bg-base-100/95 backdrop-blur border-t border-base-200"
     >
       <div class="py-3">
         <button

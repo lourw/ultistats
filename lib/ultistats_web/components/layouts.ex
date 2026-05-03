@@ -38,7 +38,7 @@ defmodule UltistatsWeb.Layouts do
       </nav>
     </header>
 
-    <main class="min-h-screen bg-base-100 text-base-content pb-safe">
+    <main class="min-h-[100dvh] bg-base-100 text-base-content pb-safe">
       <div class="mx-auto max-w-2xl px-4 py-6 space-y-4">
         {render_slot(@inner_block)}
       </div>

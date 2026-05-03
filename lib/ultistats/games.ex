@@ -310,6 +310,16 @@ defmodule Ultistats.Games do
   end
 
   @doc """
+  Restores a soft-deleted event by clearing its `deleted_at` stamp.
+  Used by the live tracker's redo flow.
+  """
+  def restore_event(%Event{} = event) do
+    event
+    |> Event.changeset(%{deleted_at: nil})
+    |> Repo.update()
+  end
+
+  @doc """
   Updates an event's `type`, `passer_id`, and/or `receiver_id`. Used by
   the timeline edit flow. Other fields are not editable from the
   timeline (sequence and occurred_at are stable; deleted_at is set via
