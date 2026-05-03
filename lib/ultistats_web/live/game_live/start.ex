@@ -19,18 +19,29 @@ defmodule UltistatsWeb.GameLive.Start do
 
   @rule_atom_fields [:gender_ratio_rule, :default_starting_ratio]
 
-  # USAU defaults — kept in sync with `Games.usau_standard_attrs/0`.
-  # Stored as strings for input value rendering.
-  @usau_defaults %{
+  # Form-level defaults. Single-gender (open / women's) is the most
+  # common case so the form starts with `gender_ratio_rule: "none"`. The
+  # Division control re-applies these on switch to "Mixed".
+  @open_defaults %{
     "score_cap" => "15",
     "halftime_target" => "8",
     "halftime_cap_minutes" => "",
     "soft_cap_minutes" => "",
     "hard_cap_minutes" => "",
     "timeouts_per_half" => "2",
+    "gender_ratio_rule" => "none",
+    "default_starting_ratio" => ""
+  }
+
+  @mixed_overrides %{
     "gender_ratio_rule" => "endzone",
     "default_starting_ratio" => "four_men_three_women"
   }
+
+  # `@usau_defaults` is the legacy alias other clauses still reference;
+  # treat it as the form's no-template starting state, which is now
+  # single-gender by default.
+  @usau_defaults @open_defaults
 
   @impl true
   def render(assigns) do
@@ -73,6 +84,26 @@ defmodule UltistatsWeb.GameLive.Start do
         <.input :if={length(@teams) == 1} field={@form[:team_id]} type="hidden" />
 
         <.input field={@form[:opponent_name]} type="text" label="Opponent" maxlength="80" />
+
+        <fieldset class="mt-2">
+          <legend class="block text-sm font-medium text-base-content mb-2">Division</legend>
+          <div role="radiogroup" aria-label="Division" class="grid grid-cols-3 gap-2">
+            <button
+              :for={{value, label} <- division_options()}
+              type="button"
+              role="radio"
+              aria-checked={to_string(@division == value)}
+              phx-click="set_division"
+              phx-value-division={value}
+              class={division_chip_classes(@division == value)}
+            >
+              {label}
+            </button>
+          </div>
+          <p class="mt-1 text-xs text-base-content/60">
+            Open and Women's skip the gender-ratio rule. Mixed defaults to USAU 4M/3F.
+          </p>
+        </fieldset>
 
         <.input
           field={@form[:first_pull]}
@@ -209,7 +240,8 @@ defmodule UltistatsWeb.GameLive.Start do
      |> assign(:cancel_team_id, selected_team_id)
      |> assign(:team_rulesets, list_rulesets(selected_team_id))
      |> assign(:selected_ruleset_id, "")
-     |> assign(:rule_overrides, @usau_defaults)
+     |> assign(:division, "open")
+     |> assign(:rule_overrides, @open_defaults)
      |> assign(:ruleset_error, nil)
      |> assign(:form, to_form(Games.change_game(game)))}
   end
@@ -291,6 +323,34 @@ defmodule UltistatsWeb.GameLive.Start do
     end
   end
 
+  # Division segmented control — Open (default), Mixed, Women's. Updates
+  # the form's rule_overrides to the appropriate gender-ratio defaults
+  # *unless* a ruleset template is currently selected (the template wins).
+  def handle_event("set_division", %{"division" => division}, socket)
+      when division in ["open", "mixed", "womens"] do
+    overrides =
+      cond do
+        # A picked template owns the ratio fields — Division is a quick-pick
+        # that only kicks in when no template is selected.
+        socket.assigns.selected_ruleset_id != "" ->
+          socket.assigns.rule_overrides
+
+        division == "mixed" ->
+          Map.merge(socket.assigns.rule_overrides, @mixed_overrides)
+
+        # open + womens: single-gender, no ratio
+        true ->
+          socket.assigns.rule_overrides
+          |> Map.put("gender_ratio_rule", "none")
+          |> Map.put("default_starting_ratio", "")
+      end
+
+    {:noreply,
+     socket
+     |> assign(:division, division)
+     |> assign(:rule_overrides, overrides)}
+  end
+
   # Force MVP-fixed defaults regardless of what the form posts (format hidden,
   # but defensive — the start-game flow doesn't expose configurability).
   defp merge_defaults(params) do
@@ -319,6 +379,18 @@ defmodule UltistatsWeb.GameLive.Start do
   defp first_pull_options do
     [{"We pull", :ours}, {"They pull", :theirs}]
   end
+
+  defp division_options do
+    [{"open", "Open"}, {"mixed", "Mixed"}, {"womens", "Women's"}]
+  end
+
+  defp division_chip_classes(true),
+    do:
+      "min-h-11 inline-flex items-center justify-center px-3 rounded-md text-sm font-semibold bg-primary text-primary-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+
+  defp division_chip_classes(false),
+    do:
+      "min-h-11 inline-flex items-center justify-center px-3 rounded-md text-sm font-semibold border border-base-300 text-base-content/80 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 
   defp ruleset_options([]), do: []
   defp ruleset_options(rulesets), do: Enum.map(rulesets, &{&1.name, &1.id})
