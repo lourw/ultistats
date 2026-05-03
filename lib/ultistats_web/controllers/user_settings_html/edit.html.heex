@@ -84,7 +84,9 @@
         required
       />
 
-      <.button variant="primary" phx-disable-with="Changing...">Change Email</.button>
+      <.button variant="primary" phx-disable-with="Changing..." class="self-start">
+        Change Email
+      </.button>
     </.form>
 
     <div class="divider my-0" />
@@ -115,7 +117,7 @@
         required
       />
 
-      <.button variant="primary" phx-disable-with="Changing...">
+      <.button variant="primary" phx-disable-with="Changing..." class="self-start">
         Save Password
       </.button>
     </.form>
@@ -127,7 +129,7 @@
       <.link
         href={~p"/users/log-out"}
         method="delete"
-        class="w-full inline-flex items-center justify-center gap-2 min-h-11 px-4 py-2 rounded-md text-sm font-semibold bg-error text-error-content active:bg-error/80 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        class="self-start inline-flex items-center justify-center gap-2 min-h-11 px-4 py-2 rounded-md text-sm font-semibold bg-error text-error-content active:bg-error/80 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         <.icon name="hero-arrow-right-start-on-rectangle" class="size-5" /> Log out
       </.link>
