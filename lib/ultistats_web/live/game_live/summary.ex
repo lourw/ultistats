@@ -175,11 +175,17 @@ defmodule UltistatsWeb.GameLive.Summary do
             <th scope="col" class="p-3 text-right tabular-nums" title="Assists">
               <abbr title="Assists" class="no-underline">A</abbr>
             </th>
+            <th scope="col" class="p-3 text-right tabular-nums" title="Catches">
+              <abbr title="Catches" class="no-underline">C</abbr>
+            </th>
+            <th scope="col" class="p-3 text-right tabular-nums" title="Drops">
+              <abbr title="Drops" class="no-underline">D</abbr>
+            </th>
+            <th scope="col" class="p-3 text-right tabular-nums" title="Throwaways">
+              <abbr title="Throwaways" class="no-underline">TA</abbr>
+            </th>
             <th scope="col" class="p-3 text-right tabular-nums" title="Blocks">
               <abbr title="Blocks" class="no-underline">B</abbr>
-            </th>
-            <th scope="col" class="p-3 text-right tabular-nums" title="Turns">
-              <abbr title="Turns" class="no-underline">T</abbr>
             </th>
             <th scope="col" class="p-3 text-right tabular-nums whitespace-nowrap">
               Pts played
@@ -202,8 +208,10 @@ defmodule UltistatsWeb.GameLive.Summary do
             </td>
             <td class="p-3 text-right tabular-nums">{row.goals}</td>
             <td class="p-3 text-right tabular-nums">{row.assists}</td>
+            <td class="p-3 text-right tabular-nums">{row.catches}</td>
+            <td class="p-3 text-right tabular-nums">{row.drops}</td>
+            <td class="p-3 text-right tabular-nums">{row.throwaways}</td>
             <td class="p-3 text-right tabular-nums">{row.blocks}</td>
-            <td class="p-3 text-right tabular-nums">{row.turns}</td>
             <td class="p-3 text-right tabular-nums">{row.points_played}</td>
           </tr>
         </tbody>
@@ -261,8 +269,8 @@ defmodule UltistatsWeb.GameLive.Summary do
   ## ---------------------------------------------------------------------
 
   defp row_zero?(row) do
-    row.goals == 0 and row.assists == 0 and row.blocks == 0 and row.turns == 0 and
-      row.points_played == 0
+    row.goals == 0 and row.assists == 0 and row.catches == 0 and row.drops == 0 and
+      row.throwaways == 0 and row.blocks == 0 and row.points_played == 0
   end
 
   defp jersey_label(nil), do: "—"

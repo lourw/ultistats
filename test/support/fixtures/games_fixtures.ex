@@ -87,7 +87,8 @@ defmodule Ultistats.GamesFixtures do
       point_id: attrs.point_id,
       sequence: sequence,
       type: Map.get(attrs, :type, :goal),
-      user_id: Map.get(attrs, :user_id),
+      passer_user_id: Map.get(attrs, :passer_user_id),
+      receiver_user_id: Map.get(attrs, :receiver_user_id),
       occurred_at: Map.get(attrs, :occurred_at, ~U[2026-05-02 02:11:00Z]),
       deleted_at: Map.get(attrs, :deleted_at)
     }

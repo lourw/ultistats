@@ -292,7 +292,7 @@ defmodule UltistatsWeb.GameLive.Timeline do
             </legend>
             <div class="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Event type">
               <.type_radio
-                :for={type <- [:goal, :assist, :block, :turn]}
+                :for={type <- [:goal, :catch, :drop, :throwaway, :stall, :block, :pick, :foul]}
                 type={type}
                 selected?={@edit_type == type}
               />
@@ -396,7 +396,7 @@ defmodule UltistatsWeb.GameLive.Timeline do
          socket
          |> assign(:editing_event_id, event.id)
          |> assign(:edit_type, event.type)
-         |> assign(:edit_user_id, event.user_id)
+         |> assign(:edit_user_id, event.passer_user_id)
          |> assign(:confirming_delete_id, nil)}
     end
   end
@@ -429,7 +429,8 @@ defmodule UltistatsWeb.GameLive.Timeline do
     } = socket.assigns
 
     with event when not is_nil(event) <- find_event(socket.assigns.timeline, id),
-         {:ok, _updated} <- Games.update_event(event, %{type: type, user_id: user_id}) do
+         {:ok, _updated} <-
+           Games.update_event(event, %{type: type, passer_user_id: user_id}) do
       {:noreply,
        socket
        |> assign(:editing_event_id, nil)
@@ -509,11 +510,30 @@ defmodule UltistatsWeb.GameLive.Timeline do
   def event_view(event, players_by_id, point) do
     %{
       type: event.type,
-      player_label: player_label(event.user_id, players_by_id),
+      player_label: event_player_label(event, players_by_id),
       timestamp: format_time(event.occurred_at),
       point_label: "P#{point.sequence}"
     }
   end
+
+  # Display label for an event row. Catches/goals/drops show passer →
+  # receiver; passer-only events show passer; calls/opponent events show
+  # an em-dash.
+  defp event_player_label(
+         %{type: type, passer_user_id: passer_id, receiver_user_id: receiver_id},
+         lookup
+       )
+       when type in [:catch, :goal, :drop] do
+    "#{player_label(passer_id, lookup)} → #{player_label(receiver_id, lookup)}"
+  end
+
+  defp event_player_label(%{passer_user_id: nil, receiver_user_id: nil}, _lookup), do: "—"
+
+  defp event_player_label(%{passer_user_id: passer_id}, lookup) when not is_nil(passer_id) do
+    player_label(passer_id, lookup)
+  end
+
+  defp event_player_label(_, _), do: "—"
 
   defp player_label(nil, _players_by_id), do: "—"
 
@@ -547,8 +567,18 @@ defmodule UltistatsWeb.GameLive.Timeline do
   defp scoring_badge_label(:theirs), do: "They scored"
   defp scoring_badge_label(_), do: "In progress"
 
+  defp type_meta(:pull), do: %{label: "Pull", icon: "hero-paper-airplane"}
+  defp type_meta(:catch), do: %{label: "Catch", icon: "hero-check"}
+  defp type_meta(:throwaway), do: %{label: "Throwaway", icon: "hero-arrow-path-rounded-square"}
+  defp type_meta(:drop), do: %{label: "Drop", icon: "hero-arrow-down-tray"}
+  defp type_meta(:stall), do: %{label: "Stall", icon: "hero-clock"}
   defp type_meta(:goal), do: %{label: "Goal", icon: "hero-trophy"}
-  defp type_meta(:assist), do: %{label: "Assist", icon: "hero-hand-thumb-up"}
   defp type_meta(:block), do: %{label: "Block", icon: "hero-shield-check"}
-  defp type_meta(:turn), do: %{label: "Turn", icon: "hero-arrow-path-rounded-square"}
+
+  defp type_meta(:opponent_turnover),
+    do: %{label: "They turned it over", icon: "hero-arrow-uturn-right"}
+
+  defp type_meta(:opponent_goal), do: %{label: "They scored", icon: "hero-flag"}
+  defp type_meta(:pick), do: %{label: "Pick", icon: "hero-hand-raised"}
+  defp type_meta(:foul), do: %{label: "Foul", icon: "hero-exclamation-triangle"}
 end

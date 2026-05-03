@@ -236,6 +236,22 @@ defmodule Ultistats.Games do
   end
 
   @doc """
+  Reopens an ended point by clearing its `scoring_team`. Used by the
+  live tracker's "undo last goal" flow when the tracker accidentally
+  ended a point.
+  """
+  def reopen_point(%Point{} = point) do
+    point
+    |> Point.changeset(%{scoring_team: nil})
+    |> Repo.update()
+  end
+
+  def reopen_point(point_id) when is_binary(point_id) do
+    Repo.get!(Point, point_id)
+    |> reopen_point()
+  end
+
+  @doc """
   Returns the active (in-progress) point for `game` — the one whose
   `scoring_team` is `nil` — or `nil` if the game has no point in
   progress.
@@ -247,6 +263,35 @@ defmodule Ultistats.Games do
     |> limit(1)
     |> Repo.one()
   end
+
+  @doc """
+  Returns who starts the point with possession (`:ours` or `:theirs`).
+
+  For point 1, the receiving team is the one that did **not** pull
+  (`game.first_pull`). For later points, the team that scored the
+  previous point pulls and the other team receives.
+  """
+  def starting_possession(%Game{} = game, %Point{sequence: 1}) do
+    receiving_side(game.first_pull)
+  end
+
+  def starting_possession(%Game{id: game_id}, %Point{sequence: seq}) when seq > 1 do
+    prev =
+      Point
+      |> where([p], p.game_id == ^game_id and p.sequence == ^(seq - 1))
+      |> select([p], p.scoring_team)
+      |> Repo.one()
+
+    case prev do
+      :ours -> :theirs
+      :theirs -> :ours
+      _ -> :ours
+    end
+  end
+
+  defp receiving_side(:ours), do: :theirs
+  defp receiving_side(:theirs), do: :ours
+  defp receiving_side(_), do: :ours
 
   @doc """
   The next `sequence` value for a new point on `game`. Returns `1` when
@@ -268,18 +313,22 @@ defmodule Ultistats.Games do
   # ===========================================================================
 
   @doc """
-  Records a new event on `point`. `user_id` may be `nil` for events
-  not pinned to a user; when given, the user must hold a membership on
-  the game's team or the call returns `{:error, :user_not_on_team}`.
+  Records a per-throw event on `point`. `passer_user_id` and
+  `receiver_user_id` are both nullable — `nil` means "Unknown" (the
+  tracker missed who threw or caught it). Per-type field shape is
+  enforced in `Event.changeset/2`. Any non-nil id must belong to a
+  user holding a membership on the game's team or the call returns
+  `{:error, :user_not_on_team}`.
   """
-  def record_event(%Point{} = point, type, user_id)
-      when type in [:goal, :assist, :block, :turn] do
-    with :ok <- validate_user_on_team(point, user_id) do
+  def record_throw(%Point{} = point, type, passer_user_id, receiver_user_id \\ nil) do
+    with :ok <- validate_user_on_team(point, passer_user_id),
+         :ok <- validate_user_on_team(point, receiver_user_id) do
       attrs = %{
         point_id: point.id,
         sequence: next_event_sequence(point),
         type: type,
-        user_id: user_id,
+        passer_user_id: passer_user_id,
+        receiver_user_id: receiver_user_id,
         occurred_at: now()
       }
 
@@ -300,30 +349,41 @@ defmodule Ultistats.Games do
   end
 
   @doc """
-  Updates an event's `type` and/or `user_id`. Used by the timeline
-  edit flow. Other fields are not editable from the timeline (sequence
-  and occurred_at are stable; deleted_at is set via
-  `soft_delete_event/1`).
+  Restores a soft-deleted event by clearing its `deleted_at` stamp.
+  Used by the live tracker's redo flow.
+  """
+  def restore_event(%Event{} = event) do
+    event
+    |> Event.changeset(%{deleted_at: nil})
+    |> Repo.update()
+  end
 
-  When `:user_id` is provided (non-nil), the user must hold a membership
-  on the same team as the event's point's game; otherwise
-  `{:error, :user_not_on_team}` is returned without touching the row.
+  @doc """
+  Updates an event's `type`, `passer_user_id`, and/or `receiver_user_id`.
+  Used by the timeline edit flow. Other fields are not editable from
+  the timeline (sequence and occurred_at are stable; deleted_at is set
+  via `soft_delete_event/1`).
+
+  When `:passer_user_id` or `:receiver_user_id` is provided (non-nil),
+  the referenced user must hold a membership on the same team as the
+  event's point's game; otherwise `{:error, :user_not_on_team}` is
+  returned without touching the row.
   """
   def update_event(%Event{} = event, attrs) do
     attrs = normalize_keys(attrs)
-    user_id = Map.get(attrs, :user_id, :unset)
 
-    with :ok <- validate_event_user(event, user_id) do
+    with :ok <- validate_update_user(event, Map.get(attrs, :passer_user_id, :unset)),
+         :ok <- validate_update_user(event, Map.get(attrs, :receiver_user_id, :unset)) do
       event
       |> Event.update_changeset(attrs)
       |> Repo.update()
     end
   end
 
-  defp validate_event_user(_event, :unset), do: :ok
-  defp validate_event_user(_event, nil), do: :ok
+  defp validate_update_user(_event, :unset), do: :ok
+  defp validate_update_user(_event, nil), do: :ok
 
-  defp validate_event_user(%Event{point_id: point_id}, user_id) when is_binary(user_id) do
+  defp validate_update_user(%Event{point_id: point_id}, user_id) when is_binary(user_id) do
     point = Repo.get!(Point, point_id)
     validate_user_on_team(point, user_id)
   end
@@ -477,8 +537,10 @@ defmodule Ultistats.Games do
             user: %Ultistats.Accounts.User{},
             goals: integer,
             assists: integer,
+            catches: integer,
+            drops: integer,
+            throwaways: integer,
             blocks: integer,
-            turns: integer,
             points_played: integer
           }
         ]
@@ -516,17 +578,25 @@ defmodule Ultistats.Games do
           join: p in Point,
           on: p.id == e.point_id,
           where: p.game_id == ^game.id and is_nil(e.deleted_at),
-          select: %{type: e.type, user_id: e.user_id}
+          select: %{
+            type: e.type,
+            passer_user_id: e.passer_user_id,
+            receiver_user_id: e.receiver_user_id
+          }
       )
 
-    # Per-user event tallies. Map of user_id => %{goal: n, assist: n, ...}.
-    event_tallies =
-      events
-      |> Enum.filter(&(not is_nil(&1.user_id) and MapSet.member?(roster_user_ids, &1.user_id)))
-      |> Enum.group_by(& &1.user_id)
-      |> Map.new(fn {uid, evs} ->
-        counts = Enum.frequencies_by(evs, & &1.type)
-        {uid, counts}
+    # Per-user tallies. The same event contributes to up to two users:
+    # the passer (assister / blocker / thrower / etc.) and the receiver
+    # (catcher / scorer / dropper). `:goal` events count as a goal for
+    # the receiver and an assist for the passer (assists are derived,
+    # not their own event type).
+    empty_tally = %{goals: 0, assists: 0, catches: 0, drops: 0, throwaways: 0, blocks: 0}
+
+    tallies =
+      Enum.reduce(events, %{}, fn ev, acc ->
+        acc
+        |> bump_passer(ev, roster_user_ids, empty_tally)
+        |> bump_receiver(ev, roster_user_ids, empty_tally)
       end)
 
     # Per-user points-played tallies.
@@ -547,17 +617,13 @@ defmodule Ultistats.Games do
       roster
       |> Enum.sort_by(&jersey_sort_key/1)
       |> Enum.map(fn membership ->
-        counts = Map.get(event_tallies, membership.user_id, %{})
+        counts = Map.get(tallies, membership.user_id, empty_tally)
 
-        %{
+        Map.merge(counts, %{
           membership: membership,
           user: membership.user,
-          goals: Map.get(counts, :goal, 0),
-          assists: Map.get(counts, :assist, 0),
-          blocks: Map.get(counts, :block, 0),
-          turns: Map.get(counts, :turn, 0),
           points_played: Map.get(points_played_by_user, membership.user_id, 0)
-        }
+        })
       end)
 
     %{score: score(game), players: rows}
@@ -565,6 +631,41 @@ defmodule Ultistats.Games do
 
   defp snapshot_user_ids(%{"user_ids" => ids}) when is_list(ids), do: ids
   defp snapshot_user_ids(_), do: []
+
+  defp bump_passer(acc, %{passer_user_id: nil}, _roster, _empty), do: acc
+
+  defp bump_passer(acc, %{type: type, passer_user_id: uid}, roster, empty) do
+    if MapSet.member?(roster, uid) do
+      Map.update(acc, uid, bump(empty, passer_stat(type)), &bump(&1, passer_stat(type)))
+    else
+      acc
+    end
+  end
+
+  defp bump_receiver(acc, %{receiver_user_id: nil}, _roster, _empty), do: acc
+
+  defp bump_receiver(acc, %{type: type, receiver_user_id: uid}, roster, empty) do
+    if MapSet.member?(roster, uid) do
+      Map.update(acc, uid, bump(empty, receiver_stat(type)), &bump(&1, receiver_stat(type)))
+    else
+      acc
+    end
+  end
+
+  defp passer_stat(:catch), do: nil
+  defp passer_stat(:goal), do: :assists
+  defp passer_stat(:throwaway), do: :throwaways
+  defp passer_stat(:drop), do: :throwaways
+  defp passer_stat(:block), do: :blocks
+  defp passer_stat(_), do: nil
+
+  defp receiver_stat(:catch), do: :catches
+  defp receiver_stat(:goal), do: :goals
+  defp receiver_stat(:drop), do: :drops
+  defp receiver_stat(_), do: nil
+
+  defp bump(tally, nil), do: tally
+  defp bump(tally, stat), do: Map.update!(tally, stat, &(&1 + 1))
 
   # Sort key: {0, n} for numeric jerseys (so they come first in number
   # order), {1, raw} for non-numeric strings (alphabetic among themselves

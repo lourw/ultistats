@@ -10,10 +10,19 @@ defmodule Ultistats.Repo.Migrations.CreateEvents do
           null: false
 
       add :sequence, :integer, null: false
-      # type is Ecto.Enum :goal | :assist | :block | :turn at the app layer.
+      # type is Ecto.Enum at the app layer — full per-throw set
+      # (pull / catch / throwaway / drop / stall / goal / block /
+      # opponent_turnover / opponent_goal / pick / foul).
       add :type, :string, null: false
 
-      add :user_id,
+      # Passer / receiver are both nullable — `nil` means "Unknown"
+      # (the tracker missed who threw or caught it). Per-type field
+      # shape is enforced in `Event.changeset/2`.
+      add :passer_user_id,
+          references(:users, type: :binary_id, on_delete: :nilify_all),
+          null: true
+
+      add :receiver_user_id,
           references(:users, type: :binary_id, on_delete: :nilify_all),
           null: true
 
@@ -25,6 +34,7 @@ defmodule Ultistats.Repo.Migrations.CreateEvents do
     end
 
     create index(:events, [:point_id, :sequence])
-    create index(:events, [:user_id])
+    create index(:events, [:passer_user_id])
+    create index(:events, [:receiver_user_id])
   end
 end
