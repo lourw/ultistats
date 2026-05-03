@@ -294,7 +294,7 @@ defmodule UltistatsWeb.GameLiveTest do
       assert render(live) =~ "5 of 7"
     end
 
-    test "Start point button reflects ♂ and ♀ counts of selected players", %{
+    test "Start point button reflects selected count out of required line size", %{
       conn: conn,
       user: user
     } do
@@ -322,20 +322,14 @@ defmodule UltistatsWeb.GameLiveTest do
 
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
 
-      # Nothing selected: the Start button text reads "♂ 0  ♀ 0" (whitespace varies).
       button_html = live |> element("button[phx-click='start_point']") |> render()
-      assert button_html =~ "♂"
-      assert button_html =~ "♀"
-      assert Regex.scan(~r/>\s*0\s*</, button_html) |> length() >= 2
+      assert button_html =~ "0 / 7"
 
       live |> element("button[phx-value-id='#{m_player.id}']") |> render_click()
       live |> element("button[phx-value-id='#{f_player.id}']") |> render_click()
 
       button_html = live |> element("button[phx-click='start_point']") |> render()
-      assert button_html =~ "♂"
-      assert button_html =~ "♀"
-      # Both selected: button now shows two "1"s instead of two "0"s.
-      assert Regex.scan(~r/>\s*1\s*</, button_html) |> length() >= 2
+      assert button_html =~ "2 / 7"
     end
 
     test "Start point creates a Point and transitions to in-point view", %{
