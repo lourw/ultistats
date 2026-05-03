@@ -18,7 +18,7 @@ defmodule UltistatsWeb.GameLive.Show do
   """
   use UltistatsWeb, :live_view
 
-  alias Ultistats.{Games, Teams}
+  alias Ultistats.{Games, Repo, Teams}
   alias Ultistats.Teams.Player
 
   @impl true
@@ -37,6 +37,7 @@ defmodule UltistatsWeb.GameLive.Show do
       current_point = Games.current_point(game)
       score = Games.score(game)
       events = if current_point, do: Games.events_for_point(current_point), else: []
+      possession = if current_point, do: derive_possession(game, current_point, events), else: nil
 
       {:ok,
        socket
@@ -47,6 +48,7 @@ defmodule UltistatsWeb.GameLive.Show do
        |> assign(:current_point, current_point)
        |> assign(:score, score)
        |> assign(:events, events)
+       |> assign(:possession, possession)
        |> assign(:selected_player_ids, MapSet.new())
        |> assign(:selected_preset_id, nil)
        |> assign(:pending_event, nil)
@@ -87,12 +89,18 @@ defmodule UltistatsWeb.GameLive.Show do
           finished?={@game.status == :finished}
         />
 
+        <.phase_stepper
+          phase={phase(@game.status == :finished, @current_point)}
+          events={@events}
+        />
+
         <%= cond do %>
           <% @current_point -> %>
             <.in_point_view
               current_point={@current_point}
               team_players={@team_players}
               events={@events}
+              possession={@possession}
             />
           <% true -> %>
             <.between_points_view
@@ -270,6 +278,7 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :current_point, :map, required: true
   attr :team_players, :list, required: true
   attr :events, :list, required: true
+  attr :possession, :atom, default: nil
 
   defp in_point_view(assigns) do
     line_player_ids = line_player_ids(assigns.current_point)
@@ -285,6 +294,18 @@ defmodule UltistatsWeb.GameLive.Show do
 
     ~H"""
     <section class="flex-1 py-4 space-y-6" aria-label="Current point">
+      <div class={[
+        "mx-auto w-fit inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold",
+        case @possession do
+          :ours -> "bg-success/15 text-success"
+          :theirs -> "bg-error/10 text-error"
+          _ -> "bg-base-200 text-base-content/70"
+        end
+      ]}>
+        <span class="text-base leading-none" aria-hidden="true">🥏</span>
+        <span>{possession_label(@possession)}</span>
+      </div>
+
       <div class="space-y-2">
         <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/70">
           On the field
@@ -529,11 +550,39 @@ defmodule UltistatsWeb.GameLive.Show do
          socket
          |> assign(:current_point, point)
          |> assign(:events, [])
+         |> assign(:possession, Games.starting_possession(socket.assigns.game, point))
          |> assign(:selected_player_ids, MapSet.new())
          |> assign(:selected_preset_id, nil)}
 
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Could not start point — pick at least one player.")}
+    end
+  end
+
+  def handle_event("cancel_current_point", _params, socket) do
+    case socket.assigns.current_point do
+      nil ->
+        {:noreply, socket}
+
+      point ->
+        # Restore the line snapshot back to the picker so the tracker can
+        # tweak and re-start without re-tapping every player.
+        previous_player_ids =
+          point.our_line_snapshot
+          |> Map.get("player_ids", [])
+          |> MapSet.new()
+
+        {:ok, _} = Repo.delete(point)
+
+        {:noreply,
+         socket
+         |> assign(:current_point, nil)
+         |> assign(:events, [])
+         |> assign(:possession, nil)
+         |> assign(:selected_player_ids, previous_player_ids)
+         |> assign(:pending_event, nil)
+         |> assign(:pending_goal_player_id, nil)
+         |> put_flash(:info, "Point cancelled")}
     end
   end
 
@@ -645,10 +694,13 @@ defmodule UltistatsWeb.GameLive.Show do
 
     case Games.record_event(point, type, player_id) do
       {:ok, _event} ->
+        events = Games.events_for_point(point)
+
         {:noreply,
          socket
          |> assign(:pending_event, nil)
-         |> assign(:events, Games.events_for_point(point))}
+         |> assign(:events, events)
+         |> assign(:possession, derive_possession(socket.assigns.game, point, events))}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Could not record event.")}
@@ -753,6 +805,82 @@ defmodule UltistatsWeb.GameLive.Show do
   defp gender_glyph(:female_matching), do: "♀"
   defp gender_glyph(:male_matching), do: "♂"
   defp gender_glyph(_), do: ""
+
+  defp possession_label(:ours), do: "We have the disc"
+  defp possession_label(:theirs), do: "They have the disc"
+  defp possession_label(_), do: "Possession unknown"
+
+  # Possession at the start of the point comes from the pull/receive rules
+  # (`Games.starting_possession/2`); each `:turn` event flips it to theirs,
+  # each `:block` flips it to ours. `:goal` / `:assist` don't move the disc.
+  defp derive_possession(game, point, events) do
+    start = Games.starting_possession(game, point)
+
+    Enum.reduce(events, start, fn
+      %{type: :turn}, _current -> :theirs
+      %{type: :block}, _current -> :ours
+      _, current -> current
+    end)
+  end
+
+  # ---- phase tracker (Lineup / In point / Final) -----------------------
+  # Two surface options live in the score header (`phase_pill`) and above
+  # the active view (`phase_stepper`). Either can be removed independently
+  # by deleting its call site + component below.
+
+  defp phase(_finished?, nil), do: :pre_pull
+  defp phase(_finished?, _current_point), do: :in_point
+
+  defp phase_label(:pre_pull), do: "Pre-pull"
+  defp phase_label(:in_point), do: "In point"
+
+  attr :phase, :atom, required: true, values: [:pre_pull, :in_point]
+  attr :events, :list, default: []
+
+  defp phase_stepper(assigns) do
+    ~H"""
+    <div class="my-3 flex items-center justify-center">
+      <div class="relative">
+        <button
+          :if={@phase == :in_point}
+          type="button"
+          phx-click="cancel_current_point"
+          data-confirm="You will lose all progress for this point if you go back."
+          aria-label="Back to pre-pull (cancel point)"
+          class="absolute right-full top-1/2 -translate-y-1/2 mr-2 min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <.icon name="hero-arrow-uturn-left" class="size-4" />
+        </button>
+
+        <ol
+          role="list"
+          aria-label="Game phase"
+          class="flex items-center justify-center gap-2 text-xs font-medium text-base-content/60 bg-base-200 rounded-lg px-3 py-2"
+        >
+        <li
+          :for={{step, idx} <- Enum.with_index([:pre_pull, :in_point])}
+          class="flex items-center gap-2"
+        >
+          <span class={[
+            "inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-semibold tabular-nums",
+            if(@phase == step,
+              do: "bg-primary text-primary-content",
+              else: "bg-base-200 text-base-content/60"
+            )
+          ]}>
+            {idx + 1}
+          </span>
+          <span class={if(@phase == step, do: "text-base-content", else: "")}>
+            {phase_label(step)}
+          </span>
+          <span :if={idx < 1} aria-hidden="true" class="w-6 h-px bg-base-300"></span>
+        </li>
+        </ol>
+      </div>
+    </div>
+    """
+  end
+  # ---- end phase tracker ------------------------------------------------
 
   defp role_label(:male_matching), do: "Male-matching"
   defp role_label(:female_matching), do: "Female-matching"

@@ -227,6 +227,35 @@ defmodule Ultistats.Games do
   end
 
   @doc """
+  Returns who starts the point with possession (`:ours` or `:theirs`).
+
+  For point 1, the receiving team is the one that did **not** pull
+  (`game.first_pull`). For later points, the team that scored the
+  previous point pulls and the other team receives.
+  """
+  def starting_possession(%Game{} = game, %Point{sequence: 1}) do
+    receiving_side(game.first_pull)
+  end
+
+  def starting_possession(%Game{id: game_id}, %Point{sequence: seq}) when seq > 1 do
+    prev =
+      Point
+      |> where([p], p.game_id == ^game_id and p.sequence == ^(seq - 1))
+      |> select([p], p.scoring_team)
+      |> Repo.one()
+
+    case prev do
+      :ours -> :theirs
+      :theirs -> :ours
+      _ -> :ours
+    end
+  end
+
+  defp receiving_side(:ours), do: :theirs
+  defp receiving_side(:theirs), do: :ours
+  defp receiving_side(_), do: :ours
+
+  @doc """
   The next `sequence` value for a new point on `game`. Returns `1` when
   the game has no points yet.
   """
