@@ -108,25 +108,51 @@ defmodule UltistatsWeb.GameLive.Index do
       </section>
 
       <section :if={@active_tab == :rulesets} class="mt-4 pb-24" aria-labelledby="tab-rulesets">
-        <form
-          :if={length(@teams) > 1}
-          phx-change="select_ruleset_team"
-          class="flex flex-wrap items-center gap-1 mb-3"
-        >
-          <span class="text-[11px] uppercase tracking-wide text-base-content/60 mr-1">
-            Team
-          </span>
-          <button
-            :for={team <- @teams}
-            type="submit"
-            name="team_id"
-            value={team.id}
-            aria-pressed={to_string(team.id == @new_ruleset_team_id)}
-            class={team_filter_chip_classes(team.id == @new_ruleset_team_id)}
-          >
-            {team.name}
-          </button>
-        </form>
+        <div :if={length(@teams) > 1} class="flex flex-col gap-3 mb-3">
+          <form phx-change="set_division_filter" class="flex flex-col gap-1">
+            <label
+              for="ruleset-division-filter"
+              class="text-[11px] uppercase tracking-wide text-base-content/60"
+            >
+              Division
+            </label>
+            <select
+              id="ruleset-division-filter"
+              name="division"
+              class="block w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content min-h-11 focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+            >
+              <option
+                :for={{label, value} <- division_filter_options()}
+                value={value}
+                selected={value == @division_filter}
+              >
+                {label}
+              </option>
+            </select>
+          </form>
+
+          <form phx-change="select_ruleset_team" class="flex flex-col gap-1">
+            <label
+              for="ruleset-team-select"
+              class="text-[11px] uppercase tracking-wide text-base-content/60"
+            >
+              Team
+            </label>
+            <select
+              id="ruleset-team-select"
+              name="team_id"
+              class="block w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content min-h-11 focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+            >
+              <option
+                :for={team <- filter_teams_by_division(@teams, @division_filter)}
+                value={team.id}
+                selected={team.id == @new_ruleset_team_id}
+              >
+                {team.name}
+              </option>
+            </select>
+          </form>
+        </div>
 
         <ul
           :if={@rulesets != []}
@@ -183,6 +209,7 @@ defmodule UltistatsWeb.GameLive.Index do
      |> assign(:teams, teams)
      |> assign(:admin_team_ids, admin_team_ids)
      |> assign(:new_ruleset_team_id, new_ruleset_team_id)
+     |> assign(:division_filter, "all")
      |> assign(:games, list_games_for_user(user))
      |> assign(:rulesets, Games.list_rulesets_for_user(user))}
   end
@@ -204,6 +231,26 @@ defmodule UltistatsWeb.GameLive.Index do
 
   def handle_event("select_ruleset_team", %{"team_id" => team_id}, socket) do
     {:noreply, assign(socket, :new_ruleset_team_id, team_id)}
+  end
+
+  def handle_event("set_division_filter", %{"division" => division}, socket)
+      when division in ["all", "open", "mixed", "womens"] do
+    filtered = filter_teams_by_division(socket.assigns.teams, division)
+
+    new_team_id =
+      if Enum.any?(filtered, &(&1.id == socket.assigns.new_ruleset_team_id)) do
+        socket.assigns.new_ruleset_team_id
+      else
+        case filtered do
+          [first | _] -> first.id
+          [] -> nil
+        end
+      end
+
+    {:noreply,
+     socket
+     |> assign(:division_filter, division)
+     |> assign(:new_ruleset_team_id, new_team_id)}
   end
 
   defp list_games_for_user(user) do
@@ -255,11 +302,15 @@ defmodule UltistatsWeb.GameLive.Index do
     do:
       "min-h-11 inline-flex items-center pb-3 -mb-px text-sm font-medium text-base-content/60 hover:text-base-content border-b-2 border-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 
-  defp team_filter_chip_classes(true),
-    do:
-      "min-h-9 inline-flex items-center px-2 rounded-md text-xs font-semibold bg-primary text-primary-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+  defp division_filter_options do
+    [{"All divisions", "all"}, {"Open", "open"}, {"Women's", "womens"}, {"Mixed", "mixed"}]
+  end
 
-  defp team_filter_chip_classes(false),
-    do:
-      "min-h-9 inline-flex items-center px-2 rounded-md text-xs font-semibold border border-base-300 text-base-content/80 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+  defp filter_teams_by_division(teams, "all"), do: teams
+
+  defp filter_teams_by_division(teams, division)
+       when division in ["open", "womens", "mixed"] do
+    atom = String.to_existing_atom(division)
+    Enum.filter(teams, &(&1.division == atom))
+  end
 end
