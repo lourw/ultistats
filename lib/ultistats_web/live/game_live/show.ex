@@ -378,6 +378,25 @@ defmodule UltistatsWeb.GameLive.Show do
           />
         </summary>
         <ul class="mt-1 rounded-md border border-base-300 bg-base-100 divide-y divide-base-200 overflow-hidden">
+          <li>
+            <button
+              type="button"
+              phx-click="clear_preset"
+              aria-pressed={to_string(is_nil(@selected_preset_id))}
+              class={[
+                "w-full min-h-9 px-3 py-1 flex items-center gap-2 text-left text-xs italic",
+                "active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                if(is_nil(@selected_preset_id), do: "bg-primary/10 font-semibold", else: "")
+              ]}
+            >
+              <span class="flex-1 truncate text-base-content/70">None</span>
+              <.icon
+                :if={is_nil(@selected_preset_id)}
+                name="hero-check-circle-solid"
+                class="size-3.5 text-primary shrink-0"
+              />
+            </button>
+          </li>
           <li :for={preset <- @line_presets}>
             <button
               type="button"
@@ -1255,6 +1274,14 @@ defmodule UltistatsWeb.GameLive.Show do
       end
 
     {:noreply, assign(socket, :line_picker_sort, parsed)}
+  end
+
+  def handle_event("clear_preset", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:selected_user_ids, MapSet.new())
+     |> assign(:selected_preset_id, nil)
+     |> assign_line_picker_state()}
   end
 
   def handle_event("select_preset", %{"id" => preset_id}, socket) do
