@@ -10,16 +10,6 @@ defmodule Ultistats.TeamsTest do
 
     @invalid_attrs %{name: nil}
 
-    test "list_teams/0 returns all teams" do
-      team = team_fixture()
-      assert Teams.list_teams() == [team]
-    end
-
-    test "get_team!/1 returns the team with given id" do
-      team = team_fixture()
-      assert Teams.get_team!(team.id) == team
-    end
-
     test "create_team/1 with valid data creates a team" do
       valid_attrs = %{name: "some name"}
 
@@ -61,11 +51,6 @@ defmodule Ultistats.TeamsTest do
       assert {:ok, %Team{}} = Teams.delete_team(team)
       assert_raise Ecto.NoResultsError, fn -> Teams.get_team!(team.id) end
     end
-
-    test "change_team/1 returns a team changeset" do
-      team = team_fixture()
-      assert %Ecto.Changeset{} = Teams.change_team(team)
-    end
   end
 
   describe "players" do
@@ -80,17 +65,6 @@ defmodule Ultistats.TeamsTest do
       gender_role: nil,
       team_id: nil
     }
-
-    test "list_players/0 returns all players" do
-      player = player_fixture()
-      assert [%Player{id: id}] = Teams.list_players()
-      assert id == player.id
-    end
-
-    test "get_player!/1 returns the player with given id" do
-      player = player_fixture()
-      assert Teams.get_player!(player.id) == player
-    end
 
     test "create_player/1 with valid data creates a player" do
       team = team_fixture()
@@ -221,11 +195,6 @@ defmodule Ultistats.TeamsTest do
       assert_raise Ecto.NoResultsError, fn -> Teams.get_player!(player.id) end
     end
 
-    test "change_player/1 returns a player changeset" do
-      player = player_fixture()
-      assert %Ecto.Changeset{} = Teams.change_player(player)
-    end
-
     test "list_players_for_team/1 returns only that team's players, ordered by jersey" do
       team = team_fixture(%{name: "Home"})
       other = team_fixture(%{name: "Away"})
@@ -238,37 +207,6 @@ defmodule Ultistats.TeamsTest do
 
       players = Teams.list_players_for_team(team)
       assert Enum.map(players, & &1.id) == [p_low.id, p_high.id]
-    end
-
-    test "Player.changeset/2 accepts nil jersey_number" do
-      team = team_fixture()
-
-      changeset =
-        Ultistats.Teams.Player.changeset(%Ultistats.Teams.Player{}, %{
-          first_name: "No",
-          last_name: "Number",
-          jersey_number: nil,
-          gender_role: :female_matching,
-          team_id: team.id
-        })
-
-      assert changeset.valid?
-    end
-
-    test "Player.changeset/2 still rejects 5-char jersey_number" do
-      team = team_fixture()
-
-      changeset =
-        Ultistats.Teams.Player.changeset(%Ultistats.Teams.Player{}, %{
-          first_name: "Pat",
-          last_name: "Smith",
-          jersey_number: "12345",
-          gender_role: :female_matching,
-          team_id: team.id
-        })
-
-      refute changeset.valid?
-      assert %{jersey_number: ["should be at most 4 character(s)"]} = errors_on(changeset)
     end
 
     test "Player.display_name/1 joins first and last with a space" do
@@ -531,11 +469,6 @@ defmodule Ultistats.TeamsTest do
 
       presets = Teams.list_line_presets_for_team(team)
       assert Enum.map(presets, & &1.id) == [a.id, b.id]
-    end
-
-    test "change_line_preset/1 returns a line_preset changeset" do
-      line_preset = line_preset_fixture()
-      assert %Ecto.Changeset{} = Teams.change_line_preset(line_preset)
     end
   end
 

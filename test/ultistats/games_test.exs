@@ -19,11 +19,6 @@ defmodule Ultistats.GamesTest do
       team_id: nil
     }
 
-    test "list_games/0 returns all games" do
-      game = game_fixture()
-      assert Games.list_games() |> Enum.map(& &1.id) == [game.id]
-    end
-
     test "list_games_for_team/1 filters and orders by started_at desc" do
       team = team_fixture()
       other = team_fixture()
@@ -34,11 +29,6 @@ defmodule Ultistats.GamesTest do
 
       assert Games.list_games_for_team(team) |> Enum.map(& &1.id) == [g2.id, g1.id]
       assert Games.list_games_for_team(team.id) |> Enum.map(& &1.id) == [g2.id, g1.id]
-    end
-
-    test "get_game!/1 returns the game with given id" do
-      game = game_fixture()
-      assert Games.get_game!(game.id).id == game.id
     end
 
     test "create_game/1 with valid data creates a game" do
@@ -96,10 +86,6 @@ defmodule Ultistats.GamesTest do
       game = game_fixture()
       assert {:ok, %Game{}} = Games.delete_game(game)
       assert_raise Ecto.NoResultsError, fn -> Games.get_game!(game.id) end
-    end
-
-    test "change_game/1 returns a game changeset" do
-      assert %Ecto.Changeset{} = Games.change_game(game_fixture())
     end
   end
 

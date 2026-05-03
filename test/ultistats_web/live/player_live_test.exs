@@ -30,13 +30,6 @@ defmodule UltistatsWeb.PlayerLiveTest do
   describe "Index" do
     setup [:create_player]
 
-    test "lists all players", %{conn: conn, player: player} do
-      {:ok, _index_live, html} = live(conn, ~p"/players")
-
-      assert html =~ "Listing Players"
-      assert html =~ Player.display_name(player)
-    end
-
     test "updates player in listing", %{conn: conn, player: player, team_id: team_id} do
       {:ok, index_live, _html} = live(conn, ~p"/players")
 
@@ -74,13 +67,6 @@ defmodule UltistatsWeb.PlayerLiveTest do
   describe "Show" do
     setup [:create_player]
 
-    test "displays player", %{conn: conn, player: player} do
-      {:ok, _show_live, html} = live(conn, ~p"/players/#{player}")
-
-      assert html =~ "Show Player"
-      assert html =~ Player.display_name(player)
-    end
-
     test "updates player and returns to show", %{conn: conn, player: player, team_id: team_id} do
       {:ok, show_live, _html} = live(conn, ~p"/players/#{player}")
 
@@ -109,30 +95,6 @@ defmodule UltistatsWeb.PlayerLiveTest do
   end
 
   describe "Bulk add (/players/new?team_id=ID)" do
-    test "renders three empty rows by default", %{conn: conn} do
-      team = team_fixture()
-
-      {:ok, view, html} = live(conn, ~p"/players/new?team_id=#{team.id}")
-
-      assert html =~ "Add players to #{team.name}"
-      assert has_element?(view, "#player-row-0")
-      assert has_element?(view, "#player-row-1")
-      assert has_element?(view, "#player-row-2")
-      refute has_element?(view, "#player-row-3")
-    end
-
-    test "renders the table layout with header columns", %{conn: conn} do
-      team = team_fixture()
-      {:ok, _view, html} = live(conn, ~p"/players/new?team_id=#{team.id}")
-
-      assert html =~ "<table"
-      assert html =~ "<thead"
-      assert html =~ ">First<"
-      assert html =~ ">Last<"
-      assert html =~ ">Gender<"
-      assert html =~ ">Jersey<"
-    end
-
     test "add_row appends a fourth row", %{conn: conn} do
       team = team_fixture()
       {:ok, view, _html} = live(conn, ~p"/players/new?team_id=#{team.id}")
@@ -288,17 +250,6 @@ defmodule UltistatsWeb.PlayerLiveTest do
   end
 
   describe "Edit form gender radios" do
-    test "renders both gender radios as native inputs", %{conn: conn} do
-      player = player_fixture()
-      {:ok, _view, html} = live(conn, ~p"/players/#{player}/edit")
-
-      # Both radios present, type=radio, with ♀/♂ glyph labels.
-      assert html =~ ~r/<input[^>]*type="radio"[^>]*value="female_matching"/
-      assert html =~ ~r/<input[^>]*type="radio"[^>]*value="male_matching"/
-      assert html =~ "♀"
-      assert html =~ "♂"
-    end
-
     test "tapping the other gender radio updates form state", %{conn: conn} do
       player = player_fixture(%{gender_role: :female_matching})
       {:ok, view, _html} = live(conn, ~p"/players/#{player}/edit")

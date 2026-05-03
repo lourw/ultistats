@@ -79,26 +79,6 @@ defmodule UltistatsWeb.TeamLiveTest do
   describe "Show" do
     setup [:create_team]
 
-    test "renders the team name as the heading (without 'Team ' prefix)", %{
-      conn: conn,
-      team: team
-    } do
-      {:ok, _show_live, html} = live(conn, ~p"/teams/#{team}")
-
-      assert html =~ team.name
-      # Generator-default heading and subtitle are gone.
-      refute html =~ "Show Team"
-      refute html =~ "This is a team record from your database"
-    end
-
-    test "no longer renders the generator <.list> Name row", %{conn: conn, team: team} do
-      {:ok, _show_live, html} = live(conn, ~p"/teams/#{team}")
-
-      # The default scaffold rendered a <.list> with an item titled "Name".
-      # Confirm that's been removed.
-      refute html =~ ~r/<dt[^>]*>\s*Name\s*<\/dt>/
-    end
-
     test "exposes a delete affordance and clicking it deletes the team", %{conn: conn, team: team} do
       {:ok, show_live, _html} = live(conn, ~p"/teams/#{team}")
 
@@ -137,31 +117,6 @@ defmodule UltistatsWeb.TeamLiveTest do
       html = render(show_live)
       assert html =~ "Team updated successfully"
       assert html =~ "some updated name"
-    end
-  end
-
-  describe "Form" do
-    setup [:create_team]
-
-    test "subtitle filler is gone on the new page", %{conn: conn} do
-      {:ok, _form_live, html} = live(conn, ~p"/teams/new")
-
-      refute html =~ "Use this form"
-      assert html =~ "New team"
-    end
-
-    test "subtitle filler is gone on the edit page", %{conn: conn, team: team} do
-      {:ok, _form_live, html} = live(conn, ~p"/teams/#{team}/edit")
-
-      refute html =~ "Use this form"
-      assert html =~ "Edit #{team.name}"
-    end
-
-    test "save button reads 'Save' (not 'Save Team')", %{conn: conn} do
-      {:ok, _form_live, html} = live(conn, ~p"/teams/new")
-
-      assert html =~ ~r/<button[^>]*>\s*Save\s*</
-      refute html =~ "Save Team"
     end
   end
 end

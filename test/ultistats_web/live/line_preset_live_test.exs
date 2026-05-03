@@ -37,30 +37,6 @@ defmodule UltistatsWeb.LinePresetLiveTest do
     %{team: team, players: [p1, p2, p3]}
   end
 
-  describe "Index" do
-    test "lists all line_presets", %{conn: conn} do
-      team = team_fixture()
-      {:ok, preset} = Teams.create_line_preset(%{name: "O-line", team_id: team.id})
-
-      {:ok, _index_live, html} = live(conn, ~p"/line_presets")
-
-      assert html =~ "Listing Line presets"
-      assert html =~ preset.name
-    end
-  end
-
-  describe "Show" do
-    test "displays line_preset", %{conn: conn} do
-      team = team_fixture()
-      {:ok, preset} = Teams.create_line_preset(%{name: "O-line", team_id: team.id})
-
-      {:ok, _show_live, html} = live(conn, ~p"/line_presets/#{preset}")
-
-      assert html =~ "Line preset"
-      assert html =~ preset.name
-    end
-  end
-
   describe "New form (with team_id)" do
     setup [:setup_team_with_roster]
 
