@@ -117,12 +117,18 @@ defmodule Ultistats.GamesFixtures do
 
     attrs = Map.put_new_lazy(attrs, :point_id, fn -> point_fixture().id end)
 
+    game_id =
+      Map.get_lazy(attrs, :game_id, fn ->
+        Repo.get!(Point, attrs.point_id).game_id
+      end)
+
     sequence =
       Map.get_lazy(attrs, :sequence, fn ->
         Games.next_event_sequence(%Point{id: attrs.point_id})
       end)
 
     event_attrs = %{
+      game_id: game_id,
       point_id: attrs.point_id,
       sequence: sequence,
       type: Map.get(attrs, :type, :goal),

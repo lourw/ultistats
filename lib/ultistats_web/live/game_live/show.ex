@@ -26,7 +26,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
   alias Ultistats.{Games, Repo, Teams}
   alias Ultistats.Accounts.User
-  alias Ultistats.Games.Event
+  alias Ultistats.Games.{Event, Point}
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
@@ -84,6 +84,8 @@ defmodule UltistatsWeb.GameLive.Show do
        |> assign(:disconnected?, false)
        |> assign(:line_picker_sort, :jersey)
        |> assign(:split_by_position?, false)
+       |> assign(:timeout_active?, false)
+       |> assign(:call_prompt, nil)
        |> assign_line_picker_state()}
     end
   end
@@ -166,6 +168,8 @@ defmodule UltistatsWeb.GameLive.Show do
         </div>
 
         <%= cond do %>
+          <% @timeout_active? -> %>
+            <.timeout_overlay />
           <% @current_point -> %>
             <.in_point_view
               current_point={@current_point}
@@ -175,6 +179,7 @@ defmodule UltistatsWeb.GameLive.Show do
               current_passer_id={@current_passer_id}
               throwaway_prompt={@throwaway_prompt}
               disconnected?={@disconnected?}
+              call_prompt={@call_prompt}
             />
           <% true -> %>
             <.between_points_view
@@ -194,6 +199,7 @@ defmodule UltistatsWeb.GameLive.Show do
         <% end %>
 
         <.bottom_action_bar
+          :if={not @timeout_active?}
           game={@game}
           current_point={@current_point}
           selected_user_ids={@selected_user_ids}
@@ -382,15 +388,6 @@ defmodule UltistatsWeb.GameLive.Show do
         <span>{ratio_mismatch_text(@ratio_violation)}</span>
       </div>
 
-      <div
-        :if={@line_size_violation}
-        class="-mx-4 flex items-center gap-2 px-4 py-1.5 text-xs font-medium bg-warning/10 text-warning"
-        role="status"
-      >
-        <.icon name="hero-exclamation-triangle-solid" class="size-4 shrink-0" />
-        <span>{line_size_mismatch_text(@line_size_violation)}</span>
-      </div>
-
       <details :if={@line_presets != []} class="group">
         <summary class={[
           "min-h-9 list-none cursor-pointer inline-flex w-full items-center gap-2 px-2.5 py-1",
@@ -475,6 +472,36 @@ defmodule UltistatsWeb.GameLive.Show do
           />
         </div>
       <% end %>
+
+      <.stoppages_bar disconnected?={false} show_halftime?={true} show_finish_game?={true} />
+    </section>
+    """
+  end
+
+  defp timeout_overlay(assigns) do
+    ~H"""
+    <section
+      class="flex-1 min-h-0 flex flex-col items-center justify-center gap-6 px-4 py-6 bg-base-200"
+      aria-label="Timeout in progress"
+    >
+      <div class="flex flex-col items-center gap-2 text-center">
+        <.icon name="hero-pause-circle-solid" class="size-16 text-base-content/40" />
+        <h2 class="text-xl font-semibold">Timeout</h2>
+        <p class="text-sm text-base-content/70">Tap resume when play continues.</p>
+      </div>
+      <button
+        type="button"
+        phx-click="resume_game"
+        class={[
+          "min-h-12 px-6 rounded-xl bg-primary text-primary-content",
+          "inline-flex items-center justify-center gap-2 text-base font-semibold",
+          "active:scale-[0.99] motion-reduce:active:scale-100",
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        ]}
+      >
+        <.icon name="hero-play" class="size-5" />
+        <span>Resume game</span>
+      </button>
     </section>
     """
   end
@@ -537,6 +564,7 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :current_passer_id, :any, required: true
   attr :disconnected?, :boolean, required: true
   attr :throwaway_prompt, :any, required: true
+  attr :call_prompt, :any, required: true
 
   defp in_point_view(assigns) do
     line_user_ids = line_user_ids(assigns.current_point)
@@ -569,7 +597,7 @@ defmodule UltistatsWeb.GameLive.Show do
         />
       <% end %>
 
-      <.calls_bar disconnected?={@disconnected?} />
+      <.calls_bar disconnected?={@disconnected?} call_prompt={@call_prompt} />
     </section>
     """
   end
@@ -788,14 +816,9 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :player_lookup, :map, required: true
 
   defp throwaway_prompt_strip(assigns) do
-    receiver_label = passer_card_label(assigns.prompt.player_id, assigns.player_lookup)
     passer_label = passer_card_label(assigns.current_passer_id, assigns.player_lookup)
 
-    assigns =
-      assigns
-      |> assign(:receiver_label, receiver_label)
-      |> assign(:passer_label, passer_label)
-      |> assign(:receiver_token, action_row_phx_value(assigns.prompt.player_id))
+    assigns = assign(assigns, :passer_label, passer_label)
 
     ~H"""
     <div
@@ -803,22 +826,23 @@ defmodule UltistatsWeb.GameLive.Show do
       role="dialog"
       aria-label="Disambiguate turnover"
     >
-      <p class="text-xs font-medium leading-tight">What happened?</p>
-      <div class="grid grid-cols-2 gap-1.5">
+      <div class="flex items-center gap-2 text-xs font-medium">
+        <span class="flex-1">What happened?</span>
         <button
           type="button"
-          phx-click="record_throw_for_player"
-          phx-value-player-id={@receiver_token}
-          phx-value-type="drop"
-          class="min-h-9 px-2 inline-flex items-center justify-center rounded-md text-xs font-semibold border border-warning/40 text-warning active:bg-warning/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          phx-click="cancel_throwaway"
+          aria-label="Cancel"
+          class="min-h-7 min-w-7 inline-flex items-center justify-center rounded-md text-warning active:bg-warning/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
-          {@receiver_label} drop
+          <.icon name="hero-x-mark" class="size-4" />
         </button>
+      </div>
+      <div class="grid grid-cols-1 gap-1.5">
         <button
           type="button"
           phx-click="record_throw_for_player"
           phx-value-type="throwaway"
-          class="min-h-9 px-2 inline-flex items-center justify-center rounded-md text-xs font-semibold border border-warning/40 text-warning active:bg-warning/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          class={turnover_action_classes()}
         >
           {@passer_label} throwaway
         </button>
@@ -826,7 +850,7 @@ defmodule UltistatsWeb.GameLive.Show do
           type="button"
           phx-click="record_throw_for_player"
           phx-value-type="throwaway"
-          class="min-h-9 px-2 inline-flex items-center justify-center rounded-md text-xs font-semibold border border-warning/40 text-warning active:bg-warning/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          class={turnover_action_classes()}
         >
           Other team block
         </button>
@@ -834,20 +858,21 @@ defmodule UltistatsWeb.GameLive.Show do
           type="button"
           phx-click="record_throw_for_player"
           phx-value-type="throwaway"
-          class="min-h-9 px-2 inline-flex items-center justify-center rounded-md text-xs font-semibold border border-warning/40 text-warning active:bg-warning/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          class={turnover_action_classes()}
         >
           Other team intercept
         </button>
       </div>
-      <button
-        type="button"
-        phx-click="cancel_throwaway"
-        class="min-h-9 px-2 inline-flex items-center justify-center rounded-md text-xs font-semibold text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-      >
-        Cancel
-      </button>
     </div>
     """
+  end
+
+  defp turnover_action_classes do
+    [
+      "min-h-9 px-2 inline-flex items-center justify-center rounded-md text-xs font-semibold",
+      "border border-error/60 bg-error text-error-content active:bg-error/80",
+      "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+    ]
   end
 
   attr :variant, :atom, required: true, values: [:ours, :theirs]
@@ -888,8 +913,8 @@ defmodule UltistatsWeb.GameLive.Show do
 
   defp legend_items(:theirs) do
     [
-      %{kind: :throwaway, icon: "hero-shield-check", letter: "B", label: "Block"},
-      %{kind: :catch, icon: "hero-check", letter: "C", label: "Catch"}
+      %{kind: :catch, icon: "hero-shield-check", letter: "B", label: "Block"},
+      %{kind: :throwaway, icon: "hero-arrows-right-left", letter: "I", label: "Intercept"}
     ]
   end
 
@@ -1159,7 +1184,7 @@ defmodule UltistatsWeb.GameLive.Show do
           phx-value-kind="block"
           disabled={@disconnected?}
           aria-label={"Record block by #{@name}"}
-          class={action_row_button_classes(:throwaway)}
+          class={action_row_button_classes(:catch)}
         >
           <.icon name="hero-shield-check" class="size-3.5" />
           <span class="text-[10px] font-bold leading-none">B</span>
@@ -1171,31 +1196,162 @@ defmodule UltistatsWeb.GameLive.Show do
           phx-value-kind="catch"
           disabled={@disconnected?}
           aria-label={"Record interception by #{@name}"}
-          class={action_row_button_classes(:catch)}
+          class={action_row_button_classes(:throwaway)}
         >
-          <.icon name="hero-check" class="size-3.5" />
-          <span class="text-[10px] font-bold leading-none">C</span>
+          <.icon name="hero-arrows-right-left" class="size-3.5" />
+          <span class="text-[10px] font-bold leading-none">I</span>
         </button>
       </div>
     </div>
     """
   end
 
+  attr :prompt, :map, required: true
+
+  defp call_resolution_strip(assigns) do
+    actions = [
+      {"back_to_thrower", "Back to thrower"},
+      {"retract", "Retracted"},
+      {"resume", "Resume"},
+      {"turnover", "Turnover"}
+    ]
+
+    label =
+      case assigns.prompt.type do
+        :pick -> "Pick called — choose resolution"
+        :foul -> "Foul called — choose resolution"
+      end
+
+    assigns = assign(assigns, actions: actions, label: label)
+
+    ~H"""
+    <div
+      class="-mx-4 px-4 py-2 bg-warning/10 text-warning space-y-1"
+      role="status"
+    >
+      <div class="flex items-center gap-2 text-xs font-semibold">
+        <.icon name="hero-exclamation-triangle-solid" class="size-4 shrink-0" />
+        <span class="flex-1">{@label}</span>
+        <button
+          type="button"
+          phx-click="resolve_call"
+          phx-value-action="cancel"
+          aria-label="Cancel call"
+          class="min-h-7 min-w-7 inline-flex items-center justify-center rounded-md text-warning active:bg-warning/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <.icon name="hero-x-mark" class="size-4" />
+        </button>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <button
+          :for={{action, label} <- @actions}
+          type="button"
+          phx-click="resolve_call"
+          phx-value-action={action}
+          class={[
+            "min-h-9 px-2 py-1 rounded-md border",
+            "inline-flex items-center justify-center gap-1.5",
+            "text-sm font-semibold",
+            "transition-colors motion-reduce:transition-none",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+            call_action_classes(action)
+          ]}
+        >
+          {label}
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  defp call_action_classes("turnover"),
+    do: "border-error/60 bg-error text-error-content active:bg-error/80"
+
+  defp call_action_classes(_),
+    do: "border-base-300 bg-base-200 text-base-content/80 active:bg-base-300"
+
   attr :disconnected?, :boolean, required: true
+  attr :call_prompt, :any, required: true
 
   defp calls_bar(assigns) do
     ~H"""
-    <div class="space-y-1" aria-label="Calls">
+    <div class="space-y-2" aria-label="Calls">
+      <.call_resolution_strip :if={@call_prompt} prompt={@call_prompt} />
+
+      <div class="space-y-1">
+        <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
+          Calls
+        </h3>
+        <div class="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            phx-click="record_call"
+            phx-value-type="pick"
+            disabled={@disconnected?}
+            aria-label="Record a pick call"
+            class={[
+              "min-h-9 px-2 py-1 rounded-md border border-base-300",
+              "inline-flex items-center justify-center gap-1.5",
+              "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
+              "transition-colors motion-reduce:transition-none",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              "disabled:opacity-50 disabled:cursor-not-allowed"
+            ]}
+          >
+            <.icon name="hero-hand-raised" class="size-4" />
+            <span>Pick</span>
+          </button>
+          <button
+            type="button"
+            phx-click="record_call"
+            phx-value-type="foul"
+            disabled={@disconnected?}
+            aria-label="Record a foul call"
+            class={[
+              "min-h-9 px-2 py-1 rounded-md border border-base-300",
+              "inline-flex items-center justify-center gap-1.5",
+              "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
+              "transition-colors motion-reduce:transition-none",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              "disabled:opacity-50 disabled:cursor-not-allowed"
+            ]}
+          >
+            <.icon name="hero-exclamation-triangle" class="size-4" />
+            <span>Foul</span>
+          </button>
+        </div>
+      </div>
+
+      <.stoppages_bar disconnected?={@disconnected?} show_halftime?={false} />
+    </div>
+    """
+  end
+
+  attr :disconnected?, :boolean, required: true
+  attr :show_halftime?, :boolean, required: true
+  attr :show_finish_game?, :boolean, default: false
+
+  defp stoppages_bar(assigns) do
+    cols =
+      cond do
+        assigns.show_halftime? and assigns.show_finish_game? -> "grid-cols-3"
+        assigns.show_halftime? or assigns.show_finish_game? -> "grid-cols-2"
+        true -> "grid-cols-1"
+      end
+
+    assigns = assign(assigns, :cols, cols)
+
+    ~H"""
+    <div class="space-y-1" aria-label="Stoppages">
       <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
-        Calls
+        Stoppages
       </h3>
-      <div class="grid grid-cols-2 gap-2">
+      <div class={["grid gap-2", @cols]}>
         <button
           type="button"
-          phx-click="record_call"
-          phx-value-type="pick"
+          phx-click="record_timeout"
           disabled={@disconnected?}
-          aria-label="Record a pick call"
+          aria-label="Take a timeout"
           class={[
             "min-h-9 px-2 py-1 rounded-md border border-base-300",
             "inline-flex items-center justify-center gap-1.5",
@@ -1205,15 +1361,15 @@ defmodule UltistatsWeb.GameLive.Show do
             "disabled:opacity-50 disabled:cursor-not-allowed"
           ]}
         >
-          <.icon name="hero-hand-raised" class="size-4" />
-          <span>Pick</span>
+          <.icon name="hero-pause" class="size-4" />
+          <span>Timeout</span>
         </button>
         <button
+          :if={@show_halftime?}
           type="button"
-          phx-click="record_call"
-          phx-value-type="foul"
+          phx-click="record_halftime"
           disabled={@disconnected?}
-          aria-label="Record a foul call"
+          aria-label="Record halftime"
           class={[
             "min-h-9 px-2 py-1 rounded-md border border-base-300",
             "inline-flex items-center justify-center gap-1.5",
@@ -1223,8 +1379,27 @@ defmodule UltistatsWeb.GameLive.Show do
             "disabled:opacity-50 disabled:cursor-not-allowed"
           ]}
         >
-          <.icon name="hero-exclamation-triangle" class="size-4" />
-          <span>Foul</span>
+          <.icon name="hero-flag" class="size-4" />
+          <span>Halftime</span>
+        </button>
+        <button
+          :if={@show_finish_game?}
+          type="button"
+          phx-click="finish_game"
+          data-confirm="Finish this game? You can't add more points after."
+          disabled={@disconnected?}
+          aria-label="Finish game"
+          class={[
+            "min-h-9 px-2 py-1 rounded-md border border-error/40 text-error",
+            "inline-flex items-center justify-center gap-1.5",
+            "text-sm font-semibold bg-base-100 active:bg-error/10",
+            "transition-colors motion-reduce:transition-none",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+            "disabled:opacity-50 disabled:cursor-not-allowed"
+          ]}
+        >
+          <.icon name="hero-flag" class="size-4" />
+          <span>Finish</span>
         </button>
       </div>
     </div>
@@ -1244,55 +1419,24 @@ defmodule UltistatsWeb.GameLive.Show do
       :if={@game.status != :finished and is_nil(@current_point)}
       class="sticky bottom-0 px-4 pb-safe bg-base-100/95 backdrop-blur border-t border-base-200"
     >
-      <div class="py-3">
+      <div class="py-2 space-y-2">
         <button
           type="button"
           phx-click="start_point"
           disabled={MapSet.size(@selected_user_ids) != @required_line_size or @disconnected?}
           class={[
-            "w-full min-h-14 rounded-xl px-4 py-3",
-            "text-lg font-semibold",
-            "bg-primary text-primary-content",
-            "transition-colors motion-reduce:transition-none",
-            "active:scale-[0.99] active:bg-primary/80 motion-reduce:active:scale-100",
+            "w-full min-h-9 rounded-md px-2 py-1",
+            "inline-flex items-center justify-center gap-2",
+            "text-sm font-semibold bg-primary text-primary-content",
+            "transition-colors motion-reduce:transition-none active:bg-primary/80",
             "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            "disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100",
-            "inline-flex items-center justify-center gap-3"
+            "disabled:opacity-50 disabled:cursor-not-allowed"
           ]}
         >
           <span>Start point</span>
-          <span class="text-sm font-medium tabular-nums opacity-90 inline-flex items-center gap-2">
-            <span>{MapSet.size(@selected_user_ids)} / {@required_line_size}</span>
-            <span aria-hidden="true">♂</span> {selected_role_count(
-              @selected_user_ids,
-              @team_players,
-              :male_matching
-            )}
-            <span aria-hidden="true">♀</span> {selected_role_count(
-              @selected_user_ids,
-              @team_players,
-              :female_matching
-            )}
+          <span class="tabular-nums opacity-90">
+            {MapSet.size(@selected_user_ids)} / {@required_line_size}
           </span>
-        </button>
-        <button
-          type="button"
-          phx-click="finish_game"
-          data-confirm="Finish this game? You can't add more points after."
-          disabled={@disconnected?}
-          class={[
-            "mt-2 w-full min-h-11 rounded-xl px-4 py-2",
-            "inline-flex items-center justify-center gap-2",
-            "text-sm font-medium",
-            "bg-base-100 border border-base-300 text-base-content",
-            "transition-colors motion-reduce:transition-none",
-            "active:scale-[0.99] active:bg-base-200 motion-reduce:active:scale-100",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            "disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
-          ]}
-        >
-          <.icon name="hero-flag" class="size-4" />
-          <span>Finish game</span>
         </button>
       </div>
     </div>
@@ -1604,7 +1748,8 @@ defmodule UltistatsWeb.GameLive.Show do
            socket
            |> assign(:events, events)
            |> track_event_recorded(event)
-           |> assign(:possession, derive_possession(socket.assigns.game, point, events))}
+           |> assign(:possession, derive_possession(socket.assigns.game, point, events))
+           |> assign(:call_prompt, %{type: type, event_id: event.id})}
 
         {:error, _} ->
           {:noreply, put_flash(socket, :error, "Could not record call.")}
@@ -1612,6 +1757,49 @@ defmodule UltistatsWeb.GameLive.Show do
     else
       {:noreply, socket}
     end
+  end
+
+  def handle_event("resolve_call", %{"action" => action}, socket) do
+    case socket.assigns.call_prompt do
+      nil -> {:noreply, socket}
+      prompt -> apply_call_resolution(socket, prompt, action)
+    end
+  end
+
+  def handle_event("record_timeout", _params, socket) do
+    {type, label} =
+      case socket.assigns.possession do
+        :theirs -> {:timeout_theirs, "Timeout (them) recorded."}
+        _ -> {:timeout_ours, "Timeout (us) recorded."}
+      end
+
+    case Games.record_game_event(socket.assigns.game, type) do
+      {:ok, event} ->
+        socket = track_event_recorded(socket, event)
+
+        events =
+          case socket.assigns.current_point do
+            %Point{} = point -> Games.events_for_point(point)
+            _ -> socket.assigns.events
+          end
+
+        {:noreply,
+         socket
+         |> assign(:events, events)
+         |> assign(:timeout_active?, true)
+         |> put_flash(:info, label)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not record timeout.")}
+    end
+  end
+
+  def handle_event("resume_game", _params, socket) do
+    {:noreply, assign(socket, :timeout_active?, false)}
+  end
+
+  def handle_event("record_halftime", _params, socket) do
+    record_game_event(socket, :halftime, "Halftime recorded.", "Could not record halftime.")
   end
 
   def handle_event("dismiss_halftime", _params, socket) do
@@ -1696,6 +1884,125 @@ defmodule UltistatsWeb.GameLive.Show do
     socket
     |> assign(:undo_stack, [event_id | socket.assigns.undo_stack])
     |> assign(:redo_stack, [])
+  end
+
+  defp apply_call_resolution(socket, _prompt, "resume") do
+    {:noreply, assign(socket, :call_prompt, nil)}
+  end
+
+  defp apply_call_resolution(socket, prompt, "cancel") do
+    apply_call_resolution(socket, prompt, "retract")
+  end
+
+  defp apply_call_resolution(socket, %{event_id: event_id}, "retract") do
+    case Repo.get(Event, event_id) do
+      %Event{} = event ->
+        case Games.soft_delete_event(event) do
+          {:ok, _} ->
+            point = socket.assigns.current_point
+            events = Games.events_for_point(point)
+
+            {:noreply,
+             socket
+             |> assign(:events, events)
+             |> assign(:undo_stack, List.delete(socket.assigns.undo_stack, event_id))
+             |> assign(:call_prompt, nil)
+             |> assign(:possession, derive_possession(socket.assigns.game, point, events))}
+
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, "Could not retract call.")}
+        end
+
+      nil ->
+        {:noreply, assign(socket, :call_prompt, nil)}
+    end
+  end
+
+  defp apply_call_resolution(socket, _prompt, "back_to_thrower") do
+    point = socket.assigns.current_point
+    events = socket.assigns.events
+
+    case last_live_catch(events) do
+      nil ->
+        {:noreply,
+         socket
+         |> assign(:call_prompt, nil)
+         |> put_flash(:info, "No previous thrower to return to.")}
+
+      catch_event ->
+        case Games.soft_delete_event(catch_event) do
+          {:ok, _} ->
+            refreshed = Games.events_for_point(point)
+
+            {:noreply,
+             socket
+             |> assign(:events, refreshed)
+             |> assign(:undo_stack, List.delete(socket.assigns.undo_stack, catch_event.id))
+             |> assign(:call_prompt, nil)
+             |> assign(:current_passer_id, catch_event.passer_user_id || :unknown)
+             |> assign(:possession, derive_possession(socket.assigns.game, point, refreshed))}
+
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, "Could not return to thrower.")}
+        end
+    end
+  end
+
+  defp apply_call_resolution(socket, _prompt, "turnover") do
+    point = socket.assigns.current_point
+
+    {type, passer_id, receiver_id} =
+      case socket.assigns.possession do
+        :theirs -> {:opponent_turnover, nil, nil}
+        _ -> {:throwaway, id_or_nil(socket.assigns.current_passer_id), nil}
+      end
+
+    case Games.record_throw(point, type, passer_id, receiver_id) do
+      {:ok, event} ->
+        events = Games.events_for_point(point)
+
+        {:noreply,
+         socket
+         |> assign(:events, events)
+         |> track_event_recorded(event)
+         |> assign(:call_prompt, nil)
+         |> assign(:current_passer_id, nil)
+         |> assign(:possession, derive_possession(socket.assigns.game, point, events))}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not record turnover.")}
+    end
+  end
+
+  defp apply_call_resolution(socket, _prompt, _other) do
+    {:noreply, socket}
+  end
+
+  defp last_live_catch(events) do
+    events
+    |> Enum.reverse()
+    |> Enum.find(&(&1.type == :catch and is_nil(&1.deleted_at)))
+  end
+
+  defp record_game_event(socket, type, success_message, error_message) do
+    case Games.record_game_event(socket.assigns.game, type) do
+      {:ok, event} ->
+        socket = track_event_recorded(socket, event)
+
+        events =
+          case socket.assigns.current_point do
+            %Ultistats.Games.Point{} = point -> Games.events_for_point(point)
+            _ -> socket.assigns.events
+          end
+
+        {:noreply,
+         socket
+         |> assign(:events, events)
+         |> put_flash(:info, success_message)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, error_message)}
+    end
   end
 
   # Re-syncs everything that derives from the events list after an undo
@@ -1902,10 +2209,6 @@ defmodule UltistatsWeb.GameLive.Show do
     "Ratio mismatch — selected #{m}M / #{f}F, ruleset requires #{rm}M / #{rf}F."
   end
 
-  defp line_size_mismatch_text(%{actual: actual, required: required}) do
-    "Line size mismatch — selected #{actual}, ruleset requires #{required}."
-  end
-
   # Possession at the start of the point comes from the pull/receive rules
   # (`Games.starting_possession/2`); per-throw events flip per the table
   # in `docs/DESIGN.md`. Calls (`:pick`, `:foul`) leave possession alone.
@@ -1930,13 +2233,6 @@ defmodule UltistatsWeb.GameLive.Show do
 
   defp role_label(:male_matching), do: "Male-matching"
   defp role_label(:female_matching), do: "Female-matching"
-
-  defp selected_role_count(selected_ids, members, role) do
-    Enum.count(
-      members,
-      &(&1.user.gender_role == role and MapSet.member?(selected_ids, &1.user_id))
-    )
-  end
 
   attr :role, :atom, required: true, values: [:female_matching, :male_matching]
   attr :players, :list, required: true
@@ -2119,11 +2415,11 @@ defmodule UltistatsWeb.GameLive.Show do
   defp position_pill_classes(:hybrid), do: "bg-info/15 text-info"
   defp position_pill_classes(_), do: "bg-base-200 text-base-content/70"
 
-  defp preset_summary_label(_presets, nil), do: "Choose a line"
+  defp preset_summary_label(_presets, nil), do: "Use preselected line"
 
   defp preset_summary_label(presets, selected_id) do
     case Enum.find(presets, &(&1.id == selected_id)) do
-      nil -> "Choose a line"
+      nil -> "Use preselected line"
       preset -> preset.name
     end
   end

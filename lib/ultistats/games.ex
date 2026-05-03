@@ -331,6 +331,7 @@ defmodule Ultistats.Games do
     with :ok <- validate_user_on_team(point, passer_user_id),
          :ok <- validate_user_on_team(point, receiver_user_id) do
       attrs = %{
+        game_id: point.game_id,
         point_id: point.id,
         sequence: next_event_sequence(point),
         type: type,
@@ -343,6 +344,35 @@ defmodule Ultistats.Games do
       |> Event.changeset(attrs)
       |> Repo.insert()
     end
+  end
+
+  @doc """
+  Records a game-level annotation event (timeout / halftime). When the
+  game has a current point in progress, the event attaches to that point
+  and uses its event sequence. Between points, `point_id` is nil and the
+  sequence falls back to a per-game counter.
+  """
+  def record_game_event(%Game{} = game, type)
+      when type in [:timeout_ours, :timeout_theirs, :halftime] do
+    point = current_point(game)
+
+    {point_id, sequence} =
+      case point do
+        %Point{} = p -> {p.id, next_event_sequence(p)}
+        nil -> {nil, next_game_event_sequence(game)}
+      end
+
+    attrs = %{
+      game_id: game.id,
+      point_id: point_id,
+      sequence: sequence,
+      type: type,
+      occurred_at: now()
+    }
+
+    %Event{}
+    |> Event.changeset(attrs)
+    |> Repo.insert()
   end
 
   @doc """
@@ -414,6 +444,23 @@ defmodule Ultistats.Games do
   def next_event_sequence(%Point{id: point_id}) do
     Event
     |> where([e], e.point_id == ^point_id and is_nil(e.deleted_at))
+    |> select([e], max(e.sequence))
+    |> Repo.one()
+    |> case do
+      nil -> 1
+      n -> n + 1
+    end
+  end
+
+  # Sequence used for game-level annotations recorded between points
+  # (timeouts, halftime). Counts only events with `point_id IS NULL` so
+  # the per-point sequence remains independent.
+  defp next_game_event_sequence(%Game{id: game_id}) do
+    Event
+    |> where(
+      [e],
+      e.game_id == ^game_id and is_nil(e.point_id) and is_nil(e.deleted_at)
+    )
     |> select([e], max(e.sequence))
     |> Repo.one()
     |> case do

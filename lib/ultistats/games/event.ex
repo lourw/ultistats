@@ -30,7 +30,10 @@ defmodule Ultistats.Games.Event do
     opponent_turnover: :neither,
     opponent_goal: :neither,
     pick: :neither,
-    foul: :neither
+    foul: :neither,
+    timeout_ours: :neither,
+    timeout_theirs: :neither,
+    halftime: :neither
   }
 
   @types Map.keys(@shapes)
@@ -43,6 +46,7 @@ defmodule Ultistats.Games.Event do
     field :occurred_at, :utc_datetime
     field :deleted_at, :utc_datetime
 
+    belongs_to :game, Ultistats.Games.Game
     belongs_to :point, Ultistats.Games.Point
     belongs_to :passer, Ultistats.Accounts.User, foreign_key: :passer_user_id
     belongs_to :receiver, Ultistats.Accounts.User, foreign_key: :receiver_user_id
@@ -66,6 +70,7 @@ defmodule Ultistats.Games.Event do
   def changeset(event, attrs) do
     event
     |> cast(attrs, [
+      :game_id,
       :point_id,
       :sequence,
       :type,
@@ -74,9 +79,10 @@ defmodule Ultistats.Games.Event do
       :occurred_at,
       :deleted_at
     ])
-    |> validate_required([:point_id, :sequence, :type, :occurred_at])
+    |> validate_required([:game_id, :sequence, :type, :occurred_at])
     |> validate_shape()
-    |> assoc_constraint(:point)
+    |> assoc_constraint(:game)
+    |> maybe_assoc_constraint(:point, :point_id)
     |> maybe_assoc_constraint(:passer, :passer_user_id)
     |> maybe_assoc_constraint(:receiver, :receiver_user_id)
   end
