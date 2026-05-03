@@ -137,13 +137,14 @@ defmodule UltistatsWeb.GameLive.Show do
       >
         <div class={[
           "border-b transition-colors duration-200 motion-reduce:transition-none",
-          top_bar_classes(@current_point, @possession)
+          top_bar_classes(@current_point, banner_state(@possession, @events))
         ]}>
           <.compact_header
             game={@game}
             score={@score}
             current_point={@current_point}
             possession={@possession}
+            banner_state={banner_state(@possession, @events)}
             halftime?={Games.halftime?(@game) and not @halftime_dismissed?}
             undo_stack={@undo_stack}
             redo_stack={@redo_stack}
@@ -198,6 +199,7 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :score, :map, required: true
   attr :current_point, :any, required: true
   attr :possession, :any, required: true
+  attr :banner_state, :any, required: true
   attr :halftime?, :boolean, required: true
   attr :undo_stack, :list, required: true
   attr :redo_stack, :list, required: true
@@ -209,10 +211,10 @@ defmodule UltistatsWeb.GameLive.Show do
       :if={@current_point}
       class={[
         "py-1 text-center text-xs font-semibold uppercase tracking-wide",
-        possession_banner_classes(@possession)
+        possession_banner_classes(@banner_state)
       ]}
     >
-      {possession_banner_label(@possession)}
+      {possession_banner_label(@banner_state)}
     </div>
 
     <div :if={@halftime?} class="px-4 pt-2">
@@ -440,6 +442,7 @@ defmodule UltistatsWeb.GameLive.Show do
       <% else %>
         <.their_possession_view
           on_field={@on_field}
+          pull_pending?={@events == []}
           disconnected?={@disconnected?}
         />
       <% end %>
@@ -843,44 +846,79 @@ defmodule UltistatsWeb.GameLive.Show do
   end
 
   attr :on_field, :list, required: true
+  attr :pull_pending?, :boolean, default: false
   attr :disconnected?, :boolean, required: true
 
   defp their_possession_view(assigns) do
     ~H"""
     <div class="space-y-2">
-      <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
-        Actions from our team
-      </h3>
+      <%= if @pull_pending? do %>
+        <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
+          Who pulled?
+        </h3>
 
-      <p class="text-xs text-base-content/70" aria-live="polite">
-        Tap the action next to the defender who got the disc back.
-      </p>
+        <p class="text-xs text-base-content/70" aria-live="polite">
+          Tap the player who pulled the disc.
+        </p>
 
-      <.action_legend variant={:theirs} />
+        <ul
+          class="-mx-4 border-y border-base-200 divide-y divide-base-200"
+          role="list"
+          aria-label="On-field pullers"
+        >
+          <li :for={member <- @on_field}>
+            <.pull_picker_row
+              player_id={member.user_id}
+              jersey={Teams.resolved_jersey_number(member)}
+              name={User.display_name(member.user)}
+              disconnected?={@disconnected?}
+            />
+          </li>
+          <li>
+            <.pull_picker_row
+              player_id={:unknown}
+              jersey={nil}
+              name="Unknown"
+              disconnected?={@disconnected?}
+              unknown?={true}
+            />
+          </li>
+        </ul>
+      <% else %>
+        <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
+          Actions from our team
+        </h3>
 
-      <ul
-        class="-mx-4 border-y border-base-200 divide-y divide-base-200"
-        role="list"
-        aria-label="On-field defenders"
-      >
-        <li :for={member <- @on_field}>
-          <.defender_action_row
-            player_id={member.user_id}
-            jersey={Teams.resolved_jersey_number(member)}
-            name={User.display_name(member.user)}
-            disconnected?={@disconnected?}
-          />
-        </li>
-        <li>
-          <.defender_action_row
-            player_id={:unknown}
-            jersey={nil}
-            name="Unknown"
-            disconnected?={@disconnected?}
-            unknown?={true}
-          />
-        </li>
-      </ul>
+        <p class="text-xs text-base-content/70" aria-live="polite">
+          Tap the action next to the defender who got the disc back.
+        </p>
+
+        <.action_legend variant={:theirs} />
+
+        <ul
+          class="-mx-4 border-y border-base-200 divide-y divide-base-200"
+          role="list"
+          aria-label="On-field defenders"
+        >
+          <li :for={member <- @on_field}>
+            <.defender_action_row
+              player_id={member.user_id}
+              jersey={Teams.resolved_jersey_number(member)}
+              name={User.display_name(member.user)}
+              disconnected?={@disconnected?}
+            />
+          </li>
+          <li>
+            <.defender_action_row
+              player_id={:unknown}
+              jersey={nil}
+              name="Unknown"
+              disconnected?={@disconnected?}
+              unknown?={true}
+            />
+          </li>
+        </ul>
+      <% end %>
 
       <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60 pt-1">
         Actions from their team
@@ -922,6 +960,48 @@ defmodule UltistatsWeb.GameLive.Show do
         </button>
       </div>
     </div>
+    """
+  end
+
+  attr :player_id, :any, required: true
+  attr :jersey, :any, default: nil
+  attr :name, :string, required: true
+  attr :disconnected?, :boolean, required: true
+  attr :unknown?, :boolean, default: false
+
+  defp pull_picker_row(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="record_pull"
+      phx-value-player-id={action_row_phx_value(@player_id)}
+      disabled={@disconnected?}
+      aria-label={"Record pull by #{@name}"}
+      class={[
+        "w-full min-h-9 px-4 py-1 flex items-center gap-2 text-left",
+        "transition-colors motion-reduce:transition-none active:bg-base-200",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        "disabled:opacity-50 disabled:cursor-not-allowed",
+        @unknown? && "italic"
+      ]}
+    >
+      <span
+        :if={@jersey}
+        class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0"
+        aria-hidden="true"
+      >
+        {@jersey}
+      </span>
+      <span
+        :if={@unknown?}
+        class="inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-xs shrink-0"
+        aria-hidden="true"
+      >
+        ?
+      </span>
+      <span class="font-medium text-sm truncate flex-1 leading-tight">{@name}</span>
+      <.icon name="hero-paper-airplane" class="size-4 text-base-content/60 shrink-0" />
+    </button>
     """
   end
 
@@ -1208,6 +1288,27 @@ defmodule UltistatsWeb.GameLive.Show do
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Could not record event.")}
+    end
+  end
+
+  # Record the opening pull for a defending point. Sets passer = our
+  # puller, no receiver. Possession stays :theirs.
+  def handle_event("record_pull", %{"player-id" => raw}, socket) do
+    point = socket.assigns.current_point
+    puller_id = raw |> parse_player_token() |> id_or_nil()
+
+    case Games.record_throw(point, :pull, puller_id, nil) do
+      {:ok, event} ->
+        events = Games.events_for_point(point)
+
+        {:noreply,
+         socket
+         |> assign(:events, events)
+         |> track_event_recorded(event)
+         |> assign(:possession, derive_possession(socket.assigns.game, point, events))}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not record pull.")}
     end
   end
 
@@ -1580,15 +1681,24 @@ defmodule UltistatsWeb.GameLive.Show do
   defp top_bar_classes(nil, _), do: "bg-base-100/95 border-base-200"
   defp top_bar_classes(_point, :ours), do: "bg-success/10 border-success/30"
   defp top_bar_classes(_point, :theirs), do: "bg-error/10 border-error/30"
+  defp top_bar_classes(_point, :pulling), do: "bg-info/10 border-info/30"
   defp top_bar_classes(_point, _), do: "bg-base-100/95 border-base-200"
 
   defp possession_banner_classes(:ours), do: "bg-success/20 text-success"
   defp possession_banner_classes(:theirs), do: "bg-error/20 text-error"
+  defp possession_banner_classes(:pulling), do: "bg-info/20 text-info"
   defp possession_banner_classes(_), do: "bg-base-200 text-base-content/70"
 
   defp possession_banner_label(:ours), do: "Our possession"
   defp possession_banner_label(:theirs), do: "Their possession"
+  defp possession_banner_label(:pulling), do: "Pulling"
   defp possession_banner_label(_), do: "Possession unknown"
+
+  # The banner state collapses possession + pull-pending into a single atom:
+  # `:pulling` while we're on D and the pull hasn't been recorded yet,
+  # otherwise the raw possession atom (`:ours` / `:theirs` / nil).
+  defp banner_state(:theirs, []), do: :pulling
+  defp banner_state(possession, _events), do: possession
 
   # Line-picker pull pill: "We pull" means we kick the disc to them, so
   # we start the point on defense. The receiving side (:ours == we have
