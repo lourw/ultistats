@@ -80,19 +80,23 @@ defmodule UltistatsWeb.GameLive.Show do
     ~H"""
     <Layouts.app flash={@flash}>
       <div class="flex flex-col min-h-[calc(100vh-3rem)]">
-        <.score_header
-          game={@game}
-          score={@score}
-          current_point={@current_point}
-          halftime?={Games.halftime?(@game) and not @halftime_dismissed?}
-          disconnected?={@disconnected?}
-          finished?={@game.status == :finished}
-        />
+        <div class="sticky top-14 z-20 -mx-4 px-4 bg-base-100/95 backdrop-blur border-b border-base-200">
+          <.score_header
+            game={@game}
+            score={@score}
+            current_point={@current_point}
+            halftime?={Games.halftime?(@game) and not @halftime_dismissed?}
+            disconnected?={@disconnected?}
+            finished?={@game.status == :finished}
+          />
 
-        <.phase_stepper
-          phase={phase(@game.status == :finished, @current_point)}
-          events={@events}
-        />
+          <.phase_stepper
+            phase={phase(@game.status == :finished, @current_point)}
+            events={@events}
+          />
+
+          <.possession_banner :if={@current_point} possession={@possession} />
+        </div>
 
         <%= cond do %>
           <% @current_point -> %>
@@ -100,7 +104,6 @@ defmodule UltistatsWeb.GameLive.Show do
               current_point={@current_point}
               team_players={@team_players}
               events={@events}
-              possession={@possession}
             />
           <% true -> %>
             <.between_points_view
@@ -148,7 +151,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
   defp score_header(assigns) do
     ~H"""
-    <div class="sticky top-0 z-20 -mx-4 px-4 pt-safe bg-base-100/95 backdrop-blur border-b border-base-200">
+    <div>
       <div :if={@halftime?} class="mb-2">
         <div
           role="status"
@@ -278,7 +281,6 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :current_point, :map, required: true
   attr :team_players, :list, required: true
   attr :events, :list, required: true
-  attr :possession, :atom, default: nil
 
   defp in_point_view(assigns) do
     line_player_ids = line_player_ids(assigns.current_point)
@@ -294,18 +296,6 @@ defmodule UltistatsWeb.GameLive.Show do
 
     ~H"""
     <section class="flex-1 py-4 space-y-6" aria-label="Current point">
-      <div class={[
-        "mx-auto w-fit inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold",
-        case @possession do
-          :ours -> "bg-success/15 text-success"
-          :theirs -> "bg-error/10 text-error"
-          _ -> "bg-base-200 text-base-content/70"
-        end
-      ]}>
-        <span class="text-base leading-none" aria-hidden="true">🥏</span>
-        <span>{possession_label(@possession)}</span>
-      </div>
-
       <div class="space-y-2">
         <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content/70">
           On the field
@@ -809,6 +799,26 @@ defmodule UltistatsWeb.GameLive.Show do
   defp possession_label(:ours), do: "We have the disc"
   defp possession_label(:theirs), do: "They have the disc"
   defp possession_label(_), do: "Possession unknown"
+
+  attr :possession, :atom, default: nil
+
+  defp possession_banner(assigns) do
+    ~H"""
+    <div class="pb-3 flex justify-center">
+      <div class={[
+        "inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold",
+        case @possession do
+          :ours -> "bg-success/15 text-success"
+          :theirs -> "bg-error/10 text-error"
+          _ -> "bg-base-200 text-base-content/70"
+        end
+      ]}>
+        <span class="text-base leading-none" aria-hidden="true">🥏</span>
+        <span>{possession_label(@possession)}</span>
+      </div>
+    </div>
+    """
+  end
 
   # Possession at the start of the point comes from the pull/receive rules
   # (`Games.starting_possession/2`); each `:turn` event flips it to theirs,
