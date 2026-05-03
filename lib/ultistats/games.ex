@@ -11,13 +11,25 @@ defmodule Ultistats.Games do
   import Ecto.Query, warn: false
   alias Ultistats.Repo
 
-  alias Ultistats.Games.{Event, Game, Point}
+  alias Ultistats.Games.{Event, Game, Point, Ruleset}
   alias Ultistats.Teams
   alias Ultistats.Teams.{Player, Team}
 
-  # ---- USAU rule constants (single-format MVP) ----
-  @usau_halftime_score 8
-  @usau_hard_cap_score 15
+  # USAU-standard defaults — used both as the fallback for games with
+  # no ruleset attached (legacy / dev rows) and as the seed when
+  # synthesizing a `:game_instance` from raw overrides at game-start.
+  defp usau_standard_attrs do
+    %{
+      score_cap: 15,
+      halftime_target: 8,
+      halftime_cap_minutes: nil,
+      soft_cap_minutes: nil,
+      hard_cap_minutes: nil,
+      timeouts_per_half: 2,
+      gender_ratio_rule: :endzone,
+      default_starting_ratio: :four_men_three_women
+    }
+  end
 
   # ===========================================================================
   # Game CRUD (generator-style; used by admin/list flows)
@@ -85,13 +97,63 @@ defmodule Ultistats.Games do
   @doc """
   Starts a new game. Defaults `status: :in_progress` and
   `started_at: DateTime.utc_now/0` if not supplied.
+
+  Ruleset resolution:
+
+    * `ruleset_id` present → loads the template, runs
+      `clone_ruleset_for_game/2` with `rule_overrides` (default
+      `%{}`), and stores the resolved id on the game (which may be
+      the template's own id if no overrides differ).
+    * `ruleset_id` absent and `rule_overrides` empty → game stores
+      `ruleset_id: nil`; reads fall back to USAU defaults.
+    * `ruleset_id` absent but `rule_overrides` present → synthesizes a
+      `:game_instance` row from `usau_standard_attrs/0` merged with
+      the overrides, owned by the game's `team_id`, and stores its id.
+
+  `rule_overrides` is consumed here and never passed to `create_game/1`.
   """
   def start_game(attrs) do
-    attrs
-    |> normalize_keys()
-    |> Map.put_new(:status, :in_progress)
-    |> Map.put_new_lazy(:started_at, &now/0)
-    |> create_game()
+    attrs = normalize_keys(attrs)
+    {ruleset_id, attrs} = Map.pop(attrs, :ruleset_id, nil)
+    {rule_overrides, attrs} = Map.pop(attrs, :rule_overrides, %{})
+    rule_overrides = rule_overrides || %{}
+
+    with {:ok, resolved_id} <- resolve_ruleset_id(ruleset_id, rule_overrides, attrs[:team_id]) do
+      attrs
+      |> Map.put(:ruleset_id, resolved_id)
+      |> Map.put_new(:status, :in_progress)
+      |> Map.put_new_lazy(:started_at, &now/0)
+      |> create_game()
+    end
+  end
+
+  # No template + no overrides — game has no ruleset; defaults apply.
+  defp resolve_ruleset_id(nil, overrides, _team_id) when overrides == %{},
+    do: {:ok, nil}
+
+  # No template, but overrides present — synthesize a :game_instance
+  # off USAU defaults, owned by the game's team.
+  defp resolve_ruleset_id(nil, overrides, team_id)
+       when is_map(overrides) and is_binary(team_id) do
+    attrs =
+      usau_standard_attrs()
+      |> Map.merge(overrides)
+      |> Map.put(:team_id, team_id)
+      |> Map.put(:kind, :game_instance)
+      |> Map.put(:name, nil)
+
+    case create_ruleset(attrs) do
+      {:ok, instance} -> {:ok, instance.id}
+      {:error, _changeset} = err -> err
+    end
+  end
+
+  defp resolve_ruleset_id(nil, _overrides, _team_id), do: {:ok, nil}
+
+  # Template provided — clone-on-write through the local helper.
+  defp resolve_ruleset_id(ruleset_id, overrides, _team_id) when is_binary(ruleset_id) do
+    template = get_ruleset!(ruleset_id)
+    clone_ruleset_for_game(template, overrides || %{})
   end
 
   @doc """
@@ -306,25 +368,74 @@ defmodule Ultistats.Games do
   end
 
   @doc """
-  True when the game has reached the halftime score for its format
-  (`:usau_standard` → 8 by either team).
+  True when the game has reached the halftime score by either team.
+  Returns `false` when the game's resolved `halftime_target` is nil
+  (no halftime-by-score for this ruleset).
   """
   def halftime?(%Game{} = game) do
-    s = score(game)
-    max(s.ours, s.theirs) >= halftime_threshold(game)
+    case halftime_threshold(game) do
+      nil ->
+        false
+
+      target when is_integer(target) ->
+        s = score(game)
+        max(s.ours, s.theirs) >= target
+    end
   end
 
   @doc """
-  True when the game has reached the hard cap for its format
-  (`:usau_standard` → 15 by either team).
+  True when the game has reached the hard cap (score cap) by either
+  team. Returns `false` when the resolved `score_cap` is nil (no
+  score-based end condition; only `hard_cap_minutes` can end the game).
   """
   def hard_cap_reached?(%Game{} = game) do
-    s = score(game)
-    max(s.ours, s.theirs) >= hard_cap_threshold(game)
+    case hard_cap_threshold(game) do
+      nil ->
+        false
+
+      cap when is_integer(cap) ->
+        s = score(game)
+        max(s.ours, s.theirs) >= cap
+    end
   end
 
-  defp halftime_threshold(%Game{format: :usau_standard}), do: @usau_halftime_score
-  defp hard_cap_threshold(%Game{format: :usau_standard}), do: @usau_hard_cap_score
+  @doc """
+  Resolved halftime target for `game`. Reads from `game.ruleset` when
+  attached and returns its value (including `nil` when the ruleset
+  explicitly opts out of halftime-by-score). Falls back to the USAU
+  default only when the game has no ruleset attached.
+  """
+  def halftime_threshold(%Game{} = game) do
+    fetch_ruleset_field(game, :halftime_target)
+  end
+
+  @doc """
+  Resolved score cap for `game`. Reads from `game.ruleset` when
+  attached and returns its value (including `nil` for timed-only
+  formats). Falls back to the USAU default only when the game has
+  no ruleset attached.
+  """
+  def hard_cap_threshold(%Game{} = game) do
+    fetch_ruleset_field(game, :score_cap)
+  end
+
+  defp fetch_ruleset_field(%Game{ruleset_id: nil}, key) do
+    Map.get(usau_standard_attrs(), key)
+  end
+
+  defp fetch_ruleset_field(%Game{} = game, key) do
+    game = ensure_ruleset_loaded(game)
+
+    case game.ruleset do
+      %Ruleset{} = r -> Map.get(r, key)
+      _ -> Map.get(usau_standard_attrs(), key)
+    end
+  end
+
+  defp ensure_ruleset_loaded(%Game{ruleset: %Ecto.Association.NotLoaded{}} = game),
+    do: Repo.preload(game, :ruleset)
+
+  defp ensure_ruleset_loaded(%Game{} = game), do: game
 
   # ===========================================================================
   # Game summary
@@ -501,6 +612,236 @@ defmodule Ultistats.Games do
     case Repo.one(query) do
       nil -> {:error, :player_not_on_team}
       _ -> :ok
+    end
+  end
+
+  # ===========================================================================
+  # Ruleset CRUD
+  # ===========================================================================
+
+  @ruleset_overridable_fields [
+    :score_cap,
+    :halftime_target,
+    :halftime_cap_minutes,
+    :soft_cap_minutes,
+    :hard_cap_minutes,
+    :timeouts_per_half,
+    :gender_ratio_rule,
+    :default_starting_ratio
+  ]
+
+  @doc """
+  Returns the ruleset templates for a given team — `kind == :template`,
+  not archived, ordered by name asc. Per-game `:game_instance` rows
+  are excluded (they're anonymous clones, never shown in the library).
+  """
+  def list_rulesets_for_team(%Team{id: team_id}), do: list_rulesets_for_team(team_id)
+
+  def list_rulesets_for_team(team_id) when is_binary(team_id) do
+    Ruleset
+    |> where([r], r.team_id == ^team_id)
+    |> where([r], r.kind == :template and is_nil(r.archived_at))
+    |> order_by([r], asc: r.name)
+    |> Repo.all()
+  end
+
+  @doc """
+  Returns all `:template` rulesets across teams — not archived,
+  ordered by name asc, with `:team` preloaded. Used by the global
+  Rulesets tab on the games index.
+  """
+  def list_rulesets_across_teams do
+    Ruleset
+    |> where([r], r.kind == :template and is_nil(r.archived_at))
+    |> order_by([r], asc: r.name)
+    |> preload(:team)
+    |> Repo.all()
+  end
+
+  @doc """
+  Gets a single ruleset by id, regardless of `:kind` or archival
+  status. Used by Games when reading the rule snapshot for a game.
+  """
+  def get_ruleset!(id), do: Repo.get!(Ruleset, id)
+
+  @doc """
+  Creates a ruleset. Defaults `:kind` to `:template` if not supplied.
+  """
+  def create_ruleset(attrs) do
+    attrs = put_default_kind(attrs)
+
+    %Ruleset{}
+    |> Ruleset.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Updates a ruleset with clone-on-write semantics.
+
+  If the ruleset has any games referencing it, the existing row is
+  archived (`archived_at: now()`) and a brand-new `:template` row is
+  inserted carrying the user's edits and the same name. In-flight and
+  finished games keep pointing at the old (now-archived) row, so their
+  rules don't change retroactively.
+
+  If the ruleset has no referencing games, the row is updated in
+  place — no archival churn.
+
+  The whole operation runs in a transaction.
+  """
+  def update_ruleset(%Ruleset{} = ruleset, attrs) do
+    if referenced_by_any_game?(ruleset.id) do
+      Repo.transaction(fn ->
+        {:ok, _archived} =
+          ruleset
+          |> Ruleset.changeset(%{archived_at: now()})
+          |> Repo.update()
+
+        merged =
+          ruleset
+          |> ruleset_attrs_for_clone()
+          |> Map.merge(normalize_ruleset_attrs(attrs))
+          |> Map.put(:team_id, ruleset.team_id)
+          |> Map.put(:kind, :template)
+          |> Map.put(:name, get_attr(attrs, :name) || ruleset.name)
+          |> Map.put(:archived_at, nil)
+
+        case create_ruleset(merged) do
+          {:ok, new_ruleset} -> new_ruleset
+          {:error, changeset} -> Repo.rollback(changeset)
+        end
+      end)
+    else
+      ruleset
+      |> Ruleset.changeset(attrs)
+      |> Repo.update()
+    end
+  end
+
+  @doc """
+  Deletes a ruleset. Refuses with `{:error, :referenced_by_games}`
+  if any game references it — the UI should archive instead.
+  """
+  def delete_ruleset(%Ruleset{} = ruleset) do
+    if referenced_by_any_game?(ruleset.id) do
+      {:error, :referenced_by_games}
+    else
+      Repo.delete(ruleset)
+    end
+  end
+
+  @doc """
+  Soft-removes a ruleset from the team's library by setting
+  `archived_at` to now. The row stays in the database so existing
+  games keep resolving their rules.
+  """
+  def archive_ruleset(%Ruleset{} = ruleset) do
+    ruleset
+    |> Ruleset.changeset(%{archived_at: now()})
+    |> Repo.update()
+  end
+
+  @doc "Returns an `%Ecto.Changeset{}` for tracking ruleset changes."
+  def change_ruleset(%Ruleset{} = ruleset, attrs \\ %{}) do
+    Ruleset.changeset(ruleset, attrs)
+  end
+
+  @doc """
+  Resolve a ruleset id for a game given a `:template` ruleset and a
+  map of per-game overrides.
+
+  Returns `{:ok, ruleset_id}`:
+
+    * If `overrides` is empty or every override key matches the
+      template's current value, returns the template's own id (no
+      insert — game references the template directly).
+    * Otherwise inserts a `:game_instance` row carrying the template's
+      values merged with the overrides and returns its id.
+
+  The instance row has no name and is owned by the same team as the
+  template.
+  """
+  def clone_ruleset_for_game(%Ruleset{} = template, overrides) when is_map(overrides) do
+    overrides = normalize_ruleset_attrs(overrides)
+    base = ruleset_attrs_for_clone(template)
+
+    if overrides_match_template?(template, overrides) do
+      {:ok, template.id}
+    else
+      attrs =
+        base
+        |> Map.merge(overrides)
+        |> Map.put(:team_id, template.team_id)
+        |> Map.put(:kind, :game_instance)
+        |> Map.put(:name, nil)
+        |> Map.put(:archived_at, nil)
+
+      case create_ruleset(attrs) do
+        {:ok, instance} -> {:ok, instance.id}
+        {:error, _changeset} = err -> err
+      end
+    end
+  end
+
+  # ----- private helpers for ruleset CRUD -----
+
+  defp put_default_kind(attrs) when is_map(attrs) do
+    cond do
+      Map.has_key?(attrs, :kind) -> attrs
+      Map.has_key?(attrs, "kind") -> attrs
+      true -> Map.put(attrs, :kind, :template)
+    end
+  end
+
+  defp ruleset_attrs_for_clone(%Ruleset{} = ruleset) do
+    Map.new(@ruleset_overridable_fields, fn key -> {key, Map.get(ruleset, key)} end)
+  end
+
+  defp normalize_ruleset_attrs(attrs) when is_map(attrs) do
+    Enum.reduce(attrs, %{}, fn {k, v}, acc ->
+      key =
+        cond do
+          is_atom(k) -> k
+          is_binary(k) -> safe_to_existing_atom(k)
+          true -> nil
+        end
+
+      if is_atom(key) and key in @ruleset_overridable_fields do
+        Map.put(acc, key, v)
+      else
+        acc
+      end
+    end)
+  end
+
+  defp safe_to_existing_atom(s) when is_binary(s) do
+    String.to_existing_atom(s)
+  rescue
+    ArgumentError -> nil
+  end
+
+  defp get_attr(attrs, key) when is_atom(key) and is_map(attrs) do
+    case Map.fetch(attrs, key) do
+      {:ok, v} -> v
+      :error -> Map.get(attrs, Atom.to_string(key))
+    end
+  end
+
+  defp overrides_match_template?(%Ruleset{} = template, overrides) when is_map(overrides) do
+    Enum.all?(overrides, fn {key, value} ->
+      Map.get(template, key) == value
+    end)
+  end
+
+  defp referenced_by_any_game?(ruleset_id) when is_binary(ruleset_id) do
+    Game
+    |> where([g], g.ruleset_id == ^ruleset_id)
+    |> select([g], 1)
+    |> limit(1)
+    |> Repo.one()
+    |> case do
+      nil -> false
+      _ -> true
     end
   end
 end

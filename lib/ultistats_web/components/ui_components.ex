@@ -9,12 +9,15 @@ defmodule UltistatsWeb.UIComponents do
 
   Components:
 
-    * `action_button/1`     primary in-game action (Goal / Assist / Block / Turn)
-    * `player_chip/1`       tappable jersey-and-name pill
-    * `score_readout/1`     large tabular-nums score display
-    * `line_preset_card/1`  selectable line preset, with ratio warning
-    * `timeline_event/1`    one row in the post-game / mid-game timeline
-    * `gender_radio/1`      two native radio inputs for the FMP/MMP picker
+    * `action_button/1`        primary in-game action (Goal / Assist / Block / Turn)
+    * `player_chip/1`          tappable jersey-and-name pill
+    * `score_readout/1`        large tabular-nums score display
+    * `line_preset_card/1`     selectable line preset, with ratio warning
+    * `timeline_event/1`       one row in the post-game / mid-game timeline
+    * `gender_radio/1`         two native radio inputs for the FMP/MMP picker
+    * `position_radio/1`       three native radio inputs for handler/cutter/hybrid
+    * `gender_ratio_radio/1`   four radio inputs for the ruleset gender-ratio rule
+    * `starting_ratio_radio/1` two radio inputs for the ruleset default starting ratio
 
   All interactive components keep `phx-*` bindings via `:rest` global
   attrs, so callers wire them like any other Phoenix component.
@@ -610,6 +613,140 @@ defmodule UltistatsWeb.UIComponents do
   defp normalize_position_value(""), do: nil
   defp normalize_position_value(value) when is_atom(value), do: Atom.to_string(value)
   defp normalize_position_value(value) when is_binary(value), do: value
+
+  ## ---------------------------------------------------------------------
+  ## gender_ratio_radio
+  ## ---------------------------------------------------------------------
+
+  @doc """
+  Four native radio inputs side by side for picking a ruleset's gender
+  ratio rule. Mirrors `position_radio/1`: shared `name`, label-wrapped
+  inputs with min-h-11 tap targets, and a `:rest` passthrough for
+  `phx-*` attrs (e.g. `phx-click="set_ratio_rule"`).
+
+  Options: Endzone / Alternating / Fixed / None.
+
+  ## Examples
+
+      <.gender_ratio_radio field={@form[:gender_ratio_rule]} phx-click="set_ratio_rule" />
+  """
+  attr :field, Phoenix.HTML.FormField, required: true
+  attr :class, :any, default: nil
+  attr :rest, :global, include: ~w(phx-change phx-click phx-target form)
+
+  def gender_ratio_radio(assigns) do
+    value = normalize_ratio_value(assigns.field.value)
+
+    assigns =
+      assigns
+      |> assign(:value, value)
+      |> assign(:input_name, assigns.field.name)
+      |> assign(:input_id, assigns.field.id)
+      |> assign(:options, [
+        {"endzone", "Endzone"},
+        {"alternating", "Alternating"},
+        {"fixed", "Fixed"},
+        {"none", "None"}
+      ])
+
+    ~H"""
+    <fieldset class={["space-y-1", @class]}>
+      <legend class="sr-only">Gender ratio rule</legend>
+      <div
+        class="inline-flex flex-wrap items-center gap-2"
+        role="radiogroup"
+        aria-label="Gender ratio rule"
+      >
+        <label
+          :for={{val, label} <- @options}
+          class={position_radio_label_classes(@value == val)}
+        >
+          <input
+            type="radio"
+            name={@input_name}
+            id={"#{@input_id}_#{val}"}
+            value={val}
+            checked={@value == val}
+            class="accent-primary size-5 shrink-0"
+            {@rest}
+            phx-value-rule={val}
+          />
+          <span class="text-sm leading-none">{label}</span>
+        </label>
+      </div>
+    </fieldset>
+    """
+  end
+
+  defp normalize_ratio_value(nil), do: nil
+  defp normalize_ratio_value(""), do: nil
+  defp normalize_ratio_value(value) when is_atom(value), do: Atom.to_string(value)
+  defp normalize_ratio_value(value) when is_binary(value), do: value
+
+  ## ---------------------------------------------------------------------
+  ## starting_ratio_radio
+  ## ---------------------------------------------------------------------
+
+  @doc """
+  Two native radio inputs side by side for picking a ruleset's default
+  starting ratio (4M/3F or 3M/4F). Mirrors `position_radio/1`: shared
+  `name`, label-wrapped inputs with min-h-11 tap targets, and a `:rest`
+  passthrough for `phx-*` attrs (e.g. `phx-click="set_starting_ratio"`).
+
+  ## Examples
+
+      <.starting_ratio_radio field={@form[:default_starting_ratio]} phx-click="set_starting_ratio" />
+  """
+  attr :field, Phoenix.HTML.FormField, required: true
+  attr :class, :any, default: nil
+  attr :rest, :global, include: ~w(phx-change phx-click phx-target form)
+
+  def starting_ratio_radio(assigns) do
+    value = normalize_starting_ratio_value(assigns.field.value)
+
+    assigns =
+      assigns
+      |> assign(:value, value)
+      |> assign(:input_name, assigns.field.name)
+      |> assign(:input_id, assigns.field.id)
+      |> assign(:options, [
+        {"four_men_three_women", "4M / 3F"},
+        {"three_men_four_women", "3M / 4F"}
+      ])
+
+    ~H"""
+    <fieldset class={["space-y-1", @class]}>
+      <legend class="sr-only">Default starting ratio</legend>
+      <div
+        class="inline-flex flex-wrap items-center gap-2"
+        role="radiogroup"
+        aria-label="Default starting ratio"
+      >
+        <label
+          :for={{val, label} <- @options}
+          class={position_radio_label_classes(@value == val)}
+        >
+          <input
+            type="radio"
+            name={@input_name}
+            id={"#{@input_id}_#{val}"}
+            value={val}
+            checked={@value == val}
+            class="accent-primary size-5 shrink-0"
+            {@rest}
+            phx-value-ratio={val}
+          />
+          <span class="text-sm leading-none">{label}</span>
+        </label>
+      </div>
+    </fieldset>
+    """
+  end
+
+  defp normalize_starting_ratio_value(nil), do: nil
+  defp normalize_starting_ratio_value(""), do: nil
+  defp normalize_starting_ratio_value(value) when is_atom(value), do: Atom.to_string(value)
+  defp normalize_starting_ratio_value(value) when is_binary(value), do: value
 
   ## ---------------------------------------------------------------------
   ## helpers

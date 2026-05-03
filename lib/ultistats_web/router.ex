@@ -34,6 +34,11 @@ defmodule UltistatsWeb.Router do
     live "/line_presets/:id/edit", LinePresetLive.Form, :edit
     live "/line_presets/:id", LinePresetLive.Show, :show
 
+    live "/rulesets", RulesetLive.Index, :index
+    live "/rulesets/new", RulesetLive.Form, :new
+    live "/rulesets/:id/edit", RulesetLive.Form, :edit
+    live "/rulesets/:id", RulesetLive.Show, :show
+
     live "/games", GameLive.Index, :index
     live "/games/new", GameLive.Start, :new
     live "/games/:id", GameLive.Show, :show

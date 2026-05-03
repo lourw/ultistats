@@ -4,7 +4,7 @@
 # Run manually with: `mix run priv/repo/seeds.exs`
 # Auto-runs on `mix phx.server` in dev (see lib/ultistats/application.ex).
 
-alias Ultistats.{Repo, Teams}
+alias Ultistats.{Games, Repo, Teams}
 alias Ultistats.Teams.Team
 
 if Repo.aggregate(Team, :count, :id) == 0 do
@@ -73,7 +73,37 @@ if Repo.aggregate(Team, :count, :id) == 0 do
       player_ids: d_line_player_ids
     })
 
-  IO.puts("Seeded: #{team.name} · 14 players · 2 line presets")
+  {:ok, _} =
+    Games.create_ruleset(%{
+      team_id: team.id,
+      kind: :template,
+      name: "USAU Standard",
+      score_cap: 15,
+      halftime_target: 8,
+      halftime_cap_minutes: nil,
+      soft_cap_minutes: nil,
+      hard_cap_minutes: nil,
+      timeouts_per_half: 2,
+      gender_ratio_rule: :endzone,
+      default_starting_ratio: :four_men_three_women
+    })
+
+  {:ok, _} =
+    Games.create_ruleset(%{
+      team_id: team.id,
+      kind: :template,
+      name: "Hat League",
+      score_cap: 13,
+      halftime_target: 7,
+      halftime_cap_minutes: nil,
+      soft_cap_minutes: 50,
+      hard_cap_minutes: 60,
+      timeouts_per_half: 1,
+      gender_ratio_rule: :alternating,
+      default_starting_ratio: :four_men_three_women
+    })
+
+  IO.puts("Seeded: #{team.name} · 14 players · 2 line presets · 2 rulesets")
 else
   IO.puts("Seeds: data already present, skipping")
 end

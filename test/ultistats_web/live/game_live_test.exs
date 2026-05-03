@@ -27,7 +27,7 @@ defmodule UltistatsWeb.GameLiveTest do
       assert html =~ "Start a game"
       assert has_element?(live, "#game-form")
       assert html =~ ~r/<option[^>]*selected[^>]*value="ours">We pull</
-      assert html =~ "USAU standard format"
+      assert html =~ "USAU standard (no template)"
     end
 
     test "pre-selects the team when ?team_id=... is provided", %{conn: conn} do
@@ -105,6 +105,97 @@ defmodule UltistatsWeb.GameLiveTest do
       assert game.status == :in_progress
       assert game.started_at
       assert to == ~p"/games/#{game.id}"
+    end
+
+    test "ruleset picker lists the team's templates", %{conn: conn} do
+      team = team_fixture()
+      _hat = ruleset_fixture(%{team_id: team.id, name: "Hat League"})
+      _strict = ruleset_fixture(%{team_id: team.id, name: "Strict Tourney"})
+
+      {:ok, _live, html} = live(conn, ~p"/games/new?team_id=#{team.id}")
+
+      assert html =~ "Hat League"
+      assert html =~ "Strict Tourney"
+    end
+
+    test "picking a ruleset prefills the rule fields", %{conn: conn} do
+      team = team_fixture()
+
+      template =
+        ruleset_fixture(%{
+          team_id: team.id,
+          name: "Hat League",
+          score_cap: 13,
+          halftime_target: 7,
+          soft_cap_minutes: 50,
+          hard_cap_minutes: 60,
+          timeouts_per_half: 1
+        })
+
+      {:ok, live, _html} = live(conn, ~p"/games/new?team_id=#{team.id}")
+
+      html =
+        live
+        |> form("#game-form", game: %{"ruleset_id" => template.id})
+        |> render_change()
+
+      # Rendered <input value="..."> reflects the template values.
+      assert html =~ ~s(value="13")
+      assert html =~ ~s(value="7")
+      assert html =~ ~s(value="50")
+      assert html =~ ~s(value="60")
+    end
+
+    test "per-game tweak creates a :game_instance, not a mutation of the template", %{
+      conn: conn
+    } do
+      team = team_fixture()
+
+      template =
+        ruleset_fixture(%{
+          team_id: team.id,
+          name: "Hat League",
+          score_cap: 13,
+          halftime_target: 7,
+          timeouts_per_half: 1
+        })
+
+      {:ok, live, _html} = live(conn, ~p"/games/new?team_id=#{team.id}")
+
+      # Select the template (prefills the rule fields).
+      live
+      |> form("#game-form", game: %{"ruleset_id" => template.id})
+      |> render_change()
+
+      # Submit with the score_cap tweaked from 13 to 11.
+      assert {:error, {:live_redirect, %{to: _to}}} =
+               live
+               |> form("#game-form",
+                 game: %{
+                   "team_id" => team.id,
+                   "opponent_name" => "Rivals",
+                   "first_pull" => "ours",
+                   "ruleset_id" => template.id
+                 },
+                 rule_overrides: %{
+                   "score_cap" => "11",
+                   "halftime_target" => "7",
+                   "timeouts_per_half" => "1",
+                   "gender_ratio_rule" => "endzone",
+                   "default_starting_ratio" => "four_men_three_women"
+                 }
+               )
+               |> render_submit()
+
+      [game] = Games.list_games()
+      refute game.ruleset_id == template.id
+
+      attached = Games.get_ruleset!(game.ruleset_id)
+      assert attached.kind == :game_instance
+      assert attached.score_cap == 11
+
+      # Original template untouched.
+      assert Games.get_ruleset!(template.id).score_cap == 13
     end
   end
 

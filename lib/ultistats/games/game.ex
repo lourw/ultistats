@@ -17,6 +17,7 @@ defmodule Ultistats.Games.Game do
     field :first_pull, Ecto.Enum, values: @first_pulls
 
     belongs_to :team, Ultistats.Teams.Team
+    belongs_to :ruleset, Ultistats.Games.Ruleset
     has_many :points, Ultistats.Games.Point, preload_order: [asc: :sequence]
 
     timestamps(type: :utc_datetime)
@@ -36,6 +37,7 @@ defmodule Ultistats.Games.Game do
     game
     |> cast(attrs, [
       :team_id,
+      :ruleset_id,
       :opponent_name,
       :format,
       :status,

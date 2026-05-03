@@ -22,7 +22,7 @@ Single-game live stat tracking for ultimate frisbee. The whole MVP is one tracke
 3. **Start a game**
    - Pick our team, type opponent name (free-text — opposing team is not tracked as an entity in MVP).
    - Pick who pulls first.
-   - Game format defaults to USAU standard (hard cap 15, soft cap by time, halftime at 8). Configurability is post-MVP — defaults are not editable in the start-game flow.
+   - Game format defaults to USAU standard (hard cap 15, soft cap by time, halftime at 8). Score cap, soft/hard caps, timeouts per half, and the gender-ratio rule are configurable per game; teams can save reusable rulesets as templates. Editing a template that's already in use clones it, so historical games keep their original rules.
 
 4. **Per-point loop**
    - Tracker picks a line preset (or overrides by selecting players ad-hoc for this point).

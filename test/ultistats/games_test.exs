@@ -130,6 +130,172 @@ defmodule Ultistats.GamesTest do
     end
   end
 
+  describe "rulesets integration" do
+    alias Ultistats.Games.Ruleset
+
+    test "start_game/1 with :ruleset_id (no overrides) attaches the template" do
+      team = team_fixture()
+
+      template =
+        ruleset_fixture(%{
+          team_id: team.id,
+          name: "Hat League",
+          score_cap: 13,
+          halftime_target: 7
+        })
+
+      assert {:ok, game} =
+               Games.start_game(%{
+                 team_id: team.id,
+                 opponent_name: "Rivals",
+                 format: :usau_standard,
+                 first_pull: :ours,
+                 ruleset_id: template.id
+               })
+
+      assert game.ruleset_id == template.id
+      assert Games.halftime_threshold(game) == 7
+      assert Games.hard_cap_threshold(game) == 13
+    end
+
+    test "start_game/1 with :ruleset_id + overrides creates a :game_instance" do
+      team = team_fixture()
+      template = ruleset_fixture(%{team_id: team.id, score_cap: 15, halftime_target: 8})
+
+      assert {:ok, game} =
+               Games.start_game(%{
+                 team_id: team.id,
+                 opponent_name: "Rivals",
+                 format: :usau_standard,
+                 first_pull: :ours,
+                 ruleset_id: template.id,
+                 rule_overrides: %{score_cap: 11}
+               })
+
+      refute game.ruleset_id == template.id
+      attached = Games.get_ruleset!(game.ruleset_id)
+      assert attached.kind == :game_instance
+      assert attached.team_id == team.id
+      assert attached.score_cap == 11
+
+      # Original template untouched.
+      assert Games.get_ruleset!(template.id).score_cap == 15
+    end
+
+    test "start_game/1 without :ruleset_id and no overrides leaves ruleset_id nil; reads default to USAU" do
+      team = team_fixture()
+
+      assert {:ok, game} =
+               Games.start_game(%{
+                 team_id: team.id,
+                 opponent_name: "Rivals",
+                 format: :usau_standard,
+                 first_pull: :ours
+               })
+
+      assert is_nil(game.ruleset_id)
+      assert Games.halftime_threshold(game) == 8
+      assert Games.hard_cap_threshold(game) == 15
+    end
+
+    test "start_game/1 without :ruleset_id but with overrides synthesizes a :game_instance" do
+      team = team_fixture()
+
+      assert {:ok, game} =
+               Games.start_game(%{
+                 team_id: team.id,
+                 opponent_name: "Rivals",
+                 format: :usau_standard,
+                 first_pull: :ours,
+                 rule_overrides: %{score_cap: 11}
+               })
+
+      assert game.ruleset_id
+
+      attached = Games.get_ruleset!(game.ruleset_id)
+      assert %Ruleset{kind: :game_instance, team_id: t} = attached
+      assert t == team.id
+      assert attached.score_cap == 11
+      # Falls back to USAU defaults for unspecified knobs.
+      assert attached.halftime_target == 8
+      assert attached.timeouts_per_half == 2
+    end
+
+    test "editing the source template after game-start does not change the in-flight game's resolved values" do
+      team = team_fixture()
+      template = ruleset_fixture(%{team_id: team.id, score_cap: 15, halftime_target: 8})
+
+      {:ok, game} =
+        Games.start_game(%{
+          team_id: team.id,
+          opponent_name: "Rivals",
+          format: :usau_standard,
+          first_pull: :ours,
+          ruleset_id: template.id
+        })
+
+      # Edit the template — clone-on-write archives the old template and
+      # creates a new template row. The game should keep reading the old.
+      {:ok, _new_template} = Games.update_ruleset(template, %{score_cap: 11, halftime_target: 6})
+
+      reloaded = Games.get_game!(game.id)
+      assert Games.halftime_threshold(reloaded) == 8
+      assert Games.hard_cap_threshold(reloaded) == 15
+    end
+
+    test "halftime?/1 returns false when resolved halftime_target is nil" do
+      team = team_fixture()
+
+      template =
+        ruleset_fixture(%{
+          team_id: team.id,
+          name: "No halftime",
+          score_cap: 15,
+          halftime_target: nil
+        })
+
+      {:ok, game} =
+        Games.start_game(%{
+          team_id: team.id,
+          opponent_name: "Rivals",
+          format: :usau_standard,
+          first_pull: :ours,
+          ruleset_id: template.id
+        })
+
+      player = player_fixture(team_id: team.id)
+      score_n_points(game, player, :ours, 8)
+
+      refute Games.halftime?(Games.get_game!(game.id))
+    end
+
+    test "hard_cap_reached?/1 returns false when resolved score_cap is nil" do
+      team = team_fixture()
+
+      template =
+        ruleset_fixture(%{
+          team_id: team.id,
+          name: "Timed only",
+          score_cap: nil,
+          hard_cap_minutes: 60
+        })
+
+      {:ok, game} =
+        Games.start_game(%{
+          team_id: team.id,
+          opponent_name: "Rivals",
+          format: :usau_standard,
+          first_pull: :ours,
+          ruleset_id: template.id
+        })
+
+      player = player_fixture(team_id: team.id)
+      score_n_points(game, player, :ours, 20)
+
+      refute Games.hard_cap_reached?(Games.get_game!(game.id))
+    end
+  end
+
   describe "end_game/2" do
     test "defaults to :finished and stamps ended_at" do
       game = game_fixture()
@@ -615,6 +781,215 @@ defmodule Ultistats.GamesTest do
       ids_in_order = Enum.map(summary.players, & &1.player.id)
       # Numeric: 3 (pc), 7 (pa), 11 (pb), then nil-jersey pd.
       assert ids_in_order == [pc.id, pa.id, pb.id, pd.id]
+    end
+  end
+
+  describe "rulesets" do
+    alias Ultistats.Games.Ruleset
+
+    test "list_rulesets_for_team/1 returns only :template rows for the team, name asc" do
+      team = team_fixture(%{name: "Home"})
+      other = team_fixture(%{name: "Away"})
+
+      _stranger = ruleset_fixture(%{team_id: other.id, name: "Foreign"})
+
+      b = ruleset_fixture(%{team_id: team.id, name: "Bravo"})
+      a = ruleset_fixture(%{team_id: team.id, name: "Alpha"})
+
+      # game_instance rows are excluded from the library.
+      _instance =
+        ruleset_fixture(%{team_id: team.id, kind: :game_instance, name: nil})
+
+      # archived templates are excluded too.
+      archived = ruleset_fixture(%{team_id: team.id, name: "Archived"})
+      {:ok, _} = Games.archive_ruleset(archived)
+
+      results = Games.list_rulesets_for_team(team)
+      assert Enum.map(results, & &1.id) == [a.id, b.id]
+    end
+
+    test "get_ruleset!/1 fetches both :template and :game_instance rows" do
+      team = team_fixture()
+      template = ruleset_fixture(%{team_id: team.id})
+      instance = ruleset_fixture(%{team_id: team.id, kind: :game_instance, name: nil})
+
+      assert Games.get_ruleset!(template.id).id == template.id
+      assert Games.get_ruleset!(instance.id).kind == :game_instance
+    end
+
+    test "create_ruleset/1 defaults kind to :template when not supplied" do
+      team = team_fixture()
+
+      assert {:ok, %Ruleset{} = r} =
+               Games.create_ruleset(%{
+                 team_id: team.id,
+                 name: "Standard",
+                 score_cap: 15,
+                 halftime_target: 8,
+                 timeouts_per_half: 2,
+                 gender_ratio_rule: :endzone
+               })
+
+      assert r.kind == :template
+    end
+
+    test "create_ruleset/1 requires team, kind, timeouts_per_half, gender_ratio_rule" do
+      assert {:error, changeset} = Games.create_ruleset(%{})
+      errors = errors_on(changeset)
+
+      assert errors[:team_id]
+      assert errors[:timeouts_per_half]
+      assert errors[:gender_ratio_rule]
+    end
+
+    test "create_ruleset/1 requires at least one of score_cap or hard_cap_minutes" do
+      team = team_fixture()
+
+      assert {:error, changeset} =
+               Games.create_ruleset(%{
+                 team_id: team.id,
+                 name: "Open-ended",
+                 score_cap: nil,
+                 hard_cap_minutes: nil,
+                 timeouts_per_half: 2,
+                 gender_ratio_rule: :endzone
+               })
+
+      assert %{score_cap: [msg | _]} = errors_on(changeset)
+      assert msg =~ "at least one of score_cap or hard_cap_minutes"
+    end
+
+    test "create_ruleset/1 requires :name only when kind is :template" do
+      team = team_fixture()
+
+      assert {:error, template_cs} =
+               Games.create_ruleset(%{
+                 team_id: team.id,
+                 kind: :template,
+                 name: nil,
+                 score_cap: 15,
+                 timeouts_per_half: 2,
+                 gender_ratio_rule: :endzone
+               })
+
+      assert %{name: ["can't be blank"]} = errors_on(template_cs)
+
+      assert {:ok, %Ruleset{name: nil, kind: :game_instance}} =
+               Games.create_ruleset(%{
+                 team_id: team.id,
+                 kind: :game_instance,
+                 name: nil,
+                 score_cap: 15,
+                 timeouts_per_half: 2,
+                 gender_ratio_rule: :endzone
+               })
+    end
+
+    test "update_ruleset/2 updates in place when no games reference it" do
+      team = team_fixture()
+      ruleset = ruleset_fixture(%{team_id: team.id, name: "Hat League", score_cap: 13})
+
+      assert {:ok, updated} = Games.update_ruleset(ruleset, %{score_cap: 11})
+      assert updated.id == ruleset.id
+      assert updated.score_cap == 11
+
+      # Same row in the DB; no new rows inserted.
+      assert length(Games.list_rulesets_for_team(team)) == 1
+    end
+
+    test "update_ruleset/2 clones-on-write when a game references the ruleset" do
+      team = team_fixture()
+      old = ruleset_fixture(%{team_id: team.id, name: "Hat League", score_cap: 13})
+      _game = game_fixture(%{team_id: team.id, ruleset_id: old.id})
+
+      assert {:ok, new_ruleset} = Games.update_ruleset(old, %{score_cap: 11})
+      refute new_ruleset.id == old.id
+      assert new_ruleset.score_cap == 11
+      assert new_ruleset.kind == :template
+      assert new_ruleset.name == "Hat League"
+      assert is_nil(new_ruleset.archived_at)
+
+      # Old row is still readable but archived.
+      reloaded_old = Games.get_ruleset!(old.id)
+      assert reloaded_old.score_cap == 13
+      assert reloaded_old.archived_at
+
+      # The team's library only shows the new row.
+      ids = Enum.map(Games.list_rulesets_for_team(team), & &1.id)
+      assert ids == [new_ruleset.id]
+    end
+
+    test "update_ruleset/2 clones-on-write with string-keyed string-valued params (LV form path)" do
+      team = team_fixture()
+      old = ruleset_fixture(%{team_id: team.id, name: "Hat League", score_cap: 13})
+      _game = game_fixture(%{team_id: team.id, ruleset_id: old.id})
+
+      # Mirrors what a LiveView form submits: string keys, string values.
+      assert {:ok, new_ruleset} =
+               Games.update_ruleset(old, %{
+                 "score_cap" => "11",
+                 "timeouts_per_half" => "1"
+               })
+
+      assert new_ruleset.score_cap == 11
+      assert new_ruleset.timeouts_per_half == 1
+      assert new_ruleset.name == "Hat League"
+    end
+
+    test "delete_ruleset/1 deletes when no games reference it" do
+      team = team_fixture()
+      ruleset = ruleset_fixture(%{team_id: team.id})
+
+      assert {:ok, %Ruleset{}} = Games.delete_ruleset(ruleset)
+      assert_raise Ecto.NoResultsError, fn -> Games.get_ruleset!(ruleset.id) end
+    end
+
+    test "delete_ruleset/1 returns {:error, :referenced_by_games} when in use" do
+      team = team_fixture()
+      ruleset = ruleset_fixture(%{team_id: team.id})
+      _game = game_fixture(%{team_id: team.id, ruleset_id: ruleset.id})
+
+      assert {:error, :referenced_by_games} = Games.delete_ruleset(ruleset)
+      # Row still there.
+      assert Games.get_ruleset!(ruleset.id).id == ruleset.id
+    end
+
+    test "archive_ruleset/1 sets archived_at and removes the row from the library" do
+      team = team_fixture()
+      ruleset = ruleset_fixture(%{team_id: team.id})
+
+      assert {:ok, archived} = Games.archive_ruleset(ruleset)
+      assert archived.archived_at
+
+      assert Games.list_rulesets_for_team(team) == []
+      # Still readable.
+      assert Games.get_ruleset!(ruleset.id).archived_at
+    end
+
+    test "clone_ruleset_for_game/2 returns the template id when overrides match" do
+      team = team_fixture()
+      template = ruleset_fixture(%{team_id: team.id, score_cap: 15, halftime_target: 8})
+
+      assert {:ok, id} =
+               Games.clone_ruleset_for_game(template, %{score_cap: 15, halftime_target: 8})
+
+      assert id == template.id
+      # And the empty-overrides case.
+      assert {:ok, ^id} = Games.clone_ruleset_for_game(template, %{})
+    end
+
+    test "clone_ruleset_for_game/2 inserts a :game_instance row when overrides differ" do
+      team = team_fixture()
+      template = ruleset_fixture(%{team_id: team.id, score_cap: 15})
+
+      assert {:ok, id} = Games.clone_ruleset_for_game(template, %{score_cap: 11})
+      refute id == template.id
+
+      instance = Games.get_ruleset!(id)
+      assert instance.kind == :game_instance
+      assert is_nil(instance.name)
+      assert instance.team_id == team.id
+      assert instance.score_cap == 11
     end
   end
 end
