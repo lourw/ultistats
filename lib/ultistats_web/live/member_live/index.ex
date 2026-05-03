@@ -21,10 +21,10 @@ defmodule UltistatsWeb.MemberLive.Index do
       </p>
 
       <.table :if={@memberships != []} id="members" rows={@memberships}>
-        <:col :let={m} label="Jersey">{m.jersey_number || "—"}</:col>
+        <:col :let={m} label="Jersey">{Teams.resolved_jersey_number(m) || "—"}</:col>
         <:col :let={m} label="Name">{User.display_name(m.user)}</:col>
         <:col :let={m} label="Gender">{humanize_gender_role(m.user.gender_role)}</:col>
-        <:col :let={m} label="Position">{humanize_position(m.user.position)}</:col>
+        <:col :let={m} label="Position">{humanize_position(Teams.resolved_position(m))}</:col>
         <:col :let={m} label="Role">{humanize_role(m.role)}</:col>
         <:col :let={m} label="Player?">{if m.is_player, do: "Yes", else: "No"}</:col>
         <:col :let={m} label="Team">{m.team.name}</:col>

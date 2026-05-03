@@ -39,9 +39,9 @@ defmodule UltistatsWeb.MemberLive.Show do
       <.list>
         <:item title="Name">{User.display_name(@membership.user)}</:item>
         <:item title="Team">{@membership.team.name}</:item>
-        <:item title="Jersey number">{@membership.jersey_number || "—"}</:item>
+        <:item title="Jersey number">{Teams.resolved_jersey_number(@membership) || "—"}</:item>
         <:item title="Gender">{humanize_gender_role(@membership.user.gender_role)}</:item>
-        <:item title="Position">{humanize_position(@membership.user.position)}</:item>
+        <:item title="Position">{humanize_position(Teams.resolved_position(@membership))}</:item>
         <:item title="Role">{humanize_role(@membership.role)}</:item>
         <:item title="Player on roster">{if @membership.is_player, do: "Yes", else: "No"}</:item>
       </.list>

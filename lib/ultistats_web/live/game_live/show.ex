@@ -573,7 +573,7 @@ defmodule UltistatsWeb.GameLive.Show do
             ]}
             aria-hidden="true"
           >
-            {member.jersey_number}
+            {Teams.resolved_jersey_number(member)}
           </span>
           <span class="font-medium text-sm truncate flex-1 leading-tight">
             {User.display_name(member.user)}
@@ -784,7 +784,7 @@ defmodule UltistatsWeb.GameLive.Show do
               ]}
               aria-hidden="true"
             >
-              {member.jersey_number}
+              {Teams.resolved_jersey_number(member)}
             </span>
             <span class="font-medium text-sm truncate flex-1 leading-tight">
               {User.display_name(member.user)}
@@ -1454,7 +1454,7 @@ defmodule UltistatsWeb.GameLive.Show do
   defp passer_card_label(user_id, lookup) when is_binary(user_id) do
     case Map.get(lookup, user_id) do
       nil -> "Unknown"
-      member -> "##{member.jersey_number} #{User.display_name(member.user)}"
+      member -> "##{Teams.resolved_jersey_number(member)} #{User.display_name(member.user)}"
     end
   end
 
@@ -1465,7 +1465,7 @@ defmodule UltistatsWeb.GameLive.Show do
   defp passer_card_number(user_id, lookup) when is_binary(user_id) do
     case Map.get(lookup, user_id) do
       nil -> "?"
-      member -> member.jersey_number || "?"
+      member -> Teams.resolved_jersey_number(member) || "?"
     end
   end
 
@@ -1616,7 +1616,7 @@ defmodule UltistatsWeb.GameLive.Show do
               ]}
               aria-hidden="true"
             >
-              {member.jersey_number}
+              {Teams.resolved_jersey_number(member)}
             </span>
             <span class="font-medium text-sm truncate flex-1 leading-tight">
               {User.display_name(member.user)}

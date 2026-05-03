@@ -312,7 +312,7 @@ defmodule UltistatsWeb.LinePresetLive.Form do
             ]}
           >
             <span
-              :if={member.jersey_number}
+              :if={Teams.resolved_jersey_number(member)}
               class={[
                 "tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full text-[11px] shrink-0",
                 if(MapSet.member?(@selected_ids, member.user_id),
@@ -321,7 +321,7 @@ defmodule UltistatsWeb.LinePresetLive.Form do
                 )
               ]}
             >
-              {member.jersey_number}
+              {Teams.resolved_jersey_number(member)}
             </span>
             <span class="font-medium text-sm truncate flex-1 leading-tight">
               {User.display_name(member.user)}
@@ -356,13 +356,19 @@ defmodule UltistatsWeb.LinePresetLive.Form do
     Enum.sort_by(members, &String.downcase(&1.user.first_name || ""))
   end
 
-  defp jersey_sort_key(%{jersey_number: nil}), do: {2, 0, ""}
-  defp jersey_sort_key(%{jersey_number: ""}), do: {2, 0, ""}
+  defp jersey_sort_key(member) do
+    case Teams.resolved_jersey_number(member) do
+      nil ->
+        {2, 0, ""}
 
-  defp jersey_sort_key(%{jersey_number: j}) when is_binary(j) do
-    case Integer.parse(j) do
-      {n, ""} -> {0, n, j}
-      _ -> {1, 0, j}
+      "" ->
+        {2, 0, ""}
+
+      j when is_binary(j) ->
+        case Integer.parse(j) do
+          {n, ""} -> {0, n, j}
+          _ -> {1, 0, j}
+        end
     end
   end
 

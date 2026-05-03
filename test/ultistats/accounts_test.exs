@@ -358,4 +358,153 @@ defmodule Ultistats.AccountsTest do
       refute inspect(%User{password: "123456"}) =~ "password: \"123456\""
     end
   end
+
+  describe "stub-claim tokens" do
+    test "generate + verify round-trip returns the user" do
+      {:ok, stub} =
+        Accounts.create_stub_user(%{
+          first_name: "Stub",
+          last_name: "Person",
+          gender_role: :male_matching,
+          position: :handler
+        })
+
+      token = Accounts.generate_stub_claim_token(stub)
+      assert is_binary(token)
+
+      assert {:ok, %User{id: id}} = Accounts.verify_stub_claim_token(token)
+      assert id == stub.id
+    end
+
+    test "tampered token returns :invalid" do
+      {:ok, stub} =
+        Accounts.create_stub_user(%{
+          first_name: "Stub",
+          last_name: "Person",
+          gender_role: :male_matching,
+          position: :handler
+        })
+
+      token = Accounts.generate_stub_claim_token(stub) <> "garbage"
+      assert {:error, :invalid} = Accounts.verify_stub_claim_token(token)
+    end
+
+    test "non-binary token returns :invalid" do
+      assert {:error, :invalid} = Accounts.verify_stub_claim_token(nil)
+    end
+
+    test "verify returns :invalid when the underlying user is gone" do
+      {:ok, stub} =
+        Accounts.create_stub_user(%{
+          first_name: "Gone",
+          last_name: "Soon",
+          gender_role: :female_matching,
+          position: :cutter
+        })
+
+      token = Accounts.generate_stub_claim_token(stub)
+      Repo.delete!(stub)
+
+      assert {:error, :invalid} = Accounts.verify_stub_claim_token(token)
+    end
+  end
+
+  describe "claim_stub_user/2" do
+    alias Ultistats.Games
+    alias Ultistats.Repo
+    alias Ultistats.Teams
+    alias Ultistats.Teams.TeamMembership
+
+    import Ultistats.TeamsFixtures
+    import Ultistats.GamesFixtures, only: [game_fixture: 1]
+
+    defp claimer_fixture do
+      user_fixture()
+    end
+
+    defp stub_with_team(team) do
+      {:ok, stub} =
+        Accounts.create_stub_user(%{
+          first_name: "Stub",
+          last_name: "User",
+          gender_role: :male_matching,
+          position: :handler
+        })
+
+      {:ok, _m} = Teams.add_team_member(team, stub, %{role: :member, is_player: true})
+      stub
+    end
+
+    test "moves memberships, repoints events, deletes stub" do
+      team = team_fixture()
+      stub = stub_with_team(team)
+      claimer = claimer_fixture()
+
+      # Build a game + point + event referring to the stub so we can
+      # confirm passer_user_id / receiver_user_id get rewritten.
+      receiver_member = team_membership_fixture(team_id: team.id)
+      receiver = receiver_member.user
+
+      game = game_fixture(team_id: team.id)
+      {:ok, point} = Games.start_point(game, [stub.id, receiver.id])
+      {:ok, ev1} = Games.record_throw(point, :catch, stub.id, receiver.id)
+      {:ok, ev2} = Games.record_throw(point, :goal, receiver.id, stub.id)
+
+      assert {:ok, %{teams: [team_id]}} = Accounts.claim_stub_user(stub, claimer)
+      assert team_id == team.id
+
+      # Stub is gone.
+      refute Repo.get(User, stub.id)
+
+      # Membership now belongs to the claimer.
+      assert Teams.user_member_of?(claimer, team)
+
+      # Events are repointed.
+      ev1_after = Repo.get!(Ultistats.Games.Event, ev1.id)
+      ev2_after = Repo.get!(Ultistats.Games.Event, ev2.id)
+      assert ev1_after.passer_user_id == claimer.id
+      assert ev1_after.receiver_user_id == receiver.id
+      assert ev2_after.passer_user_id == receiver.id
+      assert ev2_after.receiver_user_id == claimer.id
+    end
+
+    test "refuses :same_user when stub == claimer" do
+      claimer = claimer_fixture()
+
+      assert {:error, :same_user} = Accounts.claim_stub_user(claimer, claimer)
+    end
+
+    test "refuses :not_a_stub when target is already claimed" do
+      team = team_fixture()
+      claimer = claimer_fixture()
+
+      already_claimed = user_fixture()
+
+      already_claimed
+      |> Ecto.Changeset.change(claimed_at: DateTime.utc_now(:second))
+      |> Repo.update!()
+
+      reloaded = Repo.get!(User, already_claimed.id)
+      {:ok, _} = Teams.add_team_member(team, reloaded, %{role: :member, is_player: true})
+
+      assert {:error, :not_a_stub} = Accounts.claim_stub_user(reloaded, claimer)
+    end
+
+    test "refuses :conflicting_membership when claimer is already on a stub team" do
+      team = team_fixture()
+      stub = stub_with_team(team)
+      claimer = claimer_fixture()
+      {:ok, _} = Teams.add_team_member(team, claimer, %{role: :member, is_player: true})
+
+      assert {:error, :conflicting_membership, [tid]} =
+               Accounts.claim_stub_user(stub, claimer)
+
+      assert tid == team.id
+
+      # Nothing should have moved — stub still has its membership and the
+      # row is still in the DB.
+      assert Repo.get(User, stub.id)
+      assert Repo.get_by(TeamMembership, user_id: stub.id, team_id: team.id)
+    end
+  end
 end

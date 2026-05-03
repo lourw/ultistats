@@ -671,13 +671,20 @@ defmodule Ultistats.Games do
   # order), {1, raw} for non-numeric strings (alphabetic among themselves
   # but after all numbers), {2, ""} for missing. Keeps the comparator
   # total even when the roster mixes numeric and non-numeric entries.
-  defp jersey_sort_key(%TeamMembership{jersey_number: nil}), do: {2, ""}
-  defp jersey_sort_key(%TeamMembership{jersey_number: ""}), do: {2, ""}
+  # Uses the resolved jersey (per-team override beats user default).
+  defp jersey_sort_key(%TeamMembership{} = membership) do
+    case Teams.resolved_jersey_number(membership) do
+      nil ->
+        {2, ""}
 
-  defp jersey_sort_key(%TeamMembership{jersey_number: n}) when is_binary(n) do
-    case Integer.parse(n) do
-      {int, ""} -> {0, int}
-      _ -> {1, n}
+      "" ->
+        {2, ""}
+
+      n when is_binary(n) ->
+        case Integer.parse(n) do
+          {int, ""} -> {0, int}
+          _ -> {1, n}
+        end
     end
   end
 

@@ -3,6 +3,7 @@ defmodule UltistatsWeb.MemberLive.Form do
 
   import UltistatsWeb.UIComponents, only: [gender_radio: 1, position_radio: 1, role_radio: 1]
 
+  alias Ultistats.Accounts.User
   alias Ultistats.Teams
   alias Ultistats.Teams.TeamMembership
 
@@ -165,51 +166,36 @@ defmodule UltistatsWeb.MemberLive.Form do
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <.header>
         {@page_title}
-        <:subtitle>Edit profile and team-membership fields together.</:subtitle>
+        <:subtitle>Edit team-membership fields. The user's profile is theirs to edit.</:subtitle>
       </.header>
 
-      <.form for={@form} id="member-form" phx-change="validate" phx-submit="save">
+      <.form for={@form} id="member-form" phx-change="validate" phx-submit="save" class="space-y-4">
         <input type="hidden" name="member[team_id]" value={@membership.team_id} />
 
-        <div class="space-y-1 mb-2">
-          <p class="block text-sm font-medium text-base-content">Name</p>
-          <div class="flex flex-col sm:flex-row gap-2">
-            <.input
-              field={@form[:first_name]}
-              type="text"
-              placeholder="First"
-              autocomplete="given-name"
-            />
-            <.input
-              field={@form[:last_name]}
-              type="text"
-              placeholder="Last"
-              autocomplete="family-name"
-            />
-          </div>
+        <div class="rounded-lg border border-base-200 bg-base-100/60 px-4 py-3">
+          <p class="text-xs uppercase tracking-wide text-base-content/60">Member</p>
+          <p class="text-base font-semibold text-base-content">
+            {User.display_name(@user)}
+          </p>
+          <p class="text-xs text-base-content/60">{humanize_gender_role(@user.gender_role)}</p>
         </div>
 
-        <div class="space-y-1 mb-2">
+        <div class="space-y-1">
           <p class="block text-sm font-medium text-base-content">Jersey number</p>
           <.input field={@form[:jersey_number]} type="text" inputmode="numeric" maxlength="4" />
         </div>
 
-        <div class="space-y-1 mb-2">
-          <p class="block text-sm font-medium text-base-content">Gender</p>
-          <.gender_radio field={@form[:gender_role]} phx-click="set_gender_edit" />
-        </div>
-
-        <div class="space-y-1 mb-2">
+        <div class="space-y-1">
           <p class="block text-sm font-medium text-base-content">Position</p>
           <.position_radio field={@form[:position]} phx-click="set_position_edit" />
         </div>
 
-        <div class="space-y-1 mb-2">
+        <div class="space-y-1">
           <p class="block text-sm font-medium text-base-content">Role</p>
           <.role_radio field={role_form_field(@form)} phx-click="set_role_edit" />
         </div>
 
-        <div class="space-y-1 mb-2">
+        <div class="space-y-1">
           <p class="block text-sm font-medium text-base-content">Include in lines</p>
           <label class="inline-flex items-center gap-2 min-h-11 cursor-pointer">
             <input type="hidden" name="member[is_player]" value="false" />
@@ -264,12 +250,13 @@ defmodule UltistatsWeb.MemberLive.Form do
         |> Phoenix.LiveView.push_navigate(to: ~p"/teams/#{membership.team_id}")
 
       true ->
+        # Position / jersey on the form reflect the membership row,
+        # falling back to the user's defaults so the form shows the
+        # currently effective value even when the membership has no
+        # override.
         form_data = %{
-          "first_name" => user.first_name,
-          "last_name" => user.last_name,
-          "gender_role" => user.gender_role,
-          "position" => user.position,
-          "jersey_number" => membership.jersey_number,
+          "position" => Teams.resolved_position(membership),
+          "jersey_number" => Teams.resolved_jersey_number(membership),
           "is_player" => membership.is_player,
           "role" => membership.role
         }
@@ -392,16 +379,6 @@ defmodule UltistatsWeb.MemberLive.Form do
 
   ## ---- single-edit events ----------------------------------------------
 
-  def handle_event("set_gender_edit", %{"gender" => gender}, socket) do
-    role_str = gender || ""
-
-    params =
-      (socket.assigns.form.params || %{})
-      |> Map.put("gender_role", role_str)
-
-    {:noreply, assign(socket, :form, to_form(params, as: "member"))}
-  end
-
   def handle_event("set_position_edit", %{"position" => position}, socket) do
     pos_str = position || ""
 
@@ -490,9 +467,6 @@ defmodule UltistatsWeb.MemberLive.Form do
     is_player = member_params["is_player"] in [true, "true"]
 
     %{
-      first_name: member_params["first_name"],
-      last_name: member_params["last_name"],
-      gender_role: parse_gender(member_params["gender_role"]),
       position: parse_position(member_params["position"]),
       jersey_number: nilify(member_params["jersey_number"]),
       is_player: is_player,
@@ -683,4 +657,8 @@ defmodule UltistatsWeb.MemberLive.Form do
       error? && "border-error focus:outline-error"
     ]
   end
+
+  defp humanize_gender_role(:female_matching), do: "Female-matching"
+  defp humanize_gender_role(:male_matching), do: "Male-matching"
+  defp humanize_gender_role(_), do: "—"
 end

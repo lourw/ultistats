@@ -16,6 +16,9 @@ defmodule Ultistats.Teams.TeamMembership do
     field :role, Ecto.Enum, values: @roles
     field :is_player, :boolean, default: true
     field :jersey_number, :string
+    # Per-team position override. Nil means "fall back to the user's
+    # default position" — see `Ultistats.Teams.resolved_position/1`.
+    field :position, Ecto.Enum, values: Ultistats.Accounts.User.positions()
 
     belongs_to :user, Ultistats.Accounts.User
     belongs_to :team, Ultistats.Teams.Team
@@ -29,9 +32,10 @@ defmodule Ultistats.Teams.TeamMembership do
   @doc false
   def changeset(membership, attrs) do
     membership
-    |> cast(attrs, [:user_id, :team_id, :role, :is_player, :jersey_number])
+    |> cast(attrs, [:user_id, :team_id, :role, :is_player, :jersey_number, :position])
     |> validate_required([:user_id, :team_id, :role])
     |> validate_length(:jersey_number, max: 4)
+    |> validate_inclusion(:position, Ultistats.Accounts.User.positions())
     |> assoc_constraint(:user)
     |> assoc_constraint(:team)
     |> unique_constraint([:team_id, :user_id])

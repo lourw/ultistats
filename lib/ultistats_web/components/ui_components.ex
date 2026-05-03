@@ -653,20 +653,6 @@ defmodule UltistatsWeb.UIComponents do
     <fieldset class={["space-y-1", @class]}>
       <legend class="sr-only">Gender role</legend>
       <div class="inline-flex items-center gap-3" role="radiogroup" aria-label="Gender role">
-        <label class={gender_radio_label_classes(@value == "female_matching")}>
-          <input
-            type="radio"
-            name={@input_name}
-            id={"#{@input_id}_female_matching"}
-            value="female_matching"
-            checked={@value == "female_matching"}
-            class="accent-primary size-5 shrink-0"
-            {@rest}
-            phx-value-gender="female_matching"
-          />
-          <span class="text-lg leading-none" aria-hidden="true">♀</span>
-          <span class="sr-only">Female-matching</span>
-        </label>
         <label class={gender_radio_label_classes(@value == "male_matching")}>
           <input
             type="radio"
@@ -680,6 +666,20 @@ defmodule UltistatsWeb.UIComponents do
           />
           <span class="text-lg leading-none" aria-hidden="true">♂</span>
           <span class="sr-only">Male-matching</span>
+        </label>
+        <label class={gender_radio_label_classes(@value == "female_matching")}>
+          <input
+            type="radio"
+            name={@input_name}
+            id={"#{@input_id}_female_matching"}
+            value="female_matching"
+            checked={@value == "female_matching"}
+            class="accent-primary size-5 shrink-0"
+            {@rest}
+            phx-value-gender="female_matching"
+          />
+          <span class="text-lg leading-none" aria-hidden="true">♀</span>
+          <span class="sr-only">Female-matching</span>
         </label>
       </div>
     </fieldset>
@@ -732,18 +732,18 @@ defmodule UltistatsWeb.UIComponents do
       |> assign(:input_name, assigns.field.name)
       |> assign(:input_id, assigns.field.id)
       |> assign(:options, [
-        {"handler", "Handler"},
-        {"cutter", "Cutter"},
-        {"hybrid", "Hybrid"}
+        {"handler", "Handler", "hero-paper-airplane"},
+        {"cutter", "Cutter", "hero-bolt"},
+        {"hybrid", "Hybrid", "hero-arrows-right-left"}
       ])
 
     ~H"""
     <fieldset class={["space-y-1", @class]}>
       <legend class="sr-only">Position</legend>
-      <div class="inline-flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Position">
+      <div class="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Position">
         <label
-          :for={{val, label} <- @options}
-          class={position_radio_label_classes(@value == val)}
+          :for={{val, label, icon} <- @options}
+          class={position_button_classes()}
         >
           <input
             type="radio"
@@ -751,15 +751,29 @@ defmodule UltistatsWeb.UIComponents do
             id={"#{@input_id}_#{val}"}
             value={val}
             checked={@value == val}
-            class="accent-primary size-5 shrink-0"
+            class="sr-only peer"
             {@rest}
             phx-value-position={val}
           />
-          <span class="text-sm leading-none">{label}</span>
+          <.icon name={icon} class="size-4" />
+          <span>{label}</span>
         </label>
       </div>
     </fieldset>
     """
+  end
+
+  defp position_button_classes do
+    [
+      "min-h-11 px-3 py-1.5 rounded-lg cursor-pointer select-none",
+      "inline-flex items-center justify-center gap-1.5",
+      "text-sm font-semibold",
+      "transition-colors motion-reduce:transition-none",
+      "border border-base-300 bg-base-100 text-base-content active:bg-base-200",
+      "has-[:checked]:bg-primary has-[:checked]:text-primary-content",
+      "has-[:checked]:border-transparent has-[:checked]:active:bg-primary/80",
+      "focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary"
+    ]
   end
 
   defp position_radio_label_classes(selected?) do

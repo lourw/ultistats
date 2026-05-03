@@ -354,7 +354,12 @@ defmodule UltistatsWeb.GameLive.Timeline do
               </button>
               <.player_chip
                 :for={player <- @team_players}
-                player={%{number: player.jersey_number, name: User.display_name(player.user)}}
+                player={
+                  %{
+                    number: Teams.resolved_jersey_number(player),
+                    name: User.display_name(player.user)
+                  }
+                }
                 selected?={@edit_user_id == player.user_id}
                 phx-click="set_edit_player"
                 phx-value-id={player.user_id}
@@ -562,7 +567,7 @@ defmodule UltistatsWeb.GameLive.Timeline do
   defp player_label(user_id, players_by_id) do
     case Map.get(players_by_id, user_id) do
       nil -> "—"
-      member -> "##{member.jersey_number} #{User.display_name(member.user)}"
+      member -> "##{Teams.resolved_jersey_number(member)} #{User.display_name(member.user)}"
     end
   end
 

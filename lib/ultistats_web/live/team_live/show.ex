@@ -1,6 +1,7 @@
 defmodule UltistatsWeb.TeamLive.Show do
   use UltistatsWeb, :live_view
 
+  alias Ultistats.Accounts
   alias Ultistats.Accounts.User
   alias Ultistats.Teams
 
@@ -133,7 +134,7 @@ defmodule UltistatsWeb.TeamLive.Show do
               class="min-h-9 flex items-center gap-2 px-4 py-0.5"
             >
               <span class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0">
-                {membership.jersey_number || "—"}
+                {Teams.resolved_jersey_number(membership) || "—"}
               </span>
               <span class="font-medium text-sm truncate flex-1 leading-tight">
                 {User.display_name(membership.user)}
@@ -144,6 +145,17 @@ defmodule UltistatsWeb.TeamLive.Show do
               >
                 Admin
               </span>
+              <button
+                :if={@is_admin? and is_nil(membership.user.claimed_at)}
+                type="button"
+                phx-hook="CopyClaimLink"
+                id={"claim-link-non-player-#{membership.id}"}
+                data-claim-url={claim_url(membership.user)}
+                aria-label={"Copy claim link for #{User.display_name(membership.user)}"}
+                class="shrink-0 min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                <.icon name="hero-link" class="size-4" />
+              </button>
               <.link
                 :if={@is_admin?}
                 navigate={~p"/members/#{membership.id}/edit?return_to=team"}
@@ -283,7 +295,7 @@ defmodule UltistatsWeb.TeamLive.Show do
           class="min-h-9 flex items-center gap-2 px-4 py-0.5"
         >
           <span class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0">
-            {membership.jersey_number || "—"}
+            {Teams.resolved_jersey_number(membership) || "—"}
           </span>
           <span class="font-medium text-sm truncate flex-1 leading-tight">
             {User.display_name(membership.user)}
@@ -294,6 +306,17 @@ defmodule UltistatsWeb.TeamLive.Show do
           >
             Admin
           </span>
+          <button
+            :if={@is_admin? and is_nil(membership.user.claimed_at)}
+            type="button"
+            phx-hook="CopyClaimLink"
+            id={"claim-link-#{membership.id}"}
+            data-claim-url={claim_url(membership.user)}
+            aria-label={"Copy claim link for #{User.display_name(membership.user)}"}
+            class="shrink-0 min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <.icon name="hero-link" class="size-4" />
+          </button>
           <.link
             :if={@is_admin?}
             navigate={~p"/members/#{membership.id}/edit?return_to=team"}
@@ -306,6 +329,10 @@ defmodule UltistatsWeb.TeamLive.Show do
       </ul>
     </section>
     """
+  end
+
+  defp claim_url(user) do
+    ~p"/claim/#{Accounts.generate_stub_claim_token(user)}"
   end
 
   defp sort_chip_classes(true),
@@ -324,13 +351,18 @@ defmodule UltistatsWeb.TeamLive.Show do
   end
 
   # Numeric jersey numbers sort numerically; non-numeric (or nil) fall to
-  # the bottom in lexicographic order.
-  defp jersey_sort_key(%{jersey_number: nil}), do: {1, ""}
+  # the bottom in lexicographic order. Uses the resolved jersey number
+  # so a per-team override beats the user's default.
+  defp jersey_sort_key(membership) do
+    case Teams.resolved_jersey_number(membership) do
+      nil ->
+        {1, ""}
 
-  defp jersey_sort_key(%{jersey_number: j}) do
-    case Integer.parse(j) do
-      {n, ""} -> {0, n}
-      _ -> {1, j}
+      j ->
+        case Integer.parse(j) do
+          {n, ""} -> {0, n}
+          _ -> {1, j}
+        end
     end
   end
 

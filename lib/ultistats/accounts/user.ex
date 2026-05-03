@@ -22,6 +22,7 @@ defmodule Ultistats.Accounts.User do
     field :last_name, :string
     field :gender_role, Ecto.Enum, values: @gender_roles
     field :position, Ecto.Enum, values: @positions
+    field :jersey_number, :string
     field :claimed_at, :utc_datetime
 
     timestamps(type: :utc_datetime)
@@ -164,10 +165,11 @@ defmodule Ultistats.Accounts.User do
   """
   def profile_changeset(user, attrs) do
     user
-    |> cast(attrs, [:first_name, :last_name, :gender_role, :position])
+    |> cast(attrs, [:first_name, :last_name, :gender_role, :position, :jersey_number])
     |> validate_required([:first_name, :last_name, :gender_role, :position])
     |> validate_length(:first_name, min: 1, max: 40)
     |> validate_length(:last_name, min: 1, max: 40)
+    |> validate_length(:jersey_number, max: 4)
   end
 
   @doc """

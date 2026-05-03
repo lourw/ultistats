@@ -288,7 +288,10 @@ defmodule UltistatsWeb.MemberLiveTest do
   describe "Edit form — admin" do
     setup :register_and_log_in_user
 
-    test "saves changes to BOTH the user and the membership in one go", %{conn: conn, user: user} do
+    test "saves changes to membership fields (jersey, position, role, is_player)", %{
+      conn: conn,
+      user: user
+    } do
       team = team_fixture()
       add_to_team(team, user, :admin)
 
@@ -308,11 +311,8 @@ defmodule UltistatsWeb.MemberLiveTest do
 
       params = %{
         "member" => %{
-          "first_name" => "New",
-          "last_name" => "Name",
           "jersey_number" => "42",
-          "gender_role" => "female_matching",
-          "position" => "cutter",
+          "position" => "handler",
           "is_player" => "true",
           "role" => "admin"
         }
@@ -324,12 +324,15 @@ defmodule UltistatsWeb.MemberLiveTest do
 
       reloaded = Teams.get_team_membership!(m.id) |> Repo.preload(:user)
 
-      assert reloaded.user.first_name == "New"
+      # User identity is unchanged — the edit form no longer touches it
+      # for stub users either (per spec the user's profile is theirs).
+      assert reloaded.user.first_name == "Old"
       assert reloaded.user.last_name == "Name"
 
       assert reloaded.role == :admin
       assert reloaded.is_player == true
       assert reloaded.jersey_number == "42"
+      assert reloaded.position == :handler
     end
 
     test "unchecking is_player flips it false", %{conn: conn, user: user} do
@@ -341,10 +344,7 @@ defmodule UltistatsWeb.MemberLiveTest do
 
       params = %{
         "member" => %{
-          "first_name" => m.user.first_name,
-          "last_name" => m.user.last_name,
           "jersey_number" => "9",
-          "gender_role" => Atom.to_string(m.user.gender_role),
           "position" => Atom.to_string(m.user.position),
           "is_player" => "false",
           "role" => "member"
@@ -360,7 +360,7 @@ defmodule UltistatsWeb.MemberLiveTest do
       assert reloaded.role == :member
     end
 
-    test "validation errors on the user side surface on the form", %{conn: conn, user: user} do
+    test "edit form does not expose user identity inputs", %{conn: conn, user: user} do
       team = team_fixture()
       add_to_team(team, user, :admin)
 
@@ -371,26 +371,13 @@ defmodule UltistatsWeb.MemberLiveTest do
           last_name: "Adams"
         })
 
-      {:ok, view, _html} = live(conn, ~p"/members/#{m.id}/edit")
+      {:ok, _view, html} = live(conn, ~p"/members/#{m.id}/edit")
 
-      params = %{
-        "member" => %{
-          "first_name" => "",
-          "last_name" => "Adams",
-          "jersey_number" => "1",
-          "gender_role" => Atom.to_string(m.user.gender_role),
-          "position" => Atom.to_string(m.user.position),
-          "is_player" => "true"
-        }
-      }
+      refute html =~ ~s|name="member[first_name]"|
+      refute html =~ ~s|name="member[last_name]"|
+      refute html =~ ~s|name="member[gender_role]"|
 
-      html =
-        view
-        |> form("#member-form", params)
-        |> render_submit()
-
-      assert html =~ "can&#39;t be blank"
-
+      # User identity stays intact regardless of what the form does.
       assert Repo.get!(User, m.user_id).first_name == "Avery"
     end
   end

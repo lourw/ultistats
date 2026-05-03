@@ -21,6 +21,11 @@ defmodule UltistatsWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+
+    # Stub-claim flow — public landing page (the recipient may not be
+    # logged in yet). The POST handler enforces auth itself.
+    get "/claim/:token", UserClaimController, :show
+    post "/claim/:token", UserClaimController, :create
   end
 
   ## App routes — require an authenticated user

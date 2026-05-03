@@ -23,6 +23,15 @@ defmodule Ultistats.Accounts do
   alias Ultistats.Repo
 
   alias Ultistats.Accounts.{User, UserToken, UserNotifier}
+  alias Ultistats.Games.Event
+  alias Ultistats.Teams.TeamMembership
+
+  # Stub-claim tokens are stateless — `Phoenix.Token.sign/3` carries the
+  # stub user's id signed by the endpoint secret. Seven days is long
+  # enough for an admin to share a copied link without keeping a token
+  # table around.
+  @stub_claim_salt "stub claim"
+  @stub_claim_max_age 60 * 60 * 24 * 7
 
   ## Database getters
 
@@ -177,6 +186,23 @@ defmodule Ultistats.Accounts do
   end
 
   @doc """
+  Returns an `%Ecto.Changeset{}` for tracking profile changes.
+  """
+  def change_user_profile(%User{} = user, attrs \\ %{}) do
+    User.profile_changeset(user, attrs)
+  end
+
+  @doc """
+  Updates the user's ultimate-domain profile fields (name, jersey
+  number, gender role, position).
+  """
+  def update_user_profile(%User{} = user, attrs) do
+    user
+    |> User.profile_changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
   Updates the user email using the given token.
 
   If the token matches, the user email is updated and the token is deleted.
@@ -276,6 +302,118 @@ defmodule Ultistats.Accounts do
   def delete_user_session_token(token) do
     Repo.delete_all(from(UserToken, where: [token: ^token, context: "session"]))
     :ok
+  end
+
+  ## Stub-claim tokens
+
+  @doc """
+  Signs a stateless claim token for `stub_user`. Admins copy this URL
+  off a stub roster row and hand it to the real human; the recipient
+  visits `/claim/:token` and either logs in or registers, then confirms
+  the claim. See `verify_stub_claim_token/1` and `claim_stub_user/2`.
+  """
+  def generate_stub_claim_token(%User{id: id}) do
+    Phoenix.Token.sign(UltistatsWeb.Endpoint, @stub_claim_salt, id)
+  end
+
+  @doc """
+  Verifies a stub-claim `token`. Returns `{:ok, %User{}}` when the
+  signed user still exists, or `{:error, :invalid}` when the signature
+  is bad / expired or the stub has already been claimed (and deleted).
+  """
+  def verify_stub_claim_token(token) when is_binary(token) do
+    case Phoenix.Token.verify(UltistatsWeb.Endpoint, @stub_claim_salt, token,
+           max_age: @stub_claim_max_age
+         ) do
+      {:ok, user_id} ->
+        case Repo.get(User, user_id) do
+          nil -> {:error, :invalid}
+          %User{} = user -> {:ok, user}
+        end
+
+      {:error, _reason} ->
+        {:error, :invalid}
+    end
+  end
+
+  def verify_stub_claim_token(_), do: {:error, :invalid}
+
+  @doc """
+  Claims `stub` on behalf of `claimer`, reassigning the stub's
+  TeamMembership rows and `Event.passer_user_id` / `:receiver_user_id`
+  references to the claimer, then deleting the stub user.
+
+  The whole reassignment runs in a single `Ecto.Multi` transaction.
+
+  Returns:
+
+    * `{:ok, %{teams: [team_id, ...]}}` on success — `:teams` is the
+      list of team ids the claimer was newly added to (in stub order).
+    * `{:error, :same_user}` if `stub.id == claimer.id`.
+    * `{:error, :not_a_stub}` if `stub.claimed_at` is set (i.e. it's
+      already a real, claimed user).
+    * `{:error, :conflicting_membership, [team_id, ...]}` if the
+      claimer is already a member of any team where the stub also has
+      a membership. Surfaces explicitly so the admin/UI can reconcile.
+  """
+  def claim_stub_user(%User{} = stub, %User{} = claimer) do
+    cond do
+      stub.id == claimer.id ->
+        {:error, :same_user}
+
+      not is_nil(stub.claimed_at) ->
+        {:error, :not_a_stub}
+
+      true ->
+        do_claim_stub_user(stub, claimer)
+    end
+  end
+
+  defp do_claim_stub_user(%User{} = stub, %User{} = claimer) do
+    stub_team_ids =
+      from(m in TeamMembership, where: m.user_id == ^stub.id, select: m.team_id)
+      |> Repo.all()
+
+    claimer_team_ids =
+      from(m in TeamMembership,
+        where: m.user_id == ^claimer.id and m.team_id in ^stub_team_ids,
+        select: m.team_id
+      )
+      |> Repo.all()
+
+    case claimer_team_ids do
+      [] ->
+        run_claim_multi(stub, claimer, stub_team_ids)
+
+      conflicts ->
+        {:error, :conflicting_membership, conflicts}
+    end
+  end
+
+  defp run_claim_multi(%User{} = stub, %User{} = claimer, stub_team_ids) do
+    multi =
+      Ecto.Multi.new()
+      |> Ecto.Multi.update_all(
+        :memberships,
+        from(m in TeamMembership, where: m.user_id == ^stub.id),
+        set: [user_id: claimer.id, updated_at: DateTime.utc_now(:second)]
+      )
+      |> Ecto.Multi.update_all(
+        :events_passer,
+        from(e in Event, where: e.passer_user_id == ^stub.id),
+        set: [passer_user_id: claimer.id, updated_at: DateTime.utc_now(:second)]
+      )
+      |> Ecto.Multi.update_all(
+        :events_receiver,
+        from(e in Event, where: e.receiver_user_id == ^stub.id),
+        set: [receiver_user_id: claimer.id, updated_at: DateTime.utc_now(:second)]
+      )
+      |> Ecto.Multi.delete(:stub, stub)
+
+    case Repo.transaction(multi) do
+      {:ok, _changes} -> {:ok, %{teams: stub_team_ids}}
+      {:error, _step, _value, _changes} -> {:error, :claim_failed}
+    end
   end
 
   ## Token helper

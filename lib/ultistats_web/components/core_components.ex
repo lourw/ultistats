@@ -46,15 +46,15 @@ defmodule UltistatsWeb.CoreComponents do
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
-      class="fixed top-4 right-4 z-50 w-80 sm:w-96 max-w-[calc(100vw-2rem)]"
+      class="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[min(calc(100vw-2rem),28rem)]"
       {@rest}
     >
       <div class={[
-        "flex items-start gap-3 rounded-md border p-3 text-sm shadow-lg",
-        @kind == :info && "bg-info/10 text-info border-info/20",
-        @kind == :error && "bg-error/10 text-error border-error/20"
+        "flex items-start gap-3 rounded-md p-3 text-sm shadow-xl border bg-base-100 text-base-content",
+        @kind == :info && "border-success/40 [&_svg]:text-success",
+        @kind == :error && "border-error/40 [&_svg]:text-error"
       ]}>
-        <.icon :if={@kind == :info} name="hero-information-circle" class="size-5 shrink-0" />
+        <.icon :if={@kind == :info} name="hero-check-circle" class="size-5 shrink-0" />
         <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0" />
         <div class="flex-1 min-w-0">
           <p :if={@title} class="font-semibold">{@title}</p>
@@ -62,7 +62,7 @@ defmodule UltistatsWeb.CoreComponents do
         </div>
         <button
           type="button"
-          class="shrink-0 -m-1 p-1 rounded opacity-60 hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
+          class="shrink-0 -m-1 p-1 rounded opacity-80 hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
           aria-label="close"
         >
           <.icon name="hero-x-mark" class="size-5" />

@@ -355,18 +355,38 @@ defmodule Ultistats.Teams do
 
   @doc """
   Adds `user` to `team` as a member, with the given attrs (`:role`,
-  `:is_player`, `:jersey_number`).
+  `:is_player`, `:jersey_number`, `:position`).
+
+  When `attrs` doesn't carry `:position` or `:jersey_number`, those
+  fields are pre-filled from the user's defaults (`user.position`,
+  `user.jersey_number`) so a user joining a new team starts with their
+  personal defaults — overridable per-team.
   """
   def add_team_member(%Team{} = team, %User{} = user, attrs) when is_map(attrs) do
     attrs =
       attrs
       |> normalize_membership_attrs()
+      |> prefill_from_user(user)
       |> Map.put(:team_id, team.id)
       |> Map.put(:user_id, user.id)
 
     %TeamMembership{}
     |> TeamMembership.changeset(attrs)
     |> Repo.insert()
+  end
+
+  defp prefill_from_user(attrs, %User{} = user) do
+    attrs
+    |> maybe_put_default(:position, user.position)
+    |> maybe_put_default(:jersey_number, user.jersey_number)
+  end
+
+  defp maybe_put_default(attrs, key, default) do
+    case Map.get(attrs, key) do
+      nil -> if is_nil(default), do: attrs, else: Map.put(attrs, key, default)
+      "" -> if is_nil(default), do: attrs, else: Map.put(attrs, key, default)
+      _ -> attrs
+    end
   end
 
   @doc """
@@ -522,8 +542,13 @@ defmodule Ultistats.Teams do
   @doc """
   Updates a `TeamMembership` and its underlying `User` profile in a
   single `Ecto.Multi`. Splits `attrs` into user-profile keys
-  (`:first_name`, `:last_name`, `:gender_role`, `:position`) and
-  membership keys (`:role`, `:is_player`, `:jersey_number`).
+  (`:first_name`, `:last_name`, `:gender_role`) and membership keys
+  (`:role`, `:is_player`, `:jersey_number`, `:position`).
+
+  The user's profile is only updated when the user is a stub
+  (`claimed_at == nil`). For real (claimed) users, only the membership
+  half is updated — their profile is theirs to edit on their own
+  settings page.
 
   Returns `{:ok, %{user: user, membership: membership}}` on success
   or `{:error, step, %Ecto.Changeset{}, _changes}` where `step` is
@@ -533,14 +558,56 @@ defmodule Ultistats.Teams do
     attrs = normalize_membership_attrs(attrs)
     user = membership.user || Repo.preload(membership, :user).user
 
-    user_attrs = Map.take(attrs, [:first_name, :last_name, :gender_role, :position])
-    membership_attrs = Map.take(attrs, [:role, :is_player, :jersey_number])
+    user_attrs = Map.take(attrs, [:first_name, :last_name, :gender_role])
+    membership_attrs = Map.take(attrs, [:role, :is_player, :jersey_number, :position])
 
-    Ecto.Multi.new()
-    |> Ecto.Multi.update(:user, Ultistats.Accounts.User.profile_changeset(user, user_attrs))
-    |> Ecto.Multi.update(:membership, TeamMembership.changeset(membership, membership_attrs))
-    |> Repo.transaction()
+    multi =
+      Ecto.Multi.new()
+      |> Ecto.Multi.update(:membership, TeamMembership.changeset(membership, membership_attrs))
+
+    multi =
+      if stub_user?(user) do
+        Ecto.Multi.update(
+          multi,
+          :user,
+          Ultistats.Accounts.User.profile_changeset(user, user_attrs)
+        )
+      else
+        # Real user — surface the unchanged user in the multi result so
+        # callers can pattern-match `%{user: user, membership: m}`
+        # uniformly. The user's profile is theirs to edit on their own
+        # settings page.
+        Ecto.Multi.run(multi, :user, fn _repo, _changes -> {:ok, user} end)
+      end
+
+    Repo.transaction(multi)
   end
+
+  defp stub_user?(%User{claimed_at: nil}), do: true
+  defp stub_user?(%User{}), do: false
+
+  @doc """
+  Returns the effective position for `membership` — the per-team
+  override if set, otherwise the user's default. The membership must
+  be preloaded with `:user`.
+  """
+  @spec resolved_position(TeamMembership.t()) :: atom() | nil
+  def resolved_position(%TeamMembership{position: pos}) when not is_nil(pos), do: pos
+  def resolved_position(%TeamMembership{user: %User{position: pos}}), do: pos
+  def resolved_position(%TeamMembership{}), do: nil
+
+  @doc """
+  Returns the effective jersey number for `membership` — the per-team
+  override if set, otherwise the user's default. The membership must
+  be preloaded with `:user`.
+  """
+  @spec resolved_jersey_number(TeamMembership.t()) :: String.t() | nil
+  def resolved_jersey_number(%TeamMembership{jersey_number: j})
+      when not is_nil(j) and j != "",
+      do: j
+
+  def resolved_jersey_number(%TeamMembership{user: %User{jersey_number: j}}), do: j
+  def resolved_jersey_number(%TeamMembership{}), do: nil
 
   defp normalize_membership_attrs(attrs) when is_map(attrs) do
     Enum.reduce(attrs, %{}, fn

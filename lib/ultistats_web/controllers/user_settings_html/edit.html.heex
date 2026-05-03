@@ -8,54 +8,133 @@
     </.header>
   </div>
 
-  <.form :let={f} for={@email_changeset} action={~p"/users/settings"} id="update_email">
-    <input type="hidden" name="action" value="update_email" />
-
-    <.input
-      field={f[:email]}
-      type="email"
-      label="Email"
-      autocomplete="username"
-      spellcheck="false"
-      required
-    />
-
-    <.button variant="primary" phx-disable-with="Changing...">Change Email</.button>
-  </.form>
-
-  <div class="divider" />
-
-  <.form :let={f} for={@password_changeset} action={~p"/users/settings"} id="update_password">
-    <input type="hidden" name="action" value="update_password" />
-
-    <.input
-      field={f[:password]}
-      type="password"
-      label="New password"
-      autocomplete="new-password"
-      spellcheck="false"
-      required
-    />
-    <.input
-      field={f[:password_confirmation]}
-      type="password"
-      label="Confirm new password"
-      autocomplete="new-password"
-      spellcheck="false"
-      required
-    />
-    <.button variant="primary" phx-disable-with="Changing...">
-      Save Password
-    </.button>
-  </.form>
-
-  <div class="divider" />
-
-  <.link
-    href={~p"/users/log-out"}
-    method="delete"
-    class="btn btn-error btn-soft w-full"
+  <div
+    role="tablist"
+    aria-label="Settings sections"
+    class="mt-4 flex gap-6 border-b border-base-200"
   >
-    Log out
-  </.link>
+    <.link
+      href={~p"/users/settings?tab=profile"}
+      role="tab"
+      aria-selected={to_string(@active_tab == :profile)}
+      class={settings_tab_classes(@active_tab == :profile)}
+    >
+      Profile
+    </.link>
+    <.link
+      href={~p"/users/settings?tab=auth"}
+      role="tab"
+      aria-selected={to_string(@active_tab == :auth)}
+      class={settings_tab_classes(@active_tab == :auth)}
+    >
+      Auth
+    </.link>
+  </div>
+
+  <section :if={@active_tab == :profile} class="mt-4" aria-labelledby="tab-profile">
+    <.form
+      :let={f}
+      for={@profile_changeset}
+      action={~p"/users/settings"}
+      id="update_profile"
+      class="space-y-4"
+    >
+      <input type="hidden" name="action" value="update_profile" />
+
+      <.input field={f[:first_name]} type="text" label="First name" maxlength="40" required />
+      <.input field={f[:last_name]} type="text" label="Last name" maxlength="40" required />
+      <.input
+        field={f[:jersey_number]}
+        type="text"
+        label="Default jersey number"
+        maxlength="4"
+        inputmode="numeric"
+      />
+
+      <div class="space-y-1">
+        <p class="block text-sm font-medium text-base-content">Gender</p>
+        <.gender_radio field={f[:gender_role]} />
+      </div>
+
+      <div class="space-y-1">
+        <p class="block text-sm font-medium text-base-content">Position</p>
+        <.position_radio field={f[:position]} />
+      </div>
+
+      <.button variant="primary" phx-disable-with="Saving...">Save profile</.button>
+    </.form>
+  </section>
+
+  <section :if={@active_tab == :auth} class="mt-4 space-y-4" aria-labelledby="tab-auth">
+    <.form
+      :let={f}
+      for={@email_changeset}
+      action={~p"/users/settings?tab=auth"}
+      id="update_email"
+      class="space-y-6"
+    >
+      <input type="hidden" name="action" value="update_email" />
+
+      <div class="space-y-4">
+        <.input
+          field={f[:email]}
+          type="email"
+          label="Email"
+          autocomplete="username"
+          spellcheck="false"
+          required
+        />
+      </div>
+
+      <.button variant="primary" phx-disable-with="Changing...">Change Email</.button>
+    </.form>
+
+    <div class="divider my-0" />
+
+    <.form
+      :let={f}
+      for={@password_changeset}
+      action={~p"/users/settings?tab=auth"}
+      id="update_password"
+      class="space-y-6"
+    >
+      <input type="hidden" name="action" value="update_password" />
+
+      <div class="space-y-4">
+        <.input
+          field={f[:password]}
+          type="password"
+          label="New password"
+          autocomplete="new-password"
+          spellcheck="false"
+          required
+        />
+        <.input
+          field={f[:password_confirmation]}
+          type="password"
+          label="Confirm new password"
+          autocomplete="new-password"
+          spellcheck="false"
+          required
+        />
+      </div>
+
+      <.button variant="primary" phx-disable-with="Changing...">
+        Save Password
+      </.button>
+    </.form>
+
+    <section class="pt-4 border-t border-base-200 space-y-2">
+      <h2 class="text-sm font-semibold text-base-content/70 uppercase tracking-wide">
+        Sign out
+      </h2>
+      <.link
+        href={~p"/users/log-out"}
+        method="delete"
+        class="w-full inline-flex items-center justify-center gap-2 min-h-11 px-4 py-2 rounded-md text-sm font-semibold bg-error text-error-content active:bg-error/80 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
+        <.icon name="hero-arrow-right-start-on-rectangle" class="size-5" /> Log out
+      </.link>
+    </section>
+  </section>
 </Layouts.app>

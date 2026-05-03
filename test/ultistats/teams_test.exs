@@ -167,6 +167,138 @@ defmodule Ultistats.TeamsTest do
       assert Teams.list_team_members_for_team(team) == []
     end
 
+    test "add_team_member/3 prefills :position and :jersey_number from the user's defaults" do
+      team = team_fixture()
+
+      {:ok, user} =
+        Ultistats.Accounts.create_stub_user(%{
+          first_name: "Sam",
+          last_name: "Default",
+          gender_role: :male_matching,
+          position: :handler
+        })
+
+      # Stash a jersey on the user as their personal default.
+      {:ok, user} =
+        user
+        |> Ecto.Changeset.change(jersey_number: "23")
+        |> Ultistats.Repo.update()
+
+      assert {:ok, m} = Teams.add_team_member(team, user, %{role: :member, is_player: true})
+      assert m.position == :handler
+      assert m.jersey_number == "23"
+    end
+
+    test "add_team_member/3 prefers explicit :position / :jersey_number over user defaults" do
+      team = team_fixture()
+
+      {:ok, user} =
+        Ultistats.Accounts.create_stub_user(%{
+          first_name: "Sam",
+          last_name: "Override",
+          gender_role: :male_matching,
+          position: :handler
+        })
+
+      assert {:ok, m} =
+               Teams.add_team_member(team, user, %{
+                 role: :member,
+                 is_player: true,
+                 position: :cutter,
+                 jersey_number: "9"
+               })
+
+      assert m.position == :cutter
+      assert m.jersey_number == "9"
+    end
+
+    test "resolved_position/1 prefers the membership override over the user default" do
+      team = team_fixture()
+
+      {:ok, user} =
+        Ultistats.Accounts.create_stub_user(%{
+          first_name: "P",
+          last_name: "Override",
+          gender_role: :female_matching,
+          position: :hybrid
+        })
+
+      {:ok, m} =
+        Teams.add_team_member(team, user, %{role: :member, is_player: true, position: :handler})
+
+      m = Teams.get_team_membership!(m.id)
+      assert Teams.resolved_position(m) == :handler
+    end
+
+    test "resolved_position/1 falls back to the user's default when membership override is nil" do
+      team = team_fixture()
+
+      {:ok, user} =
+        Ultistats.Accounts.create_stub_user(%{
+          first_name: "P",
+          last_name: "Fallback",
+          gender_role: :female_matching,
+          position: :cutter
+        })
+
+      # Insert membership directly with no position override.
+      {:ok, m} =
+        %TeamMembership{}
+        |> TeamMembership.changeset(%{
+          team_id: team.id,
+          user_id: user.id,
+          role: :member,
+          is_player: true
+        })
+        |> Ultistats.Repo.insert()
+
+      m = Teams.get_team_membership!(m.id)
+      assert is_nil(m.position)
+      assert Teams.resolved_position(m) == :cutter
+    end
+
+    test "resolved_jersey_number/1 prefers the membership override, falls back to the user" do
+      team = team_fixture()
+
+      {:ok, user} =
+        Ultistats.Accounts.create_stub_user(%{
+          first_name: "J",
+          last_name: "Number",
+          gender_role: :male_matching,
+          position: :cutter
+        })
+
+      {:ok, user} =
+        user
+        |> Ecto.Changeset.change(jersey_number: "5")
+        |> Ultistats.Repo.update()
+
+      # Override on the membership.
+      {:ok, m_override} =
+        Teams.add_team_member(team, user, %{
+          role: :member,
+          is_player: true,
+          jersey_number: "42"
+        })
+
+      assert Teams.resolved_jersey_number(Teams.get_team_membership!(m_override.id)) == "42"
+
+      # Same user joining a second team with no override — falls back.
+      team2 = team_fixture(%{name: "Other"})
+
+      {:ok, m_fallback} =
+        %TeamMembership{}
+        |> TeamMembership.changeset(%{
+          team_id: team2.id,
+          user_id: user.id,
+          role: :member,
+          is_player: true
+        })
+        |> Ultistats.Repo.insert()
+
+      assert Teams.resolved_jersey_number(Teams.get_team_membership!(m_fallback.id)) == "5"
+    end
+
     defp stub_user do
       Ultistats.Accounts.create_stub_user(%{
         first_name: "Test",

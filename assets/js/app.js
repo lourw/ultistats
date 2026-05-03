@@ -70,11 +70,60 @@ const ScrollAwareNav = {
   },
 }
 
+// Copy a stub-claim URL (read off `data-claim-url`) to the clipboard.
+// Used by team-show roster rows so an admin can grab a claim link in
+// one tap. Falls back to a transient flash dispatch if the Clipboard
+// API isn't available (older mobile WebViews, insecure contexts).
+const CopyClaimLink = {
+  mounted() {
+    this._onClick = async () => {
+      const url = this.el.getAttribute("data-claim-url")
+      if (!url) return
+
+      const fullUrl = new URL(url, window.location.origin).toString()
+
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(fullUrl)
+        } else {
+          // Fallback: stash into a hidden textarea, select, exec copy.
+          const ta = document.createElement("textarea")
+          ta.value = fullUrl
+          ta.setAttribute("readonly", "")
+          ta.style.position = "absolute"
+          ta.style.left = "-9999px"
+          document.body.appendChild(ta)
+          ta.select()
+          document.execCommand("copy")
+          document.body.removeChild(ta)
+        }
+        this._showCopied()
+      } catch (_err) {
+        this._showCopied("Couldn't copy")
+      }
+    }
+    this.el.addEventListener("click", this._onClick)
+  },
+  destroyed() {
+    this.el.removeEventListener("click", this._onClick)
+  },
+  _showCopied(label = "Copied!") {
+    const prev = this.el.getAttribute("aria-label")
+    this.el.setAttribute("aria-label", label)
+    this.el.classList.add("ring-2", "ring-primary")
+    clearTimeout(this._t)
+    this._t = setTimeout(() => {
+      this.el.classList.remove("ring-2", "ring-primary")
+      if (prev) this.el.setAttribute("aria-label", prev)
+    }, 1200)
+  },
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, ScrollAwareNav},
+  hooks: {...colocatedHooks, ScrollAwareNav, CopyClaimLink},
 })
 
 // Show progress bar on live navigation and form submits

@@ -1,0 +1,27 @@
+<Layouts.app flash={@flash} current_scope={@current_scope}>
+  <div class="mx-auto max-w-sm space-y-6">
+    <.header>
+      Claim profile
+      <:subtitle>
+        An admin invited <span class="font-semibold">{User.display_name(@stub)}</span>
+        to claim this profile. Log in or register to continue —
+        you'll come back here automatically.
+      </:subtitle>
+    </.header>
+
+    <div class="grid gap-3">
+      <.link
+        href={~p"/users/log-in"}
+        class="btn btn-primary w-full"
+      >
+        Log in
+      </.link>
+      <.link
+        href={~p"/users/register"}
+        class="btn btn-primary btn-soft w-full"
+      >
+        Register
+      </.link>
+    </div>
+  </div>
+</Layouts.app>

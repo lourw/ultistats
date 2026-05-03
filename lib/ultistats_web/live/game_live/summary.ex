@@ -201,7 +201,7 @@ defmodule UltistatsWeb.GameLive.Summary do
             ]}
           >
             <td class="p-3 text-right tabular-nums font-semibold">
-              {jersey_label(row.membership.jersey_number)}
+              {jersey_label(Teams.resolved_jersey_number(row.membership))}
             </td>
             <td class="p-3">
               <span class="font-medium">{User.display_name(row.user)}</span>
