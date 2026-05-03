@@ -82,6 +82,8 @@ defmodule UltistatsWeb.GameLive.Show do
        # task; assigns stays at false until the hook lands. The flash
        # banner from `Layouts.flash_group/1` already covers visual feedback.
        |> assign(:disconnected?, false)
+       |> assign(:line_picker_sort, :jersey)
+       |> assign(:split_by_position?, false)
        |> assign_line_picker_state()}
     end
   end
@@ -101,12 +103,14 @@ defmodule UltistatsWeb.GameLive.Show do
 
     selected = selected_memberships(socket.assigns.team_players, socket.assigns.selected_user_ids)
     violation = Games.line_ratio_violation(selected, required)
+    points_played = Games.points_played_by_user(game)
 
     socket
     |> assign(:next_point_sequence, next_seq)
     |> assign(:required_ratio, required)
     |> assign(:starting_possession_preview, starting)
     |> assign(:ratio_violation, violation)
+    |> assign(:points_played_by_user, points_played)
   end
 
   defp selected_memberships(team_players, selected_ids) do
@@ -173,6 +177,9 @@ defmodule UltistatsWeb.GameLive.Show do
               required_ratio={@required_ratio}
               starting_possession_preview={@starting_possession_preview}
               ratio_violation={@ratio_violation}
+              points_played_by_user={@points_played_by_user}
+              sort={@line_picker_sort}
+              split_by_position?={@split_by_position?}
             />
         <% end %>
 
@@ -325,24 +332,25 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :required_ratio, :any, required: true
   attr :starting_possession_preview, :atom, required: true
   attr :ratio_violation, :any, required: true
+  attr :points_played_by_user, :map, required: true
+  attr :sort, :atom, required: true
+  attr :split_by_position?, :boolean, required: true
 
   defp between_points_view(assigns) do
     ~H"""
     <section
-      class="flex-1 min-h-0 flex flex-col gap-3 px-4 py-3 overflow-hidden"
+      class="flex-1 min-h-0 flex flex-col gap-2 px-4 py-3 overflow-hidden"
       aria-label="Line picker"
     >
-      <div class="flex flex-wrap items-center gap-2">
-        <span class={[
-          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
-          starting_possession_pill_classes(@starting_possession_preview)
-        ]}>
-          <.icon name={starting_possession_icon(@starting_possession_preview)} class="size-3.5" />
-          <span>{starting_possession_label(@starting_possession_preview)}</span>
-        </span>
-        <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold bg-base-200 text-base-content/80">
-          {required_ratio_pill(@required_ratio)}
-        </span>
+      <div
+        class={[
+          "-mx-4 flex items-center gap-2 px-4 py-1.5 text-xs font-semibold",
+          starting_possession_banner_classes(@starting_possession_preview)
+        ]}
+        role="status"
+      >
+        <.icon name={starting_possession_icon(@starting_possession_preview)} class="size-4 shrink-0" />
+        <span>{starting_possession_label(@starting_possession_preview)}</span>
       </div>
 
       <div
@@ -354,37 +362,47 @@ defmodule UltistatsWeb.GameLive.Show do
         <span>{ratio_mismatch_text(@ratio_violation)}</span>
       </div>
 
-      <div :if={@line_presets != []} class="-mx-4 px-4 overflow-x-auto">
-        <div class="flex gap-2 w-max">
-          <button
-            :for={preset <- @line_presets}
-            type="button"
-            phx-click="select_preset"
-            phx-value-id={preset.id}
-            aria-pressed={to_string(@selected_preset_id == preset.id)}
-            class={[
-              "min-h-11 inline-flex items-center gap-2 px-3 rounded-full text-sm font-medium",
-              "border transition-colors motion-reduce:transition-none active:scale-[0.98] motion-reduce:active:scale-100",
-              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-              if(@selected_preset_id == preset.id,
-                do: "bg-primary text-primary-content border-primary",
-                else: "bg-base-100 text-base-content border-base-300 active:bg-base-200"
-              )
-            ]}
-          >
-            <span>{preset.name}</span>
-            <span class={[
-              "tabular-nums text-xs px-1.5 py-0.5 rounded-full",
-              if(@selected_preset_id == preset.id,
-                do: "bg-primary-content/20 text-primary-content",
-                else: "bg-base-200 text-base-content/70"
-              )
-            ]}>
-              {length(preset.users)}
-            </span>
-          </button>
-        </div>
-      </div>
+      <details :if={@line_presets != []} class="group">
+        <summary class={[
+          "min-h-9 list-none cursor-pointer inline-flex w-full items-center gap-2 px-2.5 py-1",
+          "rounded-md border border-base-300 bg-base-100 text-xs font-medium",
+          "active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        ]}>
+          <.icon name="hero-list-bullet" class="size-3.5 shrink-0" />
+          <span class="truncate flex-1 text-left">
+            {preset_summary_label(@line_presets, @selected_preset_id)}
+          </span>
+          <.icon
+            name="hero-chevron-down"
+            class="size-3.5 shrink-0 transition-transform group-open:rotate-180 motion-reduce:transition-none"
+          />
+        </summary>
+        <ul class="mt-1 rounded-md border border-base-300 bg-base-100 divide-y divide-base-200 overflow-hidden">
+          <li :for={preset <- @line_presets}>
+            <button
+              type="button"
+              phx-click="select_preset"
+              phx-value-id={preset.id}
+              aria-pressed={to_string(@selected_preset_id == preset.id)}
+              class={[
+                "w-full min-h-9 px-3 py-1 flex items-center gap-2 text-left text-xs",
+                "active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                if(@selected_preset_id == preset.id, do: "bg-primary/10 font-semibold", else: "")
+              ]}
+            >
+              <span class="flex-1 truncate">{preset.name}</span>
+              <span class="tabular-nums text-[11px] text-base-content/60">
+                {length(preset.users)}
+              </span>
+              <.icon
+                :if={@selected_preset_id == preset.id}
+                name="hero-check-circle-solid"
+                class="size-3.5 text-primary shrink-0"
+              />
+            </button>
+          </li>
+        </ul>
+      </details>
 
       <%= if @team_players == [] do %>
         <div class="rounded-lg border-2 border-dashed border-base-300 p-6 text-center">
@@ -394,6 +412,8 @@ defmodule UltistatsWeb.GameLive.Show do
           </p>
         </div>
       <% else %>
+        <.line_picker_sort_control sort={@sort} split_by_position?={@split_by_position?} />
+
         <div id="game-line-picker" class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden space-y-4">
           <.line_picker_section
             :for={role <- [:male_matching, :female_matching]}
@@ -401,10 +421,64 @@ defmodule UltistatsWeb.GameLive.Show do
             role={role}
             players={Enum.filter(@team_players, &(&1.user.gender_role == role))}
             selected_ids={@selected_user_ids}
+            points_played_by_user={@points_played_by_user}
+            sort={@sort}
+            split_by_position?={@split_by_position?}
           />
         </div>
       <% end %>
     </section>
+    """
+  end
+
+  attr :sort, :atom, required: true
+  attr :split_by_position?, :boolean, required: true
+
+  defp line_picker_sort_control(assigns) do
+    ~H"""
+    <div class="flex items-center gap-2 flex-wrap text-[11px]">
+      <div
+        class="flex items-center gap-1"
+        role="radiogroup"
+        aria-label="Sort players"
+      >
+        <span class="text-base-content/60 uppercase tracking-wide font-semibold mr-1">Sort</span>
+        <button
+          :for={
+            {key, label} <- [
+              {:jersey, "#"},
+              {:name, "Name"},
+              {:points, "Playtime"}
+            ]
+          }
+          type="button"
+          phx-click="change_sort"
+          phx-value-sort={Atom.to_string(key)}
+          role="radio"
+          aria-checked={to_string(@sort == key)}
+          class={[
+            "min-h-7 px-2 inline-flex items-center rounded-md font-medium",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+            if(@sort == key,
+              do: "bg-primary text-primary-content",
+              else: "bg-base-200 text-base-content/70 active:bg-base-300"
+            )
+          ]}
+        >
+          {label}
+        </button>
+      </div>
+
+      <label class="ml-auto inline-flex items-center gap-1.5 cursor-pointer">
+        <input
+          type="checkbox"
+          phx-click="toggle_split_by_position"
+          checked={@split_by_position?}
+          class="checkbox checkbox-xs checkbox-primary"
+        />
+        <span class="text-base-content/70">Split by position</span>
+      </label>
+    </div>
     """
   end
 
@@ -1138,17 +1212,8 @@ defmodule UltistatsWeb.GameLive.Show do
           ]}
         >
           <span>Start point</span>
-          <span class="text-sm font-medium tabular-nums opacity-90 inline-flex items-center gap-2">
-            <span aria-hidden="true">♂</span> {selected_role_count(
-              @selected_user_ids,
-              @team_players,
-              :male_matching
-            )}
-            <span aria-hidden="true">♀</span> {selected_role_count(
-              @selected_user_ids,
-              @team_players,
-              :female_matching
-            )}
+          <span class="text-sm font-medium tabular-nums opacity-90" aria-label="selected of required">
+            {MapSet.size(@selected_user_ids)} / 7
           </span>
         </button>
       </div>
@@ -1174,6 +1239,22 @@ defmodule UltistatsWeb.GameLive.Show do
      |> assign(:selected_user_ids, selected)
      |> assign(:selected_preset_id, nil)
      |> assign_line_picker_state()}
+  end
+
+  def handle_event("toggle_split_by_position", _params, socket) do
+    {:noreply, assign(socket, :split_by_position?, not socket.assigns.split_by_position?)}
+  end
+
+  def handle_event("change_sort", %{"sort" => sort}, socket) do
+    parsed =
+      case sort do
+        "jersey" -> :jersey
+        "name" -> :name
+        "points" -> :points
+        _ -> socket.assigns.line_picker_sort
+      end
+
+    {:noreply, assign(socket, :line_picker_sort, parsed)}
   end
 
   def handle_event("select_preset", %{"id" => preset_id}, socket) do
@@ -1707,16 +1788,13 @@ defmodule UltistatsWeb.GameLive.Show do
   defp starting_possession_label(:theirs), do: "We pull → start on defense"
   defp starting_possession_label(_), do: "Possession unknown"
 
-  defp starting_possession_pill_classes(:ours), do: "bg-success/15 text-success"
-  defp starting_possession_pill_classes(:theirs), do: "bg-error/10 text-error"
-  defp starting_possession_pill_classes(_), do: "bg-base-200 text-base-content/70"
+  defp starting_possession_banner_classes(:ours), do: "bg-success/15 text-success"
+  defp starting_possession_banner_classes(:theirs), do: "bg-error/10 text-error"
+  defp starting_possession_banner_classes(_), do: "bg-base-200 text-base-content/70"
 
   defp starting_possession_icon(:ours), do: "hero-arrow-right-circle"
   defp starting_possession_icon(:theirs), do: "hero-shield-check"
   defp starting_possession_icon(_), do: "hero-question-mark-circle"
-
-  defp required_ratio_pill(nil), do: "Any composition"
-  defp required_ratio_pill(ratio), do: "Required: " <> Games.ratio_label(ratio)
 
   defp ratio_mismatch_text(%{actual: %{m: m, f: f}, required: %{m: rm, f: rf}}) do
     "Ratio mismatch — selected #{m}M / #{f}F, ruleset requires #{rm}M / #{rf}F."
@@ -1747,26 +1825,35 @@ defmodule UltistatsWeb.GameLive.Show do
   defp role_label(:male_matching), do: "Male-matching"
   defp role_label(:female_matching), do: "Female-matching"
 
-  defp selected_role_count(selected_ids, members, role) do
-    Enum.count(
-      members,
-      &(&1.user.gender_role == role and MapSet.member?(selected_ids, &1.user_id))
-    )
-  end
-
   attr :role, :atom, required: true, values: [:female_matching, :male_matching]
   attr :players, :list, required: true
   attr :selected_ids, MapSet, required: true
+  attr :points_played_by_user, :map, required: true
+  attr :sort, :atom, required: true
+  attr :split_by_position?, :boolean, required: true
 
   defp line_picker_section(assigns) do
+    sorted = sort_players(assigns.players, assigns.sort, assigns.points_played_by_user)
+
     selected_in_section =
       Enum.count(assigns.players, &MapSet.member?(assigns.selected_ids, &1.user_id))
 
-    assigns = assign(assigns, :selected_in_section, selected_in_section)
+    groups =
+      if assigns.split_by_position? do
+        position_groups(sorted)
+      else
+        [{nil, sorted}]
+      end
+
+    assigns =
+      assigns
+      |> assign(:players, sorted)
+      |> assign(:selected_in_section, selected_in_section)
+      |> assign(:groups, groups)
 
     ~H"""
     <section class="space-y-1">
-      <h3 class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-base-content/60 px-4">
+      <h3 class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-base-content/60 px-1">
         <span class="text-sm leading-none" aria-hidden="true">{gender_glyph(@role)}</span>
         <span>{role_label(@role)}</span>
         <span class="tabular-nums text-base-content/50">
@@ -1774,48 +1861,157 @@ defmodule UltistatsWeb.GameLive.Show do
         </span>
       </h3>
 
-      <ul
-        class="-mx-4 border-y border-base-200 divide-y divide-base-200"
-        role="list"
-        aria-label={role_label(@role) <> " players"}
-      >
-        <li :for={member <- @players} id={"line-pick-#{member.user_id}"}>
-          <button
-            type="button"
-            phx-click="toggle_player"
-            phx-value-id={member.user_id}
-            aria-pressed={to_string(MapSet.member?(@selected_ids, member.user_id))}
-            class={[
-              "w-full min-h-9 px-4 py-0.5 flex items-center gap-2 text-left",
-              "transition-colors motion-reduce:transition-none active:bg-base-200",
-              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-              if(MapSet.member?(@selected_ids, member.user_id), do: "bg-primary/10", else: "")
-            ]}
-          >
-            <span
+      <div :for={{position, members} <- @groups} class="space-y-1">
+        <h4
+          :if={@split_by_position?}
+          class="flex items-center gap-1.5 px-1 text-[10px] font-semibold uppercase tracking-wide text-base-content/50"
+        >
+          <span class={[
+            "inline-flex items-center justify-center size-4 rounded-full text-[10px] font-semibold",
+            position_pill_classes(position)
+          ]}>
+            {position_letter(position)}
+          </span>
+          <span>{humanize_position(position) || "Unspecified"}</span>
+        </h4>
+
+        <ul
+          class="rounded-md border border-base-200 divide-y divide-base-200 overflow-hidden"
+          role="list"
+          aria-label={role_label(@role) <> " players"}
+        >
+          <li :for={member <- members} id={"line-pick-#{member.user_id}"}>
+            <button
+              type="button"
+              phx-click="toggle_player"
+              phx-value-id={member.user_id}
+              aria-pressed={to_string(MapSet.member?(@selected_ids, member.user_id))}
               class={[
-                "tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full text-[11px] shrink-0",
-                if(MapSet.member?(@selected_ids, member.user_id),
-                  do: "bg-primary text-primary-content",
-                  else: "bg-base-200 text-base-content"
-                )
+                "w-full min-h-9 px-3 py-0.5 flex items-center gap-2 text-left",
+                "transition-colors motion-reduce:transition-none active:bg-base-200",
+                "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                if(MapSet.member?(@selected_ids, member.user_id), do: "bg-primary/10", else: "")
               ]}
-              aria-hidden="true"
             >
-              {Teams.resolved_jersey_number(member)}
-            </span>
-            <span class="font-medium text-sm truncate flex-1 leading-tight">
-              {User.display_name(member.user)}
-            </span>
-            <.icon
-              :if={MapSet.member?(@selected_ids, member.user_id)}
-              name="hero-check-circle-solid"
-              class="size-4 text-primary shrink-0"
-            />
-          </button>
-        </li>
-      </ul>
+              <span
+                class={[
+                  "tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full text-[11px] shrink-0",
+                  if(MapSet.member?(@selected_ids, member.user_id),
+                    do: "bg-primary text-primary-content",
+                    else: "bg-base-200 text-base-content"
+                  )
+                ]}
+                aria-hidden="true"
+              >
+                {Teams.resolved_jersey_number(member)}
+              </span>
+              <span class="flex items-center gap-1.5 flex-1 min-w-0">
+                <span class="font-medium text-sm truncate leading-tight">
+                  {User.display_name(member.user)}
+                </span>
+                <span
+                  :if={pos = Teams.resolved_position(member)}
+                  class={[
+                    "inline-flex items-center justify-center size-5 rounded-full shrink-0",
+                    "text-[10px] font-semibold tabular-nums",
+                    position_pill_classes(pos)
+                  ]}
+                  aria-label={humanize_position(pos)}
+                  title={humanize_position(pos)}
+                >
+                  {position_letter(pos)}
+                </span>
+              </span>
+              <span
+                class="inline-flex items-center gap-0.5 tabular-nums text-[11px] text-base-content/60 shrink-0"
+                aria-label="playtime"
+                title="Playtime"
+              >
+                <.icon name="hero-clock" class="size-3.5" />
+                {Map.get(@points_played_by_user, member.user_id, 0)}
+              </span>
+              <.icon
+                :if={MapSet.member?(@selected_ids, member.user_id)}
+                name="hero-check-circle-solid"
+                class="size-4 text-primary shrink-0"
+              />
+            </button>
+          </li>
+        </ul>
+      </div>
     </section>
     """
+  end
+
+  defp position_groups(players) do
+    grouped =
+      Enum.group_by(players, fn member ->
+        Teams.resolved_position(member) || :unspecified
+      end)
+
+    [:handler, :cutter, :hybrid, :unspecified]
+    |> Enum.map(fn key ->
+      {if(key == :unspecified, do: nil, else: key), Map.get(grouped, key, [])}
+    end)
+    |> Enum.reject(fn {_, members} -> members == [] end)
+  end
+
+  defp sort_players(players, :name, _points) do
+    Enum.sort_by(players, &String.downcase(User.display_name(&1.user)))
+  end
+
+  defp sort_players(players, :points, points_played) do
+    Enum.sort_by(
+      players,
+      &{-Map.get(points_played, &1.user_id, 0), String.downcase(User.display_name(&1.user))}
+    )
+  end
+
+  defp sort_players(players, _jersey, _points) do
+    Enum.sort_by(players, &jersey_sort_key_for_picker/1)
+  end
+
+  defp jersey_sort_key_for_picker(membership) do
+    case Teams.resolved_jersey_number(membership) do
+      nil ->
+        {2, ""}
+
+      "" ->
+        {2, ""}
+
+      n when is_binary(n) ->
+        case Integer.parse(n) do
+          {int, ""} -> {0, int}
+          _ -> {1, n}
+        end
+    end
+  end
+
+  defp humanize_position(:handler), do: "Handler"
+  defp humanize_position(:cutter), do: "Cutter"
+  defp humanize_position(:hybrid), do: "Hybrid"
+
+  defp humanize_position(other) when is_atom(other),
+    do: other |> Atom.to_string() |> String.capitalize()
+
+  defp humanize_position(_), do: nil
+
+  defp position_letter(:handler), do: "H"
+  defp position_letter(:cutter), do: "C"
+  defp position_letter(:hybrid), do: "X"
+  defp position_letter(_), do: "?"
+
+  defp position_pill_classes(:handler), do: "bg-success/15 text-success"
+  defp position_pill_classes(:cutter), do: "bg-warning/15 text-warning"
+  defp position_pill_classes(:hybrid), do: "bg-info/15 text-info"
+  defp position_pill_classes(_), do: "bg-base-200 text-base-content/70"
+
+  defp preset_summary_label(_presets, nil), do: "Choose a line"
+
+  defp preset_summary_label(presets, selected_id) do
+    case Enum.find(presets, &(&1.id == selected_id)) do
+      nil -> "Choose a line"
+      preset -> preset.name
+    end
   end
 end

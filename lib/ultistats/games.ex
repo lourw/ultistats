@@ -825,6 +825,26 @@ defmodule Ultistats.Games do
 
   def leaderboard_for_team(_), do: []
 
+  @doc """
+  Returns a `%{user_id => count}` map of points played per user in `game`.
+
+  A user "played" a point if their id appears in
+  `our_line_snapshot["user_ids"]`. Includes the in-progress point so the
+  between-points line picker reflects points-played in real time.
+  """
+  def points_played_by_user(%Game{id: game_id}) do
+    Repo.all(
+      from p in Point,
+        where: p.game_id == ^game_id,
+        select: p.our_line_snapshot
+    )
+    |> Enum.reduce(%{}, fn snap, acc ->
+      snap
+      |> snapshot_user_ids()
+      |> Enum.reduce(acc, fn uid, acc2 -> Map.update(acc2, uid, 1, &(&1 + 1)) end)
+    end)
+  end
+
   defp snapshot_user_ids(%{"user_ids" => ids}) when is_list(ids), do: ids
   defp snapshot_user_ids(_), do: []
 
