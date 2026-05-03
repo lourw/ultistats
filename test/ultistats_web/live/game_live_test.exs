@@ -420,7 +420,7 @@ defmodule UltistatsWeb.GameLiveTest do
       assert event.receiver_id == b.id
 
       html = render(live)
-      assert html =~ "Other team has the disc"
+      assert html =~ "They have the disc"
       # The :theirs-mode action buttons render now.
       assert has_element?(live, "button[phx-click='record_opponent_turnover']")
       assert has_element?(live, "button[phx-click='record_opponent_goal']")
@@ -444,7 +444,7 @@ defmodule UltistatsWeb.GameLiveTest do
       assert event.passer_id == a.id
       assert is_nil(event.receiver_id)
 
-      assert render(live) =~ "Other team has the disc"
+      assert render(live) =~ "They have the disc"
     end
 
     test "Block records an event, switches to ours, sets blocker as new passer", %{
@@ -460,8 +460,8 @@ defmodule UltistatsWeb.GameLiveTest do
       render_hook(live, "set_passer", %{"id" => a.id})
       render_hook(live, "record_throw_outcome", %{"type" => "throwaway"})
 
-      # Default `defense_kind` is :block; pick the blocker.
-      render_hook(live, "pick_defense_player", %{"id" => blocker.id})
+      render_hook(live, "set_defender", %{"id" => blocker.id})
+      render_hook(live, "record_defense", %{"kind" => "block"})
 
       events = Games.events_for_point(point)
       assert Enum.any?(events, &(&1.type == :block and &1.passer_id == blocker.id))
@@ -484,9 +484,8 @@ defmodule UltistatsWeb.GameLiveTest do
       render_hook(live, "set_passer", %{"id" => a.id})
       render_hook(live, "record_throw_outcome", %{"type" => "throwaway"})
 
-      # Switch defense kind to :catch (interception) and pick the catcher.
-      render_hook(live, "set_defense_kind", %{"kind" => "catch"})
-      render_hook(live, "pick_defense_player", %{"id" => catcher.id})
+      render_hook(live, "set_defender", %{"id" => catcher.id})
+      render_hook(live, "record_defense", %{"kind" => "catch"})
 
       events = Games.events_for_point(point)
 
