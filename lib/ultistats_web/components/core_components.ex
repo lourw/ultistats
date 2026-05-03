@@ -208,7 +208,7 @@ defmodule UltistatsWeb.CoreComponents do
       end)
 
     ~H"""
-    <div class="space-y-1 mb-2">
+    <div class="space-y-1">
       <label for={@id} class="inline-flex items-center gap-2 text-sm text-base-content min-h-11">
         <input
           type="hidden"
@@ -238,7 +238,7 @@ defmodule UltistatsWeb.CoreComponents do
 
   def input(%{type: "select"} = assigns) do
     ~H"""
-    <div class="space-y-1 mb-2">
+    <div class="space-y-1">
       <label :if={@label} for={@id} class="block text-sm font-medium text-base-content">
         {@label}
       </label>
@@ -263,7 +263,7 @@ defmodule UltistatsWeb.CoreComponents do
 
   def input(%{type: "textarea"} = assigns) do
     ~H"""
-    <div class="space-y-1 mb-2">
+    <div class="space-y-1">
       <label :if={@label} for={@id} class="block text-sm font-medium text-base-content">
         {@label}
       </label>
@@ -285,7 +285,7 @@ defmodule UltistatsWeb.CoreComponents do
   # All other inputs text, datetime-local, url, password, etc. are handled here...
   def input(assigns) do
     ~H"""
-    <div class="space-y-1 mb-2">
+    <div class="space-y-1">
       <label :if={@label} for={@id} class="block text-sm font-medium text-base-content">
         {@label}
       </label>

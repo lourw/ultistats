@@ -5,6 +5,7 @@ defmodule Ultistats.Games.Ruleset do
   @kinds [:template, :game_instance]
   @gender_ratio_rules [:endzone, :alternating, :fixed, :none]
   @starting_ratios [:four_men_three_women, :three_men_four_women]
+  @divisions [:open, :womens, :mixed]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -21,6 +22,7 @@ defmodule Ultistats.Games.Ruleset do
     field :timeouts_per_half, :integer
     field :gender_ratio_rule, Ecto.Enum, values: @gender_ratio_rules
     field :default_starting_ratio, Ecto.Enum, values: @starting_ratios
+    field :division, Ecto.Enum, values: @divisions, default: :open
 
     belongs_to :team, Ultistats.Teams.Team
 
@@ -35,6 +37,9 @@ defmodule Ultistats.Games.Ruleset do
 
   @doc "Valid `:default_starting_ratio` enum values."
   def starting_ratios, do: @starting_ratios
+
+  @doc "Valid `:division` enum values."
+  def divisions, do: @divisions
 
   @doc """
   Base changeset.
@@ -70,9 +75,10 @@ defmodule Ultistats.Games.Ruleset do
       :hard_cap_minutes,
       :timeouts_per_half,
       :gender_ratio_rule,
-      :default_starting_ratio
+      :default_starting_ratio,
+      :division
     ])
-    |> validate_required([:team_id, :kind, :timeouts_per_half, :gender_ratio_rule])
+    |> validate_required([:team_id, :kind, :timeouts_per_half, :gender_ratio_rule, :division])
     |> validate_name_for_kind()
     |> validate_number(:score_cap, greater_than_or_equal_to: 1, less_than_or_equal_to: 30)
     |> validate_number(:timeouts_per_half, greater_than_or_equal_to: 0, less_than_or_equal_to: 5)

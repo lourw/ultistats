@@ -43,7 +43,7 @@ else
   # 2) The team itself, with the admin's membership inserted in the
   # same Multi via create_team_with_admin/2.
   {:ok, %{team: team, membership: admin_membership}} =
-    Teams.create_team_with_admin(%{name: "The Misfits"}, admin)
+    Teams.create_team_with_admin(%{name: "The Misfits", division: :mixed}, admin)
 
   # Backfill the jersey number on the admin membership — the helper
   # always inserts with role: :admin, is_player: true and no jersey.
@@ -121,6 +121,7 @@ else
     Games.create_ruleset(%{
       team_id: team.id,
       kind: :template,
+      division: :mixed,
       name: "USAU Standard",
       score_cap: 15,
       halftime_target: 8,
@@ -136,6 +137,7 @@ else
     Games.create_ruleset(%{
       team_id: team.id,
       kind: :template,
+      division: :mixed,
       name: "Hat League",
       score_cap: 13,
       halftime_target: 7,
@@ -162,7 +164,7 @@ else
       raise "Expected admin user to be seeded by the Misfits block above"
 
   {:ok, %{team: team, membership: admin_membership}} =
-    Teams.create_team_with_admin(%{name: "The Open Squad"}, admin)
+    Teams.create_team_with_admin(%{name: "The Open Squad", division: :open}, admin)
 
   {:ok, _} =
     Teams.update_team_membership(admin_membership, %{jersey_number: "00"})
@@ -220,6 +222,7 @@ else
     Games.create_ruleset(%{
       team_id: team.id,
       kind: :template,
+      division: :open,
       name: "Open Standard",
       score_cap: 15,
       halftime_target: 8,

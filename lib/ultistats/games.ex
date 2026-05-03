@@ -967,8 +967,28 @@ defmodule Ultistats.Games do
   def list_rulesets_for_team(%Team{id: team_id}), do: list_rulesets_for_team(team_id)
 
   def list_rulesets_for_team(team_id) when is_binary(team_id) do
+    list_rulesets_for_team(team_id, nil)
+  end
+
+  @doc """
+  Same as `list_rulesets_for_team/1` but filtered to rulesets matching
+  `division` (atom). Pass `nil` to skip the division filter.
+  """
+  def list_rulesets_for_team(%Team{id: team_id}, division),
+    do: list_rulesets_for_team(team_id, division)
+
+  def list_rulesets_for_team(team_id, nil) when is_binary(team_id) do
     Ruleset
     |> where([r], r.team_id == ^team_id)
+    |> where([r], r.kind == :template and is_nil(r.archived_at))
+    |> order_by([r], asc: r.name)
+    |> Repo.all()
+  end
+
+  def list_rulesets_for_team(team_id, division)
+      when is_binary(team_id) and division in [:open, :womens, :mixed] do
+    Ruleset
+    |> where([r], r.team_id == ^team_id and r.division == ^division)
     |> where([r], r.kind == :template and is_nil(r.archived_at))
     |> order_by([r], asc: r.name)
     |> Repo.all()
