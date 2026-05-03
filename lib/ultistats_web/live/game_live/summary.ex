@@ -78,13 +78,23 @@ defmodule UltistatsWeb.GameLive.Summary do
     ~H"""
     <div class="sticky top-0 z-20 -mx-4 px-4 pt-safe bg-base-100/95 backdrop-blur border-b border-base-200">
       <div class="py-3 space-y-3">
-        <.link
-          navigate={~p"/games/#{@game.id}"}
-          class="inline-flex items-center gap-1 min-h-11 text-sm font-medium text-base-content/80 active:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary rounded-md"
-        >
-          <.icon name="hero-arrow-left" class="size-4" />
-          <span>Back to game</span>
-        </.link>
+        <div class="flex items-center justify-between gap-2">
+          <.link
+            navigate={~p"/games/#{@game.id}"}
+            class="inline-flex items-center gap-1 min-h-11 text-sm font-medium text-base-content/80 active:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary rounded-md"
+          >
+            <.icon name="hero-arrow-left" class="size-4" />
+            <span>Back to game</span>
+          </.link>
+          <.link
+            :if={@game.ruleset_id}
+            navigate={~p"/rulesets/#{@game.ruleset_id}"}
+            class="inline-flex items-center gap-1 min-h-11 px-2 text-sm font-medium text-base-content/80 active:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary rounded-md"
+          >
+            <.icon name="hero-document-text" class="size-4" />
+            <span>Ruleset</span>
+          </.link>
+        </div>
 
         <div class="flex items-start justify-between gap-3">
           <div class="flex flex-col gap-1 min-w-0">
