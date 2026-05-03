@@ -138,7 +138,7 @@ defmodule UltistatsWeb.GameLive.Index do
           </li>
         </ul>
 
-        <p :if={@rulesets == [] and @new_ruleset_team_id} class="mt-4 text-base-content/70">
+        <p :if={@rulesets == [] && @new_ruleset_team_id} class="mt-4 text-base-content/70">
           No rulesets yet. Save one as a reusable template for future games.
         </p>
 
@@ -158,7 +158,7 @@ defmodule UltistatsWeb.GameLive.Index do
 
       <.link
         :if={
-          @active_tab == :rulesets and @new_ruleset_team_id and
+          @active_tab == :rulesets && @new_ruleset_team_id &&
             MapSet.member?(@admin_team_ids, @new_ruleset_team_id)
         }
         navigate={~p"/rulesets/new?team_id=#{@new_ruleset_team_id}"}
