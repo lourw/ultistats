@@ -594,6 +594,109 @@ defmodule UltistatsWeb.GameLiveTest do
       assert is_nil(event.passer_id)
       assert event.receiver_id == a.id
     end
+
+    test "undo soft-deletes the most recent event and clears the current passer",
+         %{conn: conn, game: game, players: players, point: point} do
+      {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
+
+      [a, b | _] = players
+
+      render_hook(live, "set_passer", %{"id" => a.id})
+      render_hook(live, "set_receiver", %{"id" => b.id})
+      render_hook(live, "record_throw_outcome", %{"type" => "catch"})
+
+      # Catch landed: B is now the passer.
+      assert render(live) =~ "data-current-passer=\"#{b.id}\""
+
+      live |> element("button[phx-click='undo']") |> render_click()
+
+      # The :catch row is soft-deleted (filtered from the live list).
+      assert Games.events_for_point(point) == []
+      [event] = Repo.all(Event)
+      assert event.type == :catch
+      refute is_nil(event.deleted_at)
+
+      # Possession derives back to :ours (from the original first_pull
+      # rules) and the prompt to pick a passer is shown again — undo all
+      # the way back to "no events" requires the tracker to re-tap who
+      # has the disc.
+      html = render(live)
+      assert html =~ "We have the disc"
+      assert html =~ "Tap who has the disc"
+      refute html =~ "data-current-passer="
+    end
+
+    test "redo restores a previously-undone event", %{
+      conn: conn,
+      game: game,
+      players: players,
+      point: point
+    } do
+      {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
+
+      [a, b | _] = players
+
+      render_hook(live, "set_passer", %{"id" => a.id})
+      render_hook(live, "set_receiver", %{"id" => b.id})
+      render_hook(live, "record_throw_outcome", %{"type" => "catch"})
+
+      live |> element("button[phx-click='undo']") |> render_click()
+      assert Games.events_for_point(point) == []
+
+      live |> element("button[phx-click='redo']") |> render_click()
+
+      [event] = Games.events_for_point(point)
+      assert event.type == :catch
+      assert event.passer_id == a.id
+      assert event.receiver_id == b.id
+
+      # Current passer follows the redone catch back to B.
+      assert render(live) =~ "data-current-passer=\"#{b.id}\""
+    end
+
+    test "recording a new event clears the redo stack", %{
+      conn: conn,
+      game: game,
+      players: players,
+      point: point
+    } do
+      {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
+
+      [a, b, c | _] = players
+
+      render_hook(live, "set_passer", %{"id" => a.id})
+      render_hook(live, "set_receiver", %{"id" => b.id})
+      render_hook(live, "record_throw_outcome", %{"type" => "catch"})
+
+      live |> element("button[phx-click='undo']") |> render_click()
+
+      # Branch off in a different direction.
+      render_hook(live, "set_passer", %{"id" => a.id})
+      render_hook(live, "set_receiver", %{"id" => c.id})
+      render_hook(live, "record_throw_outcome", %{"type" => "catch"})
+
+      # Redo button should be disabled now that the redo stack is cleared.
+      assert has_element?(live, "button[phx-click='redo'][disabled]")
+
+      [event] = Games.events_for_point(point)
+      assert event.receiver_id == c.id
+    end
+
+    test "undo button shows the back-to-lineup affordance when stack is empty", %{
+      conn: conn,
+      game: game
+    } do
+      {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
+
+      # No events recorded yet — the leftmost button is the cancel-point
+      # back arrow with the destructive confirmation prompt.
+      assert has_element?(
+               live,
+               "button[phx-click='cancel_current_point'][data-confirm]"
+             )
+
+      refute has_element?(live, "button[phx-click='undo']")
+    end
   end
 
   describe "Show — milestones" do

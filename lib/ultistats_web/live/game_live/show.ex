@@ -25,6 +25,7 @@ defmodule UltistatsWeb.GameLive.Show do
   use UltistatsWeb, :live_view
 
   alias Ultistats.{Games, Repo, Teams}
+  alias Ultistats.Games.Event
   alias Ultistats.Teams.Player
 
   @impl true
@@ -60,6 +61,8 @@ defmodule UltistatsWeb.GameLive.Show do
        |> assign(:current_passer_id, nil)
        |> assign(:selected_receiver_id, nil)
        |> assign(:selected_defender_id, nil)
+       |> assign(:undo_stack, [])
+       |> assign(:redo_stack, [])
        |> assign(:halftime_dismissed?, false)
        # Disconnect-driven button-disable is wired via JS hook in a later
        # task; assigns stays at false until the hook lands. The flash
@@ -100,6 +103,8 @@ defmodule UltistatsWeb.GameLive.Show do
             current_point={@current_point}
             possession={@possession}
             halftime?={Games.halftime?(@game) and not @halftime_dismissed?}
+            undo_stack={@undo_stack}
+            redo_stack={@redo_stack}
           />
         </div>
 
@@ -149,6 +154,8 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :current_point, :any, required: true
   attr :possession, :any, required: true
   attr :halftime?, :boolean, required: true
+  attr :undo_stack, :list, required: true
+  attr :redo_stack, :list, required: true
 
   defp compact_header(assigns) do
     ~H"""
@@ -183,16 +190,32 @@ defmodule UltistatsWeb.GameLive.Show do
     </div>
 
     <div class="flex items-center justify-between gap-2 px-4 py-2">
-      <button
-        :if={@current_point}
-        type="button"
-        phx-click="cancel_current_point"
-        data-confirm="You will lose all progress for this point if you go back."
-        aria-label="Back to lineup (cancel point)"
-        class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary shrink-0"
-      >
-        <.icon name="hero-arrow-uturn-left" class="size-4" />
-      </button>
+      <div :if={@current_point} class="flex items-center gap-1 shrink-0">
+        <button
+          type="button"
+          phx-click={if @undo_stack == [], do: "cancel_current_point", else: "undo"}
+          data-confirm={
+            if @undo_stack == [],
+              do: "You will lose all progress for this point if you go back.",
+              else: nil
+          }
+          aria-label={
+            if @undo_stack == [], do: "Back to lineup (cancel point)", else: "Undo last event"
+          }
+          class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <.icon name="hero-arrow-uturn-left" class="size-4" />
+        </button>
+        <button
+          type="button"
+          phx-click="redo"
+          disabled={@redo_stack == []}
+          aria-label="Redo"
+          class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <.icon name="hero-arrow-uturn-right" class="size-4" />
+        </button>
+      </div>
 
       <div class="flex items-baseline gap-1.5 min-w-0 flex-1">
         <span
@@ -243,7 +266,10 @@ defmodule UltistatsWeb.GameLive.Show do
 
   defp between_points_view(assigns) do
     ~H"""
-    <section class="flex-1 px-4 py-3 space-y-3" aria-label="Line picker">
+    <section
+      class="flex-1 min-h-0 flex flex-col gap-3 px-4 py-3 overflow-hidden"
+      aria-label="Line picker"
+    >
       <div :if={@line_presets != []} class="-mx-4 px-4 overflow-x-auto">
         <div class="flex gap-2 w-max">
           <button
@@ -284,7 +310,7 @@ defmodule UltistatsWeb.GameLive.Show do
           </p>
         </div>
       <% else %>
-        <div id="game-line-picker" class="space-y-4">
+        <div id="game-line-picker" class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden space-y-4">
           <.line_picker_section
             :for={role <- [:male_matching, :female_matching]}
             :if={Enum.any?(@team_players, &(&1.gender_role == role))}
@@ -991,6 +1017,8 @@ defmodule UltistatsWeb.GameLive.Show do
          |> assign(:current_passer_id, nil)
          |> assign(:selected_receiver_id, nil)
          |> assign(:selected_defender_id, nil)
+         |> assign(:undo_stack, [])
+         |> assign(:redo_stack, [])
          |> assign(:selected_player_ids, MapSet.new())
          |> assign(:selected_preset_id, nil)}
 
@@ -1023,6 +1051,8 @@ defmodule UltistatsWeb.GameLive.Show do
          |> assign(:current_passer_id, nil)
          |> assign(:selected_receiver_id, nil)
          |> assign(:selected_defender_id, nil)
+         |> assign(:undo_stack, [])
+         |> assign(:redo_stack, [])
          |> put_flash(:info, "Point cancelled")}
     end
   end
@@ -1052,10 +1082,14 @@ defmodule UltistatsWeb.GameLive.Show do
       end
 
     case Games.record_throw(point, type, passer_id, receiver_id) do
-      {:ok, _event} ->
+      {:ok, event} ->
         events = Games.events_for_point(point)
 
-        socket = assign(socket, :events, events)
+        socket =
+          socket
+          |> assign(:events, events)
+          |> track_event_recorded(event)
+
         apply_outcome_transition(socket, type, point, events)
 
       {:error, _} ->
@@ -1085,12 +1119,13 @@ defmodule UltistatsWeb.GameLive.Show do
       end
 
     case Games.record_throw(point, type, passer_id, receiver_id) do
-      {:ok, _event} ->
+      {:ok, event} ->
         events = Games.events_for_point(point)
 
         {:noreply,
          socket
          |> assign(:events, events)
+         |> track_event_recorded(event)
          |> assign(:possession, derive_possession(socket.assigns.game, point, events))
          |> assign(:current_passer_id, defender_token)
          |> assign(:selected_receiver_id, nil)
@@ -1105,12 +1140,13 @@ defmodule UltistatsWeb.GameLive.Show do
     point = socket.assigns.current_point
 
     case Games.record_throw(point, :opponent_turnover, nil, nil) do
-      {:ok, _event} ->
+      {:ok, event} ->
         events = Games.events_for_point(point)
 
         {:noreply,
          socket
          |> assign(:events, events)
+         |> track_event_recorded(event)
          |> assign(:possession, derive_possession(socket.assigns.game, point, events))
          |> assign(:current_passer_id, nil)
          |> assign(:selected_receiver_id, nil)}
@@ -1139,7 +1175,7 @@ defmodule UltistatsWeb.GameLive.Show do
       point = socket.assigns.current_point
 
       case Games.record_throw(point, type, nil, nil) do
-        {:ok, _event} ->
+        {:ok, event} ->
           events = Games.events_for_point(point)
 
           # Possession unchanged for calls; we still re-derive defensively
@@ -1147,6 +1183,7 @@ defmodule UltistatsWeb.GameLive.Show do
           {:noreply,
            socket
            |> assign(:events, events)
+           |> track_event_recorded(event)
            |> assign(:possession, derive_possession(socket.assigns.game, point, events))}
 
         {:error, _} ->
@@ -1160,6 +1197,87 @@ defmodule UltistatsWeb.GameLive.Show do
   def handle_event("dismiss_halftime", _params, socket) do
     {:noreply, assign(socket, :halftime_dismissed?, true)}
   end
+
+  def handle_event("undo", _params, socket) do
+    case socket.assigns.undo_stack do
+      [] ->
+        {:noreply, socket}
+
+      [event_id | rest_undo] ->
+        with %Event{} = event <- Repo.get(Event, event_id),
+             {:ok, _} <- Games.soft_delete_event(event) do
+          {:noreply,
+           after_history_change(socket, rest_undo, [event_id | socket.assigns.redo_stack])}
+        else
+          _ -> {:noreply, put_flash(socket, :error, "Could not undo.")}
+        end
+    end
+  end
+
+  def handle_event("redo", _params, socket) do
+    case socket.assigns.redo_stack do
+      [] ->
+        {:noreply, socket}
+
+      [event_id | rest_redo] ->
+        with %Event{} = event <- Repo.get(Event, event_id),
+             {:ok, _} <- Games.restore_event(event) do
+          {:noreply,
+           after_history_change(socket, [event_id | socket.assigns.undo_stack], rest_redo)}
+        else
+          _ -> {:noreply, put_flash(socket, :error, "Could not redo.")}
+        end
+    end
+  end
+
+  ## ---------------------------------------------------------------------
+  ## helpers — undo / redo bookkeeping
+  ## ---------------------------------------------------------------------
+
+  # Push the just-recorded event onto the undo stack and clear the redo
+  # stack (a fresh action invalidates any prior redos).
+  defp track_event_recorded(socket, %Event{id: event_id}) do
+    socket
+    |> assign(:undo_stack, [event_id | socket.assigns.undo_stack])
+    |> assign(:redo_stack, [])
+  end
+
+  # Re-syncs everything that derives from the events list after an undo
+  # or redo: events, possession, current passer. Selection state
+  # (receiver / defender pickers) is cleared so the user starts the
+  # next interaction fresh.
+  defp after_history_change(socket, undo_stack, redo_stack) do
+    point = socket.assigns.current_point
+    events = Games.events_for_point(point)
+
+    socket
+    |> assign(:undo_stack, undo_stack)
+    |> assign(:redo_stack, redo_stack)
+    |> assign(:events, events)
+    |> assign(:possession, derive_possession(socket.assigns.game, point, events))
+    |> assign(:current_passer_id, derive_current_passer(events))
+    |> assign(:selected_receiver_id, nil)
+    |> assign(:selected_defender_id, nil)
+  end
+
+  # Walks the (live) events for a point and returns the current passer
+  # token: a player id, `:unknown`, or `nil` for "no passer set".
+  defp derive_current_passer(events) do
+    Enum.reduce(events, nil, fn ev, current ->
+      case ev.type do
+        :catch -> token_from_id(ev.receiver_id)
+        :block -> token_from_id(ev.passer_id)
+        :drop -> nil
+        :throwaway -> nil
+        :stall -> nil
+        :opponent_turnover -> nil
+        _ -> current
+      end
+    end)
+  end
+
+  defp token_from_id(nil), do: :unknown
+  defp token_from_id(id) when is_binary(id), do: id
 
   ## ---------------------------------------------------------------------
   ## helpers — outcome transitions
@@ -1215,6 +1333,8 @@ defmodule UltistatsWeb.GameLive.Show do
       |> assign(:current_passer_id, nil)
       |> assign(:selected_receiver_id, nil)
       |> assign(:selected_defender_id, nil)
+      |> assign(:undo_stack, [])
+      |> assign(:redo_stack, [])
       |> assign(:selected_player_ids, MapSet.new())
       |> assign(:selected_preset_id, nil)
 
@@ -1373,16 +1493,20 @@ defmodule UltistatsWeb.GameLive.Show do
     assigns = assign(assigns, :selected_in_section, selected_in_section)
 
     ~H"""
-    <section>
-      <h3 class="flex items-center gap-2 text-base font-semibold text-base-content mb-1">
-        <span class="text-lg leading-none" aria-hidden="true">{gender_glyph(@role)}</span>
+    <section class="space-y-1">
+      <h3 class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-base-content/60 px-4">
+        <span class="text-sm leading-none" aria-hidden="true">{gender_glyph(@role)}</span>
         <span>{role_label(@role)}</span>
-        <span class="tabular-nums text-sm font-medium text-base-content/60">
+        <span class="tabular-nums text-base-content/50">
           {@selected_in_section} of {length(@players)}
         </span>
       </h3>
 
-      <ul class="divide-y divide-base-200">
+      <ul
+        class="-mx-4 border-y border-base-200 divide-y divide-base-200"
+        role="list"
+        aria-label={role_label(@role) <> " players"}
+      >
         <li :for={player <- @players} id={"line-pick-#{player.id}"}>
           <button
             type="button"
@@ -1390,33 +1514,31 @@ defmodule UltistatsWeb.GameLive.Show do
             phx-value-id={player.id}
             aria-pressed={to_string(MapSet.member?(@selected_ids, player.id))}
             class={[
-              "w-full flex items-center justify-between gap-3 py-2 px-2 -mx-2 rounded-md",
-              "text-left transition-colors motion-reduce:transition-none",
+              "w-full min-h-9 px-4 py-0.5 flex items-center gap-2 text-left",
+              "transition-colors motion-reduce:transition-none active:bg-base-200",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-              if(MapSet.member?(@selected_ids, player.id),
-                do: "bg-primary/10 hover:bg-primary/15",
-                else: "hover:bg-base-200"
-              )
+              if(MapSet.member?(@selected_ids, player.id), do: "bg-primary/10", else: "")
             ]}
           >
-            <div class="flex items-center gap-3 min-w-0">
-              <span
-                :if={player.jersey_number}
-                class="inline-flex items-center justify-center w-8 h-7 px-1 rounded-full bg-base-200 text-base-content text-sm font-semibold tabular-nums shrink-0"
-              >
-                {player.jersey_number}
-              </span>
-              <span class="font-medium truncate">{Player.display_name(player)}</span>
-            </div>
+            <span
+              class={[
+                "tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full text-[11px] shrink-0",
+                if(MapSet.member?(@selected_ids, player.id),
+                  do: "bg-primary text-primary-content",
+                  else: "bg-base-200 text-base-content"
+                )
+              ]}
+              aria-hidden="true"
+            >
+              {player.jersey_number}
+            </span>
+            <span class="font-medium text-sm truncate flex-1 leading-tight">
+              {Player.display_name(player)}
+            </span>
             <.icon
               :if={MapSet.member?(@selected_ids, player.id)}
               name="hero-check-circle-solid"
-              class="size-5 text-primary shrink-0"
-            />
-            <span
-              :if={!MapSet.member?(@selected_ids, player.id)}
-              class="size-5 shrink-0"
-              aria-hidden="true"
+              class="size-4 text-primary shrink-0"
             />
           </button>
         </li>
