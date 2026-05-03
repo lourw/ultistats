@@ -27,14 +27,18 @@ defmodule UltistatsWeb.TeamLive.Index do
         </div>
       </div>
 
-      <ul :if={@teams_with_stats != []} id="teams-list" class="divide-y divide-base-200">
-        <li :for={%{team: team, stats: s} <- @teams_with_stats} id={"team-#{team.id}"} class="py-3">
+      <ul
+        :if={@teams_with_stats != []}
+        id="teams-list"
+        class="-mx-4 border-y border-base-200 divide-y divide-base-200"
+      >
+        <li :for={%{team: team, stats: s} <- @teams_with_stats} id={"team-#{team.id}"}>
           <.link
             navigate={~p"/teams/#{team}"}
-            class="block hover:bg-base-200 rounded-md px-2 -mx-2 py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            class="min-h-9 flex flex-col justify-center px-4 py-1.5 hover:bg-base-200 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            <div class="font-medium text-base">{team.name}</div>
-            <div class="mt-1 text-sm text-base-content/70 flex flex-wrap gap-x-3 gap-y-1 tabular-nums">
+            <div class="font-medium text-sm leading-tight">{team.name}</div>
+            <div class="text-xs text-base-content/70 flex flex-wrap gap-x-2 gap-y-0.5 tabular-nums leading-tight">
               <span>{s.total_players} players</span>
               <span aria-hidden="true">·</span>
               <span>♂ {s.male_matching}</span>

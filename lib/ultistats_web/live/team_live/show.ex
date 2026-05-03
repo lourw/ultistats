@@ -78,42 +78,47 @@ defmodule UltistatsWeb.TeamLive.Show do
       </div>
 
       <section :if={@active_tab == :roster} class="mt-4 pb-24" aria-labelledby="tab-roster">
-        <ul :if={@members != []} id="team-roster" class="divide-y divide-base-300">
+        <ul
+          :if={@members != []}
+          id="team-roster"
+          class="-mx-4 border-y border-base-200 divide-y divide-base-200"
+        >
           <li
             :for={membership <- @members}
             id={"member-#{membership.id}"}
-            class="flex items-center justify-between gap-3 py-3"
+            class="min-h-9 flex items-center gap-2 px-4 py-0.5"
           >
-            <div class="flex items-center gap-3 min-w-0 flex-wrap">
-              <span class="inline-flex items-center justify-center w-8 h-7 px-1 rounded-full bg-base-200 text-base-content text-sm font-semibold tabular-nums shrink-0">
-                {membership.jersey_number || "—"}
-              </span>
-              <span class="font-medium truncate">{User.display_name(membership.user)}</span>
-              <span class="text-lg leading-none shrink-0" aria-hidden="true">
-                {gender_glyph(membership.user.gender_role)}
-              </span>
-              <span class="sr-only">{humanize_gender_role(membership.user.gender_role)}</span>
+            <span class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0">
+              {membership.jersey_number || "—"}
+            </span>
+            <span class="font-medium text-sm truncate flex-1 leading-tight">
+              {User.display_name(membership.user)}
+            </span>
+            <span class="text-sm leading-none shrink-0" aria-hidden="true">
+              {gender_glyph(membership.user.gender_role)}
+            </span>
+            <span class="sr-only">{humanize_gender_role(membership.user.gender_role)}</span>
 
-              <span
-                :if={membership.role == :admin}
-                class="inline-flex items-center rounded-full bg-primary/10 text-primary text-xs font-semibold px-2 py-0.5 shrink-0"
-              >
-                Admin
-              </span>
-              <span
-                :if={membership.is_player == false}
-                class="inline-flex items-center rounded-full bg-base-200 text-base-content/70 text-xs font-semibold px-2 py-0.5 shrink-0"
-              >
-                Non-player
-              </span>
-            </div>
+            <span
+              :if={membership.role == :admin}
+              class="inline-flex items-center rounded-full bg-primary/10 text-primary text-[10px] font-semibold px-1.5 py-0.5 shrink-0"
+            >
+              Admin
+            </span>
+            <span
+              :if={membership.is_player == false}
+              class="inline-flex items-center rounded-full bg-base-200 text-base-content/70 text-[10px] font-semibold px-1.5 py-0.5 shrink-0"
+            >
+              Non-player
+            </span>
+
             <.link
               :if={@is_admin?}
               navigate={~p"/members/#{membership.id}/edit?return_to=team"}
               aria-label={"Edit #{User.display_name(membership.user)}"}
-              class="shrink-0 min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              class="shrink-0 min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
-              <.icon name="hero-pencil-square" class="size-5" />
+              <.icon name="hero-pencil-square" class="size-4" />
             </.link>
           </li>
         </ul>
@@ -124,25 +129,27 @@ defmodule UltistatsWeb.TeamLive.Show do
       </section>
 
       <section :if={@active_tab == :presets} class="mt-4 pb-24" aria-labelledby="tab-presets">
-        <ul :if={@line_presets != []} id="team-line-presets" class="divide-y divide-base-300">
+        <ul
+          :if={@line_presets != []}
+          id="team-line-presets"
+          class="-mx-4 border-y border-base-200 divide-y divide-base-200"
+        >
           <li
             :for={preset <- @line_presets}
             id={"line-preset-#{preset.id}"}
-            class="flex items-center justify-between gap-3 py-3"
+            class="min-h-9 flex items-center gap-2 px-4 py-0.5"
           >
-            <div class="flex items-center gap-3 min-w-0">
-              <span class="inline-flex items-center justify-center min-w-8 h-7 px-2 rounded-full bg-base-200 text-base-content text-sm font-semibold tabular-nums shrink-0">
-                {length(preset.users)}
-              </span>
-              <span class="font-medium truncate">{preset.name}</span>
-            </div>
+            <span class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0">
+              {length(preset.users)}
+            </span>
+            <span class="font-medium text-sm truncate flex-1 leading-tight">{preset.name}</span>
             <.link
               :if={@is_admin?}
               navigate={~p"/line_presets/#{preset}/edit?return_to=team"}
               aria-label={"Edit #{preset.name}"}
-              class="shrink-0 min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              class="shrink-0 min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
-              <.icon name="hero-pencil-square" class="size-5" />
+              <.icon name="hero-pencil-square" class="size-4" />
             </.link>
           </li>
         </ul>

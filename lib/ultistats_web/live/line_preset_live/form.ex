@@ -288,16 +288,16 @@ defmodule UltistatsWeb.LinePresetLive.Form do
     assigns = assign(assigns, :selected_in_section, selected_in_section)
 
     ~H"""
-    <section>
-      <h3 class="flex items-center gap-2 text-lg font-semibold text-base-content mb-2">
-        <span class="text-xl leading-none" aria-hidden="true">{gender_glyph(@role)}</span>
+    <section class="space-y-1">
+      <h3 class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-base-content/60 px-4">
+        <span class="text-sm leading-none" aria-hidden="true">{gender_glyph(@role)}</span>
         <span>{role_label(@role)}</span>
-        <span class="tabular-nums text-sm font-medium text-base-content/60">
+        <span class="tabular-nums text-base-content/50">
           {@selected_in_section} of {length(@members)}
         </span>
       </h3>
 
-      <ul class="divide-y divide-base-300">
+      <ul class="-mx-4 border-y border-base-200 divide-y divide-base-200">
         <li :for={member <- @members} id={"preset-player-#{member.user_id}"}>
           <button
             type="button"
@@ -305,33 +305,31 @@ defmodule UltistatsWeb.LinePresetLive.Form do
             phx-value-id={member.user_id}
             aria-pressed={to_string(MapSet.member?(@selected_ids, member.user_id))}
             class={[
-              "w-full flex items-center justify-between gap-3 py-3 px-2 -mx-2 rounded-md",
-              "text-left transition-colors motion-reduce:transition-none",
+              "w-full min-h-9 px-4 py-0.5 flex items-center gap-2 text-left",
+              "transition-colors motion-reduce:transition-none active:bg-base-200",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-              if(MapSet.member?(@selected_ids, member.user_id),
-                do: "bg-primary/10 hover:bg-primary/15",
-                else: "hover:bg-base-200"
-              )
+              if(MapSet.member?(@selected_ids, member.user_id), do: "bg-primary/10", else: "")
             ]}
           >
-            <div class="flex items-center gap-3 min-w-0">
-              <span
-                :if={member.jersey_number}
-                class="inline-flex items-center justify-center w-8 h-7 px-1 rounded-full bg-base-200 text-base-content text-sm font-semibold tabular-nums shrink-0"
-              >
-                {member.jersey_number}
-              </span>
-              <span class="font-medium truncate">{User.display_name(member.user)}</span>
-            </div>
+            <span
+              :if={member.jersey_number}
+              class={[
+                "tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full text-[11px] shrink-0",
+                if(MapSet.member?(@selected_ids, member.user_id),
+                  do: "bg-primary text-primary-content",
+                  else: "bg-base-200 text-base-content"
+                )
+              ]}
+            >
+              {member.jersey_number}
+            </span>
+            <span class="font-medium text-sm truncate flex-1 leading-tight">
+              {User.display_name(member.user)}
+            </span>
             <.icon
               :if={MapSet.member?(@selected_ids, member.user_id)}
               name="hero-check-circle-solid"
-              class="size-5 text-primary shrink-0"
-            />
-            <span
-              :if={!MapSet.member?(@selected_ids, member.user_id)}
-              class="size-5 shrink-0"
-              aria-hidden="true"
+              class="size-4 text-primary shrink-0"
             />
           </button>
         </li>

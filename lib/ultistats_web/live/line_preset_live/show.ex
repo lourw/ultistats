@@ -31,9 +31,17 @@ defmodule UltistatsWeb.LinePresetLive.Show do
 
       <section class="mt-6">
         <h2 class="text-base font-semibold mb-3">Players</h2>
-        <ul :if={@line_preset.users != []} class="divide-y divide-base-300">
-          <li :for={user <- @line_preset.users} class="flex items-center gap-3 py-2">
-            <span class="font-medium">{User.display_name(user)}</span>
+        <ul
+          :if={@line_preset.users != []}
+          class="-mx-4 border-y border-base-200 divide-y divide-base-200"
+        >
+          <li
+            :for={user <- @line_preset.users}
+            class="min-h-9 flex items-center gap-2 px-4 py-0.5"
+          >
+            <span class="font-medium text-sm truncate flex-1 leading-tight">
+              {User.display_name(user)}
+            </span>
           </li>
         </ul>
         <p :if={@line_preset.users == []} class="text-base-content/70">
