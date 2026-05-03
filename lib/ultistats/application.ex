@@ -7,20 +7,21 @@ defmodule Ultistats.Application do
 
   @impl true
   def start(_type, _args) do
-    children = [
-      UltistatsWeb.Telemetry,
-      Ultistats.Repo,
-      {Ecto.Migrator,
-       repos: Application.fetch_env!(:ultistats, :ecto_repos), skip: skip_migrations?()},
-      seed_child_spec(),
-      {DNSCluster, query: Application.get_env(:ultistats, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: Ultistats.PubSub},
-      # Start a worker by calling: Ultistats.Worker.start_link(arg)
-      # {Ultistats.Worker, arg},
-      # Start to serve requests, typically the last entry
-      UltistatsWeb.Endpoint
-    ]
-    |> Enum.reject(&is_nil/1)
+    children =
+      [
+        UltistatsWeb.Telemetry,
+        Ultistats.Repo,
+        {Ecto.Migrator,
+         repos: Application.fetch_env!(:ultistats, :ecto_repos), skip: skip_migrations?()},
+        seed_child_spec(),
+        {DNSCluster, query: Application.get_env(:ultistats, :dns_cluster_query) || :ignore},
+        {Phoenix.PubSub, name: Ultistats.PubSub},
+        # Start a worker by calling: Ultistats.Worker.start_link(arg)
+        # {Ultistats.Worker, arg},
+        # Start to serve requests, typically the last entry
+        UltistatsWeb.Endpoint
+      ]
+      |> Enum.reject(&is_nil/1)
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options

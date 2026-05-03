@@ -12,6 +12,7 @@ defmodule Ultistats.Games do
   alias Ultistats.Repo
 
   alias Ultistats.Games.{Event, Game, Point}
+  alias Ultistats.Teams
   alias Ultistats.Teams.{Player, Team}
 
   # ---- USAU rule constants (single-format MVP) ----
@@ -324,6 +325,125 @@ defmodule Ultistats.Games do
 
   defp halftime_threshold(%Game{format: :usau_standard}), do: @usau_halftime_score
   defp hard_cap_threshold(%Game{format: :usau_standard}), do: @usau_hard_cap_score
+
+  # ===========================================================================
+  # Game summary
+  # ===========================================================================
+
+  @doc """
+  Returns the per-player summary for `game`. Soft-deleted events are
+  excluded (`deleted_at IS NULL`).
+
+  Shape:
+
+      %{
+        score: %{ours: integer, theirs: integer},
+        players: [
+          %{
+            player: %Ultistats.Teams.Player{},
+            goals: integer,
+            assists: integer,
+            blocks: integer,
+            turns: integer,
+            points_played: integer
+          }
+        ]
+      }
+
+  The `:players` list is the team's roster (so untracked players still
+  appear with all-zero rows). Order: by `jersey_number` ascending —
+  numeric jerseys sort numerically; non-numeric or missing jerseys sort
+  to the end.
+
+  Per-stat tallies count `e.type` matches on non-deleted events tied to
+  `game`'s points. `:points_played` counts points where the player's id
+  appears in the point's `our_line_snapshot["player_ids"]`. Player ids
+  that aren't on the team are ignored (defensive — they shouldn't be
+  there per `start_point/2`).
+  """
+  def summary_for_game(%Game{} = game) do
+    roster = Teams.list_players_for_team(game.team_id)
+    roster_ids = MapSet.new(roster, & &1.id)
+
+    points =
+      Repo.all(
+        from p in Point,
+          where: p.game_id == ^game.id,
+          select: %{
+            id: p.id,
+            our_line_snapshot: p.our_line_snapshot,
+            scoring_team: p.scoring_team
+          }
+      )
+
+    events =
+      Repo.all(
+        from e in Event,
+          join: p in Point,
+          on: p.id == e.point_id,
+          where: p.game_id == ^game.id and is_nil(e.deleted_at),
+          select: %{type: e.type, player_id: e.player_id}
+      )
+
+    # Per-player event tallies. Map of player_id => %{goal: n, assist: n, ...}.
+    event_tallies =
+      events
+      |> Enum.filter(&(not is_nil(&1.player_id) and MapSet.member?(roster_ids, &1.player_id)))
+      |> Enum.group_by(& &1.player_id)
+      |> Map.new(fn {pid, evs} ->
+        counts = Enum.frequencies_by(evs, & &1.type)
+        {pid, counts}
+      end)
+
+    # Per-player points-played tallies.
+    points_played_by_player =
+      Enum.reduce(points, %{}, fn point, acc ->
+        ids = snapshot_player_ids(point.our_line_snapshot)
+
+        Enum.reduce(ids, acc, fn pid, acc2 ->
+          if MapSet.member?(roster_ids, pid) do
+            Map.update(acc2, pid, 1, &(&1 + 1))
+          else
+            acc2
+          end
+        end)
+      end)
+
+    rows =
+      roster
+      |> Enum.sort_by(&jersey_sort_key/1)
+      |> Enum.map(fn player ->
+        counts = Map.get(event_tallies, player.id, %{})
+
+        %{
+          player: player,
+          goals: Map.get(counts, :goal, 0),
+          assists: Map.get(counts, :assist, 0),
+          blocks: Map.get(counts, :block, 0),
+          turns: Map.get(counts, :turn, 0),
+          points_played: Map.get(points_played_by_player, player.id, 0)
+        }
+      end)
+
+    %{score: score(game), players: rows}
+  end
+
+  defp snapshot_player_ids(%{"player_ids" => ids}) when is_list(ids), do: ids
+  defp snapshot_player_ids(_), do: []
+
+  # Sort key: {0, n} for numeric jerseys (so they come first in number
+  # order), {1, raw} for non-numeric strings (alphabetic among themselves
+  # but after all numbers), {2, ""} for missing. Keeps the comparator
+  # total even when the roster mixes numeric and non-numeric entries.
+  defp jersey_sort_key(%Player{jersey_number: nil}), do: {2, ""}
+  defp jersey_sort_key(%Player{jersey_number: ""}), do: {2, ""}
+
+  defp jersey_sort_key(%Player{jersey_number: n}) when is_binary(n) do
+    case Integer.parse(n) do
+      {int, ""} -> {0, int}
+      _ -> {1, n}
+    end
+  end
 
   # ===========================================================================
   # Internal helpers

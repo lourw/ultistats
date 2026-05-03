@@ -4,11 +4,15 @@ defmodule UltistatsWeb.GameLive.Show do
   bottom action bar, and player-attribution modal. Conforms to
   `docs/UI_DESIGN.md`.
 
-  Render branches off three pieces of state:
+  Render branches off two pieces of state:
 
-    * `game.status == :finished`        terminal "game over" view
     * `current_point != nil`            in-point view (action bar enabled)
     * otherwise                         between-points line picker
+
+  When the game is `:finished` (either pre-existing on mount or auto-ended
+  by a hard-cap goal), we `push_navigate` to `/games/:id/summary` rather
+  than render a terminal placeholder here — the summary screen owns the
+  post-game UX (`docs/MVP_SPEC.md` step 6).
 
   An overlay modal is rendered on top whenever `pending_event != nil`.
   """
@@ -20,30 +24,39 @@ defmodule UltistatsWeb.GameLive.Show do
   @impl true
   def mount(%{"id" => id}, _session, socket) do
     game = Games.get_game!(id)
-    team_players = Teams.list_players_for_team(game.team_id)
-    line_presets = Teams.list_line_presets_for_team(game.team_id)
-    current_point = Games.current_point(game)
-    score = Games.score(game)
-    events = if current_point, do: Games.events_for_point(current_point), else: []
 
-    {:ok,
-     socket
-     |> assign(:page_title, "Game vs #{game.opponent_name}")
-     |> assign(:game, game)
-     |> assign(:team_players, team_players)
-     |> assign(:line_presets, line_presets)
-     |> assign(:current_point, current_point)
-     |> assign(:score, score)
-     |> assign(:events, events)
-     |> assign(:selected_player_ids, MapSet.new())
-     |> assign(:selected_preset_id, nil)
-     |> assign(:pending_event, nil)
-     |> assign(:pending_goal_player_id, nil)
-     |> assign(:halftime_dismissed?, false)
-     # Disconnect-driven button-disable is a TODO; the connectivity flash
-     # banner from `Layouts.flash_group/1` already covers visual feedback.
-     # See task notes — leaving the assign at false until we wire a JS hook.
-     |> assign(:disconnected?, false)}
+    if game.status == :finished do
+      {:ok,
+       socket
+       |> assign(:page_title, "Game vs #{game.opponent_name}")
+       |> assign(:game, game)
+       |> push_navigate(to: ~p"/games/#{game.id}/summary")}
+    else
+      team_players = Teams.list_players_for_team(game.team_id)
+      line_presets = Teams.list_line_presets_for_team(game.team_id)
+      current_point = Games.current_point(game)
+      score = Games.score(game)
+      events = if current_point, do: Games.events_for_point(current_point), else: []
+
+      {:ok,
+       socket
+       |> assign(:page_title, "Game vs #{game.opponent_name}")
+       |> assign(:game, game)
+       |> assign(:team_players, team_players)
+       |> assign(:line_presets, line_presets)
+       |> assign(:current_point, current_point)
+       |> assign(:score, score)
+       |> assign(:events, events)
+       |> assign(:selected_player_ids, MapSet.new())
+       |> assign(:selected_preset_id, nil)
+       |> assign(:pending_event, nil)
+       |> assign(:pending_goal_player_id, nil)
+       |> assign(:halftime_dismissed?, false)
+       # Disconnect-driven button-disable is a TODO; the connectivity flash
+       # banner from `Layouts.flash_group/1` already covers visual feedback.
+       # See task notes — leaving the assign at false until we wire a JS hook.
+       |> assign(:disconnected?, false)}
+    end
   end
 
   ## ---------------------------------------------------------------------
@@ -51,6 +64,16 @@ defmodule UltistatsWeb.GameLive.Show do
   ## ---------------------------------------------------------------------
 
   @impl true
+  def render(%{game: %{status: :finished}} = assigns) do
+    # While push_navigate to /games/:id/summary is in flight, render a
+    # tiny placeholder so the framework always has markup to mount.
+    ~H"""
+    <Layouts.app flash={@flash}>
+      <p class="text-sm text-base-content/70 py-6">Loading summary…</p>
+    </Layouts.app>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
@@ -65,8 +88,6 @@ defmodule UltistatsWeb.GameLive.Show do
         />
 
         <%= cond do %>
-          <% @game.status == :finished -> %>
-            <.finished_view game={@game} score={@score} />
           <% @current_point -> %>
             <.in_point_view
               current_point={@current_point}
@@ -147,6 +168,13 @@ defmodule UltistatsWeb.GameLive.Show do
           </p>
         </div>
         <div class="flex items-center gap-2 shrink-0">
+          <.link
+            navigate={~p"/games/#{@game.id}/summary"}
+            aria-label="Open game summary"
+            class="min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg border-2 border-base-300 bg-base-100 text-base-content active:bg-base-200 transition-colors motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <.icon name="hero-chart-bar" class="size-5" />
+          </.link>
           <.link
             navigate={~p"/games/#{@game.id}/timeline"}
             aria-label="Open timeline"
@@ -452,32 +480,6 @@ defmodule UltistatsWeb.GameLive.Show do
     """
   end
 
-  # Terminal "game over" view. Task 11 replaces this with the proper
-  # summary route at `/games/:id/summary`.
-  attr :game, :map, required: true
-  attr :score, :map, required: true
-
-  defp finished_view(assigns) do
-    ~H"""
-    <section class="flex-1 py-8 space-y-4 text-center" aria-label="Game finished">
-      <.icon name="hero-trophy-solid" class="size-12 text-success mx-auto" />
-      <h2 class="text-2xl font-bold">Game finished</h2>
-      <p class="text-lg tabular-nums">
-        Final score: <span class="font-bold">{@score.ours}–{@score.theirs}</span>
-        vs {@game.opponent_name}
-      </p>
-      <p class="text-sm text-base-content/70">
-        Per-player tallies will land with the summary screen.
-      </p>
-      <div class="pt-2">
-        <.button navigate={~p"/teams/#{@game.team_id}"}>
-          <.icon name="hero-arrow-left" /> Back to team
-        </.button>
-      </div>
-    </section>
-    """
-  end
-
   ## ---------------------------------------------------------------------
   ## events
   ## ---------------------------------------------------------------------
@@ -679,8 +681,13 @@ defmodule UltistatsWeb.GameLive.Show do
 
     if Games.hard_cap_reached?(game) do
       case Games.end_game(game) do
-        {:ok, finished} -> assign(socket, :game, finished)
-        _ -> socket
+        {:ok, finished} ->
+          socket
+          |> assign(:game, finished)
+          |> push_navigate(to: ~p"/games/#{finished.id}/summary")
+
+        _ ->
+          socket
       end
     else
       socket

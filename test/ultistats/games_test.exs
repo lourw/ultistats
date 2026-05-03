@@ -509,4 +509,126 @@ defmodule Ultistats.GamesTest do
       assert reloaded.player_id == nil
     end
   end
+
+  describe "summary_for_game/1" do
+    setup do
+      team = team_fixture()
+      game = game_fixture(team_id: team.id)
+
+      # Numeric jerseys: 3, 7, 11; plus a nil-jersey player (sorts last).
+      pa = player_fixture(team_id: team.id, first_name: "Ada", last_name: "A", jersey_number: "7")
+
+      pb =
+        player_fixture(team_id: team.id, first_name: "Bea", last_name: "B", jersey_number: "11")
+
+      pc = player_fixture(team_id: team.id, first_name: "Cal", last_name: "C", jersey_number: "3")
+      pd = player_fixture(team_id: team.id, first_name: "Dee", last_name: "D", jersey_number: nil)
+
+      %{team: team, game: game, pa: pa, pb: pb, pc: pc, pd: pd}
+    end
+
+    test "empty game returns 0/0 score and all-zero rows", %{game: game} do
+      summary = Games.summary_for_game(game)
+      assert summary.score == %{ours: 0, theirs: 0}
+      assert length(summary.players) == 4
+
+      Enum.each(summary.players, fn row ->
+        assert row.goals == 0
+        assert row.assists == 0
+        assert row.blocks == 0
+        assert row.turns == 0
+        assert row.points_played == 0
+      end)
+    end
+
+    test "tallies a goal for the scorer and our score", %{game: game, pa: pa, pb: pb} do
+      {:ok, point} = Games.start_point(game, [pa.id, pb.id])
+      {:ok, _} = Games.record_event(point, :goal, pa.id)
+      {:ok, _} = Games.end_point(point, :ours)
+
+      summary = Games.summary_for_game(game)
+      assert summary.score == %{ours: 1, theirs: 0}
+
+      a_row = Enum.find(summary.players, &(&1.player.id == pa.id))
+      b_row = Enum.find(summary.players, &(&1.player.id == pb.id))
+
+      assert a_row.goals == 1
+      assert b_row.goals == 0
+      # Both played the point.
+      assert a_row.points_played == 1
+      assert b_row.points_played == 1
+    end
+
+    test "soft-deleted events drop out of the tally", %{game: game, pa: pa} do
+      {:ok, point} = Games.start_point(game, [pa.id])
+      {:ok, event} = Games.record_event(point, :goal, pa.id)
+      {:ok, _} = Games.end_point(point, :ours)
+      {:ok, _} = Games.soft_delete_event(event)
+
+      summary = Games.summary_for_game(game)
+      a_row = Enum.find(summary.players, &(&1.player.id == pa.id))
+      assert a_row.goals == 0
+      # Score also drops back to 0 since `:ours` is event-driven.
+      assert summary.score.ours == 0
+    end
+
+    test "points_played counts snapshot membership even with no events", %{
+      game: game,
+      pa: pa,
+      pb: pb
+    } do
+      {:ok, point1} = Games.start_point(game, [pa.id, pb.id])
+      {:ok, _} = Games.end_point(point1, :theirs)
+
+      {:ok, point2} = Games.start_point(game, [pa.id])
+      {:ok, _} = Games.end_point(point2, :theirs)
+
+      summary = Games.summary_for_game(game)
+      a_row = Enum.find(summary.players, &(&1.player.id == pa.id))
+      b_row = Enum.find(summary.players, &(&1.player.id == pb.id))
+
+      assert a_row.points_played == 2
+      assert b_row.points_played == 1
+      assert a_row.goals == 0
+      assert summary.score == %{ours: 0, theirs: 2}
+    end
+
+    test "cross-team ids in a snapshot are ignored defensively", %{
+      team: team,
+      game: game,
+      pa: pa
+    } do
+      other_team = team_fixture()
+      stranger = player_fixture(team_id: other_team.id, jersey_number: "99")
+
+      # Bypass start_point/2's filter to simulate a corrupt snapshot.
+      _point =
+        point_fixture(
+          game_id: game.id,
+          our_line_snapshot: %{"player_ids" => [pa.id, stranger.id]}
+        )
+
+      summary = Games.summary_for_game(game)
+      # stranger doesn't appear in players (roster-scoped).
+      refute Enum.any?(summary.players, &(&1.player.id == stranger.id))
+      a_row = Enum.find(summary.players, &(&1.player.id == pa.id))
+      assert a_row.points_played == 1
+
+      # silence unused
+      _ = team
+    end
+
+    test "players sort by jersey ascending; nil jersey last", %{
+      game: game,
+      pa: pa,
+      pb: pb,
+      pc: pc,
+      pd: pd
+    } do
+      summary = Games.summary_for_game(game)
+      ids_in_order = Enum.map(summary.players, & &1.player.id)
+      # Numeric: 3 (pc), 7 (pa), 11 (pb), then nil-jersey pd.
+      assert ids_in_order == [pc.id, pa.id, pb.id, pd.id]
+    end
+  end
 end

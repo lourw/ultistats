@@ -344,7 +344,7 @@ defmodule UltistatsWeb.GameLiveTest do
       assert html =~ "8–0"
     end
 
-    test "hard cap auto-ends the game and renders terminal state", %{
+    test "hard cap auto-ends the game and pushes to summary", %{
       conn: conn,
       game: game,
       players: players,
@@ -354,7 +354,7 @@ defmodule UltistatsWeb.GameLiveTest do
       # hard cap via the in-LiveView code path.
       score_n_points_for_us(game, players, 14)
 
-      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
+      {:ok, _point} = Games.start_point(game, Enum.map(players, & &1.id))
 
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
 
@@ -365,23 +365,17 @@ defmodule UltistatsWeb.GameLiveTest do
       |> element("#player-picker-modal button[phx-value-id='#{scorer.id}']")
       |> render_click()
 
-      live |> element("button[phx-click='skip_assist']") |> render_click()
+      assert {:error, {:live_redirect, %{to: to}}} =
+               live |> element("button[phx-click='skip_assist']") |> render_click()
+
+      assert to == ~p"/games/#{game.id}/summary"
 
       reloaded = Repo.get!(Ultistats.Games.Game, game.id)
       assert reloaded.status == :finished
       assert reloaded.ended_at
-
-      html = render(live)
-      assert html =~ "Game finished"
-      assert html =~ "Final score:"
-      # Make sure we don't keep rendering the action bar.
-      refute html =~ ~s(phx-click="start_point")
-
-      # silence unused
-      _ = point
     end
 
-    test "mounting a finished game renders the terminal state directly", %{
+    test "mounting a finished game push_navigates to the summary route", %{
       conn: conn,
       team: team,
       players: players
@@ -395,10 +389,8 @@ defmodule UltistatsWeb.GameLiveTest do
       score_n_points_for_us(game, players, 15)
       {:ok, _finished} = Games.end_game(Repo.get!(Ultistats.Games.Game, game.id))
 
-      {:ok, _live, html} = live(conn, ~p"/games/#{game.id}")
-
-      assert html =~ "Game finished"
-      assert html =~ "15"
+      assert {:error, {:live_redirect, %{to: to}}} = live(conn, ~p"/games/#{game.id}")
+      assert to == ~p"/games/#{game.id}/summary"
     end
   end
 
@@ -630,6 +622,89 @@ defmodule UltistatsWeb.GameLiveTest do
 
       assert html =~ "isn&#39;t on this team"
       assert Repo.get!(Event, event.id).player_id == p1.id
+    end
+  end
+
+  describe "Summary" do
+    setup do
+      team = team_fixture()
+      players = build_players(team, 3)
+      game = game_fixture(%{team_id: team.id, opponent_name: "Stormcrows"})
+      %{team: team, players: players, game: game}
+    end
+
+    test "in-progress game shows status 'In progress' and the running score", %{
+      conn: conn,
+      game: game,
+      players: players
+    } do
+      [scorer | _] = players
+      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
+      {:ok, _} = Games.record_event(point, :goal, scorer.id)
+      {:ok, _} = Games.end_point(point, :ours)
+
+      {:ok, live, html} = live(conn, ~p"/games/#{game.id}/summary")
+
+      assert html =~ "Summary"
+      assert html =~ "Stormcrows"
+      assert has_element?(live, "[role='status']", "In progress")
+      # All three roster players show up by display name.
+      Enum.each(players, fn p ->
+        assert html =~ "Player Number#{p.jersey_number}"
+      end)
+
+      # Continue tracking CTA only on in-progress.
+      assert html =~ "Continue tracking"
+    end
+
+    test "finished game shows status 'Final' and no Continue CTA", %{
+      conn: conn,
+      game: game,
+      players: players
+    } do
+      score_n_points_for_us(game, players, 1)
+      {:ok, _} = Games.end_game(Repo.get!(Ultistats.Games.Game, game.id))
+
+      {:ok, live, html} = live(conn, ~p"/games/#{game.id}/summary")
+
+      assert has_element?(live, "[role='status']", "Final")
+      refute html =~ "Continue tracking"
+    end
+
+    test "renders the per-player table with a goal tally for the scorer", %{
+      conn: conn,
+      game: game,
+      players: players
+    } do
+      [scorer | _] = players
+      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
+      {:ok, _} = Games.record_event(point, :goal, scorer.id)
+      {:ok, _} = Games.end_point(point, :ours)
+
+      {:ok, live, _html} = live(conn, ~p"/games/#{game.id}/summary")
+
+      # Scorer row contains the display name. The numeric tallies live
+      # in the same row.
+      assert has_element?(live, "tr", "Player Number#{scorer.jersey_number}")
+    end
+
+    test "soft-deleted goal does not show in the tally", %{
+      conn: conn,
+      game: game,
+      players: players
+    } do
+      [scorer | _] = players
+      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
+      {:ok, event} = Games.record_event(point, :goal, scorer.id)
+      {:ok, _} = Games.end_point(point, :ours)
+      {:ok, _} = Games.soft_delete_event(event)
+
+      {:ok, _live, _html} = live(conn, ~p"/games/#{game.id}/summary")
+
+      summary = Games.summary_for_game(Repo.get!(Ultistats.Games.Game, game.id))
+      scorer_row = Enum.find(summary.players, &(&1.player.id == scorer.id))
+      assert scorer_row.goals == 0
+      assert summary.score.ours == 0
     end
   end
 

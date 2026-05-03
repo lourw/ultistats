@@ -37,6 +37,7 @@ defmodule UltistatsWeb.Router do
     live "/games/new", GameLive.Start, :new
     live "/games/:id", GameLive.Show, :show
     live "/games/:id/timeline", GameLive.Timeline, :index
+    live "/games/:id/summary", GameLive.Summary, :show
   end
 
   # Other scopes may use custom stacks.
