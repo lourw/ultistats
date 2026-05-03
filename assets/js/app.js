@@ -70,11 +70,12 @@ const ScrollAwareNav = {
   },
 }
 
-// Copy a stub-claim URL (read off `data-claim-url`) to the clipboard.
-// Used by team-show roster rows so an admin can grab a claim link in
-// one tap. Falls back to a transient flash dispatch if the Clipboard
-// API isn't available (older mobile WebViews, insecure contexts).
-const CopyClaimLink = {
+// Copy a team-join URL (read off `data-claim-url`) to the clipboard.
+// Used by the team-show header so an admin can grab the team's join
+// link in one tap. Falls back to a transient flash dispatch if the
+// Clipboard API isn't available (older mobile WebViews, insecure
+// contexts).
+const CopyJoinLink = {
   mounted() {
     this._onClick = async () => {
       const url = this.el.getAttribute("data-claim-url")
@@ -123,7 +124,7 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, ScrollAwareNav, CopyClaimLink},
+  hooks: {...colocatedHooks, ScrollAwareNav, CopyJoinLink},
 })
 
 // Show progress bar on live navigation and form submits

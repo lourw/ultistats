@@ -1,0 +1,109 @@
+<Layouts.app flash={@flash} current_scope={@current_scope}>
+  <div class="mx-auto max-w-md space-y-8">
+    <.header>
+      Join {@team.name}
+      <:subtitle>
+        Pick your existing player below, or add yourself as a new player on the roster.
+      </:subtitle>
+    </.header>
+
+    <section :if={@stubs != []} class="space-y-3">
+      <h2 class="text-sm font-semibold text-base-content/70 uppercase tracking-wide">
+        Are you one of these players?
+      </h2>
+
+      <ul class="-mx-4 border-y border-base-200 divide-y divide-base-200">
+        <li
+          :for={membership <- @stubs}
+          id={"join-stub-#{membership.id}"}
+          class="flex items-center gap-3 px-4 py-2"
+        >
+          <span class="tabular-nums font-semibold inline-flex items-center justify-center size-7 rounded-full bg-base-200 text-base-content text-xs shrink-0">
+            {Teams.resolved_jersey_number(membership) || "—"}
+          </span>
+          <span class="font-medium text-base flex-1 truncate">
+            {User.display_name(membership.user)}
+          </span>
+          <.link
+            href={~p"/join/#{@token}/claim/#{membership.id}"}
+            class="shrink-0 min-h-11 px-3 py-2 rounded-md text-sm font-semibold bg-primary text-primary-content active:bg-primary/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary inline-flex items-center"
+          >
+            That's me
+          </.link>
+        </li>
+      </ul>
+    </section>
+
+    <p :if={@stubs == []} class="text-sm text-base-content/70">
+      No unclaimed players on this team yet — add yourself as a new player below.
+    </p>
+
+    <section class="space-y-3">
+      <h2 class="text-sm font-semibold text-base-content/70 uppercase tracking-wide">
+        Or add yourself as a new player
+      </h2>
+
+      <.form
+        for={@form}
+        action={~p"/join/#{@token}/create"}
+        method="post"
+        class="space-y-4"
+      >
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="space-y-1">
+            <label for="member_first_name" class="block text-sm font-medium text-base-content">
+              First name
+            </label>
+            <.input field={@form[:first_name]} type="text" autocomplete="given-name" />
+          </div>
+          <div class="space-y-1">
+            <label for="member_last_name" class="block text-sm font-medium text-base-content">
+              Last name
+            </label>
+            <.input field={@form[:last_name]} type="text" autocomplete="family-name" />
+          </div>
+        </div>
+
+        <div class="space-y-1">
+          <p class="block text-sm font-medium text-base-content">Gender</p>
+          <.gender_radio field={@form[:gender_role]} />
+          <p
+            :for={msg <- Enum.map(@form[:gender_role].errors, &translate_error(&1))}
+            class="mt-1 text-xs text-error"
+          >
+            {msg}
+          </p>
+        </div>
+
+        <div class="space-y-1">
+          <p class="block text-sm font-medium text-base-content">Position</p>
+          <.position_radio field={@form[:position]} />
+          <p
+            :for={msg <- Enum.map(@form[:position].errors, &translate_error(&1))}
+            class="mt-1 text-xs text-error"
+          >
+            {msg}
+          </p>
+        </div>
+
+        <div class="space-y-1">
+          <label for="member_jersey_number" class="block text-sm font-medium text-base-content">
+            Jersey number
+          </label>
+          <.input
+            field={@form[:jersey_number]}
+            type="text"
+            inputmode="numeric"
+            maxlength="4"
+          />
+        </div>
+
+        <footer class="flex items-center gap-3 pt-2">
+          <.button type="submit" variant="primary" phx-disable-with="Joining...">
+            Join {@team.name}
+          </.button>
+        </footer>
+      </.form>
+    </section>
+  </div>
+</Layouts.app>

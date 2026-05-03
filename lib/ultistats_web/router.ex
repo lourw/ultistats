@@ -22,10 +22,12 @@ defmodule UltistatsWeb.Router do
 
     get "/", PageController, :home
 
-    # Stub-claim flow — public landing page (the recipient may not be
-    # logged in yet). The POST handler enforces auth itself.
-    get "/claim/:token", UserClaimController, :show
-    post "/claim/:token", UserClaimController, :create
+    # Team-join flow — public landing page (the recipient may not be
+    # logged in yet). The POST handlers enforce auth themselves.
+    get "/join/:token", TeamJoinController, :show
+    get "/join/:token/claim/:membership_id", TeamJoinController, :claim_show
+    post "/join/:token/claim/:membership_id", TeamJoinController, :claim
+    post "/join/:token/create", TeamJoinController, :create
   end
 
   ## App routes — require an authenticated user

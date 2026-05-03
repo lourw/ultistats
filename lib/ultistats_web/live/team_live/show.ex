@@ -1,7 +1,6 @@
 defmodule UltistatsWeb.TeamLive.Show do
   use UltistatsWeb, :live_view
 
-  alias Ultistats.Accounts
   alias Ultistats.Accounts.User
   alias Ultistats.Teams
 
@@ -21,6 +20,17 @@ defmodule UltistatsWeb.TeamLive.Show do
           {@team.name}
         </span>
         <:actions>
+          <button
+            :if={@is_admin?}
+            type="button"
+            phx-hook="CopyJoinLink"
+            id={"team-#{@team.id}-copy-join-link"}
+            data-claim-url={join_url(@team)}
+            aria-label={"Copy join link for #{@team.name}"}
+            class="min-h-11 inline-flex items-center gap-2 px-3 rounded-md text-sm font-semibold border border-base-300 text-base-content/80 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <.icon name="hero-link" class="size-4" /> Copy join link
+          </button>
           <.button
             :if={@is_admin?}
             variant="primary"
@@ -81,29 +91,41 @@ defmodule UltistatsWeb.TeamLive.Show do
       <section :if={@active_tab == :roster} class="mt-4 pb-24" aria-labelledby="tab-roster">
         <div
           :if={@players != [] or @non_players != []}
-          class="flex items-center justify-end gap-1 mb-2"
+          class="flex items-center gap-2 flex-wrap mb-2"
         >
-          <span class="text-[11px] uppercase tracking-wide text-base-content/60 mr-1">
-            Sort
-          </span>
-          <button
-            type="button"
-            phx-click="set_member_sort"
-            phx-value-sort="jersey"
-            aria-pressed={to_string(@member_sort == :jersey)}
-            class={sort_chip_classes(@member_sort == :jersey)}
-          >
-            Jersey
-          </button>
-          <button
-            type="button"
-            phx-click="set_member_sort"
-            phx-value-sort="first_name"
-            aria-pressed={to_string(@member_sort == :first_name)}
-            class={sort_chip_classes(@member_sort == :first_name)}
-          >
-            First name
-          </button>
+          <div class="flex items-center gap-1" role="radiogroup" aria-label="Sort members">
+            <span class="text-[11px] uppercase tracking-wide text-base-content/60 mr-1">
+              Sort
+            </span>
+            <button
+              type="button"
+              phx-click="set_member_sort"
+              phx-value-sort="jersey"
+              aria-pressed={to_string(@member_sort == :jersey)}
+              class={sort_chip_classes(@member_sort == :jersey)}
+            >
+              Jersey
+            </button>
+            <button
+              type="button"
+              phx-click="set_member_sort"
+              phx-value-sort="first_name"
+              aria-pressed={to_string(@member_sort == :first_name)}
+              class={sort_chip_classes(@member_sort == :first_name)}
+            >
+              First name
+            </button>
+          </div>
+
+          <label class="ml-auto inline-flex items-center gap-1.5 cursor-pointer text-[11px]">
+            <input
+              type="checkbox"
+              phx-click="toggle_split_by_position"
+              checked={@split_by_position?}
+              class="checkbox checkbox-xs checkbox-primary"
+            />
+            <span class="text-base-content/70">Split by position</span>
+          </label>
         </div>
 
         <div :if={@players != []} id="team-roster-players" class="space-y-4">
@@ -117,6 +139,7 @@ defmodule UltistatsWeb.TeamLive.Show do
               |> sort_members(@member_sort)
             }
             is_admin?={@is_admin?}
+            split_by_position?={@split_by_position?}
           />
         </div>
 
@@ -145,17 +168,6 @@ defmodule UltistatsWeb.TeamLive.Show do
               >
                 Admin
               </span>
-              <button
-                :if={@is_admin? and is_nil(membership.user.claimed_at)}
-                type="button"
-                phx-hook="CopyClaimLink"
-                id={"claim-link-non-player-#{membership.id}"}
-                data-claim-url={claim_url(membership.user)}
-                aria-label={"Copy claim link for #{User.display_name(membership.user)}"}
-                class="shrink-0 min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              >
-                <.icon name="hero-link" class="size-4" />
-              </button>
               <.link
                 :if={@is_admin?}
                 navigate={~p"/members/#{membership.id}/edit?return_to=team"}
@@ -179,30 +191,60 @@ defmodule UltistatsWeb.TeamLive.Show do
           id="team-line-presets"
           class="-mx-4 border-y border-base-200 divide-y divide-base-200"
         >
-          <li
-            :for={preset <- @line_presets}
-            id={"line-preset-#{preset.id}"}
-            class="min-h-9 flex items-center gap-2 px-4 py-0.5"
-          >
-            <span class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0">
-              {length(preset.users)}
-            </span>
-            <span class="font-medium text-sm truncate flex-1 leading-tight">{preset.name}</span>
-            <span
-              class="text-[11px] tabular-nums text-base-content/60 shrink-0 inline-flex items-center gap-1.5"
-              aria-label={"#{role_count(preset, :male_matching)} male-matching, #{role_count(preset, :female_matching)} female-matching"}
-            >
-              <span aria-hidden="true">♂</span> {role_count(preset, :male_matching)}
-              <span aria-hidden="true">♀</span> {role_count(preset, :female_matching)}
-            </span>
-            <.link
-              :if={@is_admin?}
-              navigate={~p"/line_presets/#{preset}/edit?return_to=team"}
-              aria-label={"Edit #{preset.name}"}
-              class="shrink-0 min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            >
-              <.icon name="hero-pencil-square" class="size-4" />
-            </.link>
+          <li :for={preset <- @line_presets} id={"line-preset-#{preset.id}"}>
+            <details class="group">
+              <summary class="min-h-9 flex items-center gap-2 px-4 py-0.5 cursor-pointer list-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+                <.icon
+                  name="hero-chevron-right"
+                  class="size-3.5 shrink-0 text-base-content/40 transition-transform group-open:rotate-90 motion-reduce:transition-none"
+                />
+                <span class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0">
+                  {length(preset.users)}
+                </span>
+                <span class="font-medium text-sm truncate flex-1 leading-tight">
+                  {preset.name}
+                </span>
+                <span
+                  class="text-[11px] tabular-nums text-base-content/60 shrink-0 inline-flex items-center gap-1.5"
+                  aria-label={"#{role_count(preset, :male_matching)} male-matching, #{role_count(preset, :female_matching)} female-matching"}
+                >
+                  <span aria-hidden="true">♂</span> {role_count(preset, :male_matching)}
+                  <span aria-hidden="true">♀</span> {role_count(preset, :female_matching)}
+                </span>
+                <.link
+                  :if={@is_admin?}
+                  navigate={~p"/line_presets/#{preset}/edit?return_to=team"}
+                  aria-label={"Edit #{preset.name}"}
+                  onclick="event.stopPropagation()"
+                  class="shrink-0 min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                >
+                  <.icon name="hero-pencil-square" class="size-4" />
+                </.link>
+              </summary>
+
+              <ul
+                :if={preset.users != []}
+                class="px-4 pb-2 pl-12 space-y-0.5"
+                aria-label={"Players on #{preset.name}"}
+              >
+                <li
+                  :for={user <- preset.users}
+                  class="min-h-7 flex items-center gap-2 text-xs text-base-content/80"
+                >
+                  <span aria-hidden="true" class="text-base-content/40">
+                    {gender_glyph(user.gender_role)}
+                  </span>
+                  <span class="truncate">{User.display_name(user)}</span>
+                </li>
+              </ul>
+
+              <p
+                :if={preset.users == []}
+                class="px-4 pb-2 pl-12 text-xs italic text-base-content/60"
+              >
+                No players on this line yet.
+              </p>
+            </details>
           </li>
         </ul>
 
@@ -248,6 +290,7 @@ defmodule UltistatsWeb.TeamLive.Show do
        |> assign(:is_admin?, Teams.user_admin_of?(user, team))
        |> assign(:active_tab, :roster)
        |> assign(:member_sort, :jersey)
+       |> assign(:split_by_position?, false)
        |> assign(:players, players)
        |> assign(:non_players, non_players)
        |> assign(:line_presets, Teams.list_line_presets_for_team(team))}
@@ -273,11 +316,25 @@ defmodule UltistatsWeb.TeamLive.Show do
     {:noreply, assign(socket, :member_sort, String.to_existing_atom(sort))}
   end
 
+  def handle_event("toggle_split_by_position", _params, socket) do
+    {:noreply, assign(socket, :split_by_position?, not socket.assigns.split_by_position?)}
+  end
+
   attr :role, :atom, required: true, values: [:male_matching, :female_matching]
   attr :members, :list, required: true
   attr :is_admin?, :boolean, required: true
+  attr :split_by_position?, :boolean, required: true
 
   defp roster_section(assigns) do
+    groups =
+      if assigns.split_by_position? do
+        position_groups(assigns.members)
+      else
+        [{nil, assigns.members}]
+      end
+
+    assigns = assign(assigns, :groups, groups)
+
     ~H"""
     <section class="space-y-1">
       <h3 class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
@@ -288,51 +345,101 @@ defmodule UltistatsWeb.TeamLive.Show do
         </span>
       </h3>
 
-      <ul class="-mx-4 border-y border-base-200 divide-y divide-base-200">
-        <li
-          :for={membership <- @members}
-          id={"member-#{membership.id}"}
-          class="min-h-9 flex items-center gap-2 px-4 py-0.5"
+      <div :for={{position, members} <- @groups} class="space-y-1">
+        <h4
+          :if={@split_by_position?}
+          class="-mx-4 flex items-center gap-1.5 px-4 py-1 text-[10px] font-semibold uppercase tracking-wide bg-base-200 text-base-content/70"
         >
-          <span class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0">
-            {Teams.resolved_jersey_number(membership) || "—"}
+          <span class={[
+            "inline-flex items-center justify-center size-4 rounded-full text-[10px] font-semibold",
+            position_pill_classes(position)
+          ]}>
+            {position_letter(position)}
           </span>
-          <span class="font-medium text-sm truncate flex-1 leading-tight">
-            {User.display_name(membership.user)}
-          </span>
-          <span
-            :if={membership.role == :admin}
-            class="inline-flex items-center rounded-full bg-primary/10 text-primary text-[10px] font-semibold px-1.5 py-0.5 shrink-0"
+          <span>{humanize_position(position) || "Unspecified"}</span>
+        </h4>
+
+        <ul class="-mx-4 border-y border-base-200 divide-y divide-base-200">
+          <li
+            :for={membership <- members}
+            id={"member-#{membership.id}"}
+            class="min-h-9 flex items-center gap-2 px-4 py-0.5"
           >
-            Admin
-          </span>
-          <button
-            :if={@is_admin? and is_nil(membership.user.claimed_at)}
-            type="button"
-            phx-hook="CopyClaimLink"
-            id={"claim-link-#{membership.id}"}
-            data-claim-url={claim_url(membership.user)}
-            aria-label={"Copy claim link for #{User.display_name(membership.user)}"}
-            class="shrink-0 min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            <.icon name="hero-link" class="size-4" />
-          </button>
-          <.link
-            :if={@is_admin?}
-            navigate={~p"/members/#{membership.id}/edit?return_to=team"}
-            aria-label={"Edit #{User.display_name(membership.user)}"}
-            class="shrink-0 min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            <.icon name="hero-pencil-square" class="size-4" />
-          </.link>
-        </li>
-      </ul>
+            <span class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0">
+              {Teams.resolved_jersey_number(membership) || "—"}
+            </span>
+            <span class="flex items-center gap-1.5 flex-1 min-w-0">
+              <span class="font-medium text-sm truncate leading-tight">
+                {User.display_name(membership.user)}
+              </span>
+              <span
+                :if={pos = Teams.resolved_position(membership)}
+                class={[
+                  "inline-flex items-center justify-center size-5 rounded-full shrink-0",
+                  "text-[10px] font-semibold tabular-nums",
+                  position_pill_classes(pos)
+                ]}
+                aria-label={humanize_position(pos)}
+                title={humanize_position(pos)}
+              >
+                {position_letter(pos)}
+              </span>
+            </span>
+            <span
+              :if={membership.role == :admin}
+              class="inline-flex items-center rounded-full bg-primary/10 text-primary text-[10px] font-semibold px-1.5 py-0.5 shrink-0"
+            >
+              Admin
+            </span>
+            <.link
+              :if={@is_admin?}
+              navigate={~p"/members/#{membership.id}/edit?return_to=team"}
+              aria-label={"Edit #{User.display_name(membership.user)}"}
+              class="shrink-0 min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              <.icon name="hero-pencil-square" class="size-4" />
+            </.link>
+          </li>
+        </ul>
+      </div>
     </section>
     """
   end
 
-  defp claim_url(user) do
-    ~p"/claim/#{Accounts.generate_stub_claim_token(user)}"
+  defp position_groups(members) do
+    grouped =
+      Enum.group_by(members, fn m ->
+        Teams.resolved_position(m) || :unspecified
+      end)
+
+    [:handler, :cutter, :hybrid, :unspecified]
+    |> Enum.map(fn key ->
+      {if(key == :unspecified, do: nil, else: key), Map.get(grouped, key, [])}
+    end)
+    |> Enum.reject(fn {_, members} -> members == [] end)
+  end
+
+  defp position_letter(:handler), do: "H"
+  defp position_letter(:cutter), do: "C"
+  defp position_letter(:hybrid), do: "X"
+  defp position_letter(_), do: "?"
+
+  defp position_pill_classes(:handler), do: "bg-success/15 text-success"
+  defp position_pill_classes(:cutter), do: "bg-warning/15 text-warning"
+  defp position_pill_classes(:hybrid), do: "bg-info/15 text-info"
+  defp position_pill_classes(_), do: "bg-base-200 text-base-content/70"
+
+  defp humanize_position(:handler), do: "Handler"
+  defp humanize_position(:cutter), do: "Cutter"
+  defp humanize_position(:hybrid), do: "Hybrid"
+
+  defp humanize_position(other) when is_atom(other),
+    do: other |> Atom.to_string() |> String.capitalize()
+
+  defp humanize_position(_), do: nil
+
+  defp join_url(team) do
+    ~p"/join/#{Teams.generate_team_join_token(team)}"
   end
 
   defp sort_chip_classes(true),

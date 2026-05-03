@@ -9,6 +9,12 @@ defmodule Ultistats.Teams do
   alias Ultistats.Accounts.User
   alias Ultistats.Teams.{LinePreset, Team, TeamMembership}
 
+  # Team-join tokens are stateless — `Phoenix.Token.sign/3` carries the
+  # team's id signed by the endpoint secret. 30 days is long enough for
+  # an admin to share a copied link without keeping a token table around.
+  @team_join_salt "team join"
+  @team_join_max_age 60 * 60 * 24 * 30
+
   @doc """
   Returns the list of teams.
 
@@ -311,6 +317,189 @@ defmodule Ultistats.Teams do
       preload: [user: u]
     )
     |> Repo.all()
+  end
+
+  @doc """
+  Returns the team's memberships whose underlying user is a true stub
+  — i.e. has no `:hashed_password` (cannot log in) AND no `:claimed_at`.
+  Preloaded with `:user`, ordered by jersey number then by user
+  last_name. Used by the public team-join page so a visitor can pick
+  the stub that represents them.
+
+  Filtering on `is_nil(u.hashed_password)` is important: a real
+  registered user who joined directly via the new-player flow also has
+  `claimed_at == nil` (the field is only set during the stub-claim
+  process), but they should never appear in the picker. The stub
+  contract (see `Ultistats.Accounts` moduledoc) is: stubs have a
+  sentinel email, no password hash, and no claimed_at.
+  """
+  def list_unclaimed_stub_memberships_for_team(%Team{id: team_id}),
+    do: list_unclaimed_stub_memberships_for_team(team_id)
+
+  def list_unclaimed_stub_memberships_for_team(team_id) when is_binary(team_id) do
+    from(m in TeamMembership,
+      join: u in User,
+      on: u.id == m.user_id,
+      where:
+        m.team_id == ^team_id and
+          is_nil(u.claimed_at) and
+          is_nil(u.hashed_password),
+      order_by: [asc: m.jersey_number, asc: u.last_name],
+      preload: [user: u]
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Signs a stateless join token for `team`. Admins copy a single
+  `/join/:token` URL off the team page and share it; recipients land on
+  the join controller and either pick an unclaimed stub that represents
+  them or add themselves as a fresh player on the roster. See
+  `verify_team_join_token/1`.
+  """
+  def generate_team_join_token(%Team{id: id}) do
+    Phoenix.Token.sign(UltistatsWeb.Endpoint, @team_join_salt, id)
+  end
+
+  @doc """
+  Verifies a team-join `token`. Returns `{:ok, %Team{}}` when the
+  signed team still exists, or `{:error, :invalid}` when the signature
+  is bad / expired or the team is gone.
+  """
+  def verify_team_join_token(token) when is_binary(token) do
+    case Phoenix.Token.verify(UltistatsWeb.Endpoint, @team_join_salt, token,
+           max_age: @team_join_max_age
+         ) do
+      {:ok, team_id} ->
+        case Repo.get(Team, team_id) do
+          nil -> {:error, :invalid}
+          %Team{} = team -> {:ok, team}
+        end
+
+      {:error, _reason} ->
+        {:error, :invalid}
+    end
+  end
+
+  def verify_team_join_token(_), do: {:error, :invalid}
+
+  @doc """
+  Claims a stub membership for `claimer`, copying the verified profile
+  (`profile_attrs`) onto the claimer's `User` row and any per-team
+  overrides (`membership_attrs`, e.g. `:jersey_number`, `:position`)
+  onto the soon-to-be-reassigned `TeamMembership`.
+
+  Runs as a single transaction:
+
+    1. Update the claimer's profile via
+       `Ultistats.Accounts.User.profile_changeset/2`. Required so a
+       fresh registered user actually ends up with a name on the
+       roster (the stub's profile is otherwise lost when the stub row
+       is deleted in step 3).
+    2. Update the membership row's per-team fields
+       (`:jersey_number`, `:position`).
+    3. Hand off to `Ultistats.Accounts.claim_stub_user/2` to reassign
+       all of the stub's memberships and event references to the
+       claimer, then delete the stub user.
+
+  Returns `{:ok, %{teams: [team_id, ...]}}` on success (mirrors
+  `Accounts.claim_stub_user/2`'s success shape) or `{:error, reason}`
+  where `reason` is one of:
+
+    * `{:profile, %Ecto.Changeset{}}` — the claimer's profile params
+      were invalid.
+    * `{:membership, %Ecto.Changeset{}}` — per-team override invalid.
+    * `:same_user`, `:not_a_stub`, `{:conflicting_membership, [_]}`,
+      `:claim_failed` — bubble up from `Accounts.claim_stub_user/2`.
+  """
+  def claim_stub_with_profile(
+        %TeamMembership{user: %User{} = stub} = membership,
+        %User{} = claimer,
+        profile_attrs,
+        membership_attrs
+      )
+      when is_map(profile_attrs) and is_map(membership_attrs) do
+    profile_attrs = normalize_membership_attrs(profile_attrs)
+    membership_attrs = normalize_membership_attrs(membership_attrs)
+
+    Repo.transact(fn ->
+      with {:ok, _claimer} <- update_claimer_profile(claimer, profile_attrs),
+           {:ok, _membership} <- update_membership_overrides(membership, membership_attrs),
+           {:ok, result} <- do_claim_stub(stub, claimer) do
+        {:ok, result}
+      end
+    end)
+  end
+
+  defp update_claimer_profile(%User{} = claimer, profile_attrs) do
+    case Ultistats.Accounts.update_user_profile(claimer, profile_attrs) do
+      {:ok, user} -> {:ok, user}
+      {:error, %Ecto.Changeset{} = cs} -> {:error, {:profile, cs}}
+    end
+  end
+
+  defp update_membership_overrides(%TeamMembership{} = membership, membership_attrs) do
+    overrides = Map.take(membership_attrs, [:jersey_number, :position])
+
+    membership
+    |> TeamMembership.changeset(overrides)
+    |> Repo.update()
+    |> case do
+      {:ok, m} -> {:ok, m}
+      {:error, %Ecto.Changeset{} = cs} -> {:error, {:membership, cs}}
+    end
+  end
+
+  defp do_claim_stub(%User{} = stub, %User{} = claimer) do
+    case Ultistats.Accounts.claim_stub_user(stub, claimer) do
+      {:ok, result} -> {:ok, result}
+      {:error, :conflicting_membership, ids} -> {:error, {:conflicting_membership, ids}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Joins `current_user` to `team` as a brand-new player using `attrs`.
+
+  Runs in a single `Ecto.Multi`:
+
+    * updates the user's profile (`first_name`, `last_name`,
+      `gender_role`, `position`) via `Accounts.update_user_profile/2`,
+    * inserts a `%TeamMembership{}` for `(team, current_user)` with
+      `role: :member, is_player: true` plus the per-team `:position`
+      and `:jersey_number` overrides.
+
+  Returns `{:ok, %{user: user, membership: membership}}` on success,
+  or `{:error, step, %Ecto.Changeset{}, _changes}` where `step` is
+  `:user` or `:membership`.
+  """
+  def join_team_as_new_player(%Team{} = team, %User{} = current_user, attrs)
+      when is_map(attrs) do
+    attrs = normalize_membership_attrs(attrs)
+
+    profile_attrs =
+      Map.take(attrs, [:first_name, :last_name, :gender_role, :position])
+
+    membership_attrs =
+      attrs
+      |> Map.take([:jersey_number, :position])
+      |> Map.merge(%{
+        team_id: team.id,
+        user_id: current_user.id,
+        role: :member,
+        is_player: true
+      })
+
+    Ecto.Multi.new()
+    |> Ecto.Multi.update(
+      :user,
+      Ultistats.Accounts.User.profile_changeset(current_user, profile_attrs)
+    )
+    |> Ecto.Multi.insert(
+      :membership,
+      TeamMembership.changeset(%TeamMembership{}, membership_attrs)
+    )
+    |> Repo.transaction()
   end
 
   @doc """
