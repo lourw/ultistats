@@ -319,31 +319,28 @@ defmodule UltistatsWeb.GameLiveTest do
       live |> element("button[phx-click='start_point']") |> render_click()
 
       html = render(live)
-      assert html =~ "On the field"
       assert html =~ "Recent events"
-
-      # 4 action buttons appear when a point is in progress.
-      assert has_element?(live, "button[phx-value-kind='goal']", "Goal")
-      assert has_element?(live, "button[phx-value-kind='assist']", "Assist")
-      assert has_element?(live, "button[phx-value-kind='block']", "Block")
-      assert has_element?(live, "button[phx-value-kind='turn']", "Turn")
+      # The starting-possession label renders. game_fixture defaults
+      # first_pull: :ours, so the receiving side is :theirs at point start.
+      assert html =~ "They have the disc"
 
       assert Repo.aggregate(Point, :count, :id) == 1
     end
   end
 
-  describe "Show — in point" do
+  describe "Show — in point (per-throw flow)" do
     setup do
       team = team_fixture()
       players = build_players(team, 7)
-      game = game_fixture(%{team_id: team.id})
+      # first_pull: :theirs ⇒ we receive ⇒ :ours has the disc at point start.
+      game = game_fixture(%{team_id: team.id, first_pull: :theirs})
 
       {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
 
       %{team: team, players: players, game: game, point: point}
     end
 
-    test "Goal → Skip assist → point ends with scoring_team=:ours, score increments", %{
+    test "set_passer + set_receiver + :catch records the event and B becomes the passer", %{
       conn: conn,
       game: game,
       players: players,
@@ -351,34 +348,60 @@ defmodule UltistatsWeb.GameLiveTest do
     } do
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
 
-      live |> element("button[phx-value-kind='goal']") |> render_click()
-      assert render(live) =~ "Who scored?"
+      [a, b | _] = players
 
-      scorer = hd(players)
+      render_hook(live, "set_passer", %{"id" => a.id})
+      render_hook(live, "set_receiver", %{"id" => b.id})
+      render_hook(live, "record_throw_outcome", %{"type" => "catch"})
 
-      live
-      |> element("#player-picker-modal button[phx-value-id='#{scorer.id}']")
-      |> render_click()
+      [event] = Games.events_for_point(point)
+      assert event.type == :catch
+      assert event.passer_id == a.id
+      assert event.receiver_id == b.id
 
+      # The current-passer card now shows player B.
       html = render(live)
-      assert html =~ "Who got the assist?"
-      assert html =~ "Skip — no assist"
+      assert html =~ "data-current-passer=\"#{b.id}\""
+    end
 
-      live |> element("button[phx-click='skip_assist']") |> render_click()
+    test "after a catch, :goal ends the point with passer=B, receiver=C", %{
+      conn: conn,
+      game: game,
+      players: players,
+      point: point
+    } do
+      {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
+
+      [a, b, c | _] = players
+
+      render_hook(live, "set_passer", %{"id" => a.id})
+      render_hook(live, "set_receiver", %{"id" => b.id})
+      render_hook(live, "record_throw_outcome", %{"type" => "catch"})
+
+      render_hook(live, "set_receiver", %{"id" => c.id})
+      render_hook(live, "record_throw_outcome", %{"type" => "goal"})
+
+      events = Games.events_for_point(point)
+
+      assert Enum.any?(
+               events,
+               &(&1.type == :catch and &1.passer_id == a.id and &1.receiver_id == b.id)
+             )
+
+      assert Enum.any?(
+               events,
+               &(&1.type == :goal and &1.passer_id == b.id and &1.receiver_id == c.id)
+             )
 
       reloaded = Repo.get!(Point, point.id)
       assert reloaded.scoring_team == :ours
 
-      events = Games.events_for_point(reloaded)
-      assert Enum.any?(events, &(&1.type == :goal and &1.player_id == scorer.id))
-      refute Enum.any?(events, &(&1.type == :assist))
-
-      # back to between-points view: Start point button reappears, score updated.
+      # Back to between-points view; Start point button visible again.
       assert has_element?(live, "button[phx-click='start_point']")
       assert Games.score(game) == %{ours: 1, theirs: 0}
     end
 
-    test "Goal → pick assister → point ends with both events recorded", %{
+    test ":drop flips possession to :theirs", %{
       conn: conn,
       game: game,
       players: players,
@@ -386,27 +409,25 @@ defmodule UltistatsWeb.GameLiveTest do
     } do
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
 
-      [scorer, assister | _] = players
+      [a, b | _] = players
 
-      live |> element("button[phx-value-kind='goal']") |> render_click()
+      render_hook(live, "set_passer", %{"id" => a.id})
+      render_hook(live, "set_receiver", %{"id" => b.id})
+      render_hook(live, "record_throw_outcome", %{"type" => "drop"})
 
-      live
-      |> element("#player-picker-modal button[phx-value-id='#{scorer.id}']")
-      |> render_click()
+      [event] = Games.events_for_point(point)
+      assert event.type == :drop
+      assert event.passer_id == a.id
+      assert event.receiver_id == b.id
 
-      live
-      |> element("#player-picker-modal button[phx-value-id='#{assister.id}']")
-      |> render_click()
-
-      reloaded = Repo.get!(Point, point.id)
-      assert reloaded.scoring_team == :ours
-
-      events = Games.events_for_point(reloaded)
-      assert Enum.any?(events, &(&1.type == :goal and &1.player_id == scorer.id))
-      assert Enum.any?(events, &(&1.type == :assist and &1.player_id == assister.id))
+      html = render(live)
+      assert html =~ "Other team has the disc"
+      # The :theirs-mode action buttons render now.
+      assert has_element?(live, "button[phx-click='record_opponent_turnover']")
+      assert has_element?(live, "button[phx-click='record_opponent_goal']")
     end
 
-    test "Block records an event but does not end the point", %{
+    test ":throwaway records passer-only and flips possession", %{
       conn: conn,
       game: game,
       players: players,
@@ -414,41 +435,142 @@ defmodule UltistatsWeb.GameLiveTest do
     } do
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
 
-      blocker = hd(players)
+      [a | _] = players
 
-      live |> element("button[phx-value-kind='block']") |> render_click()
+      render_hook(live, "set_passer", %{"id" => a.id})
+      render_hook(live, "record_throw_outcome", %{"type" => "throwaway"})
+
+      [event] = Games.events_for_point(point)
+      assert event.type == :throwaway
+      assert event.passer_id == a.id
+      assert is_nil(event.receiver_id)
+
+      assert render(live) =~ "Other team has the disc"
+    end
+
+    test "Block records an event, switches to ours, sets blocker as new passer", %{
+      conn: conn,
+      game: game,
+      players: players,
+      point: point
+    } do
+      {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
+
+      # First, flip to :theirs by recording a throwaway.
+      [a, blocker | _] = players
+      render_hook(live, "set_passer", %{"id" => a.id})
+      render_hook(live, "record_throw_outcome", %{"type" => "throwaway"})
 
       live
-      |> element("#player-picker-modal button[phx-value-id='#{blocker.id}']")
+      |> element("button[phx-click='pick_block'][phx-value-id='#{blocker.id}']")
       |> render_click()
+
+      events = Games.events_for_point(point)
+      assert Enum.any?(events, &(&1.type == :block and &1.passer_id == blocker.id))
 
       reloaded = Repo.get!(Point, point.id)
       assert is_nil(reloaded.scoring_team)
 
-      [event] = Repo.all(Event)
-      assert event.type == :block
-      assert event.player_id == blocker.id
-
-      # Action buttons still visible (point not ended).
-      assert has_element?(live, "button[phx-value-kind='goal']")
+      html = render(live)
+      assert html =~ "We have the disc"
+      # Blocker is now the current passer.
+      assert html =~ "data-current-passer=\"#{blocker.id}\""
     end
 
-    test "They scored ends the point with scoring_team=:theirs, no events", %{
+    test "They turned it over flips possession to :ours, clears passer", %{
       conn: conn,
       game: game,
+      players: players,
       point: point
     } do
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
 
-      live |> element("button[phx-click='they_scored']") |> render_click()
+      [a | _] = players
+      # Flip to :theirs first via a throwaway.
+      render_hook(live, "set_passer", %{"id" => a.id})
+      render_hook(live, "record_throw_outcome", %{"type" => "throwaway"})
+
+      live |> element("button[phx-click='record_opponent_turnover']") |> render_click()
+
+      events = Games.events_for_point(point)
+      assert Enum.any?(events, &(&1.type == :opponent_turnover))
+
+      html = render(live)
+      assert html =~ "We have the disc"
+      # Possession is back to ours but no current passer — prompt shows.
+      assert html =~ "Tap who has the disc"
+    end
+
+    test "They scored ends the point with scoring_team=:theirs and an :opponent_goal event", %{
+      conn: conn,
+      game: game,
+      players: players,
+      point: point
+    } do
+      {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
+
+      [a | _] = players
+      # Flip to :theirs first.
+      render_hook(live, "set_passer", %{"id" => a.id})
+      render_hook(live, "record_throw_outcome", %{"type" => "throwaway"})
+
+      live |> element("button[phx-click='record_opponent_goal']") |> render_click()
 
       reloaded = Repo.get!(Point, point.id)
       assert reloaded.scoring_team == :theirs
-      assert Repo.aggregate(Event, :count, :id) == 0
+      assert Enum.any?(Games.events_for_point(reloaded), &(&1.type == :opponent_goal))
 
-      # back to between-points view: Start point button reappears.
       assert has_element?(live, "button[phx-click='start_point']")
       assert Games.score(game) == %{ours: 0, theirs: 1}
+    end
+
+    test "Pick records a :pick without changing possession", %{
+      conn: conn,
+      game: game,
+      players: players,
+      point: point
+    } do
+      {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
+
+      [a | _] = players
+      render_hook(live, "set_passer", %{"id" => a.id})
+
+      live
+      |> element("button[phx-click='record_call'][phx-value-type='pick']")
+      |> render_click()
+
+      events = Games.events_for_point(point)
+
+      assert Enum.any?(
+               events,
+               &(&1.type == :pick and is_nil(&1.passer_id) and is_nil(&1.receiver_id))
+             )
+
+      # Still :ours — current passer card still visible with player A.
+      html = render(live)
+      assert html =~ "data-current-passer=\"#{a.id}\""
+    end
+
+    test "tapping Unknown then Catch records nil ids", %{
+      conn: conn,
+      game: game,
+      players: players,
+      point: point
+    } do
+      {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
+
+      [a | _] = players
+
+      # Set passer to unknown via the chip.
+      render_hook(live, "set_passer", %{"id" => "unknown"})
+      # Receiver is a real player.
+      render_hook(live, "set_receiver", %{"id" => a.id})
+      render_hook(live, "record_throw_outcome", %{"type" => "catch"})
+
+      [event] = Games.events_for_point(point)
+      assert event.type == :catch
+      assert is_nil(event.passer_id)
+      assert event.receiver_id == a.id
     end
   end
 
@@ -487,15 +609,12 @@ defmodule UltistatsWeb.GameLiveTest do
 
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
 
-      scorer = hd(players)
-      live |> element("button[phx-value-kind='goal']") |> render_click()
-
-      live
-      |> element("#player-picker-modal button[phx-value-id='#{scorer.id}']")
-      |> render_click()
+      [scorer, assister | _] = players
+      render_hook(live, "set_passer", %{"id" => assister.id})
+      render_hook(live, "set_receiver", %{"id" => scorer.id})
 
       assert {:error, {:live_redirect, %{to: to}}} =
-               live |> element("button[phx-click='skip_assist']") |> render_click()
+               render_hook(live, "record_throw_outcome", %{"type" => "goal"})
 
       assert to == ~p"/games/#{game.id}/summary"
 
@@ -546,8 +665,8 @@ defmodule UltistatsWeb.GameLiveTest do
     } do
       [scorer, blocker | _] = players
       {:ok, p1} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, _} = Games.record_event(p1, :block, blocker.id)
-      {:ok, _} = Games.record_event(p1, :goal, scorer.id)
+      {:ok, _} = Games.record_throw(p1, :block, blocker.id, nil)
+      {:ok, _} = Games.record_throw(p1, :goal, blocker.id, scorer.id)
       {:ok, _} = Games.end_point(p1, :ours)
 
       {:ok, p2} = Games.start_point(game, Enum.map(players, & &1.id))
@@ -574,7 +693,7 @@ defmodule UltistatsWeb.GameLiveTest do
     } do
       [scorer | _] = players
       {:ok, p1} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, goal} = Games.record_event(p1, :goal, scorer.id)
+      {:ok, goal} = Games.record_throw(p1, :goal, scorer.id, scorer.id)
       {:ok, _} = Games.end_point(p1, :ours)
       # Manually un-end the point so deleting the goal makes the score
       # actually change. (Per task notes: scoring_team is not auto-cleared.)
@@ -585,7 +704,7 @@ defmodule UltistatsWeb.GameLiveTest do
 
       # Score the next point so we have a "1" to start from.
       {:ok, p2} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, _} = Games.record_event(p2, :goal, scorer.id)
+      {:ok, _} = Games.record_throw(p2, :goal, scorer.id, scorer.id)
       {:ok, _} = Games.end_point(p2, :ours)
 
       {:ok, live, html} = live(conn, ~p"/games/#{game.id}/timeline")
@@ -615,7 +734,7 @@ defmodule UltistatsWeb.GameLiveTest do
     } do
       [p | _] = players
       {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, event} = Games.record_event(point, :block, p.id)
+      {:ok, event} = Games.record_throw(point, :block, p.id, nil)
 
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}/timeline")
 
@@ -638,7 +757,7 @@ defmodule UltistatsWeb.GameLiveTest do
     } do
       [p | _] = players
       {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, event} = Games.record_event(point, :block, p.id)
+      {:ok, event} = Games.record_throw(point, :block, p.id, nil)
 
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}/timeline")
 
@@ -662,7 +781,10 @@ defmodule UltistatsWeb.GameLiveTest do
     } do
       [p1, p2 | _] = players
       {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, event} = Games.record_event(point, :goal, p1.id)
+      # Block has passer-only shape, so the timeline edit (which only
+      # touches passer_id) can switch its passer freely without violating
+      # the per-type field-shape rules.
+      {:ok, event} = Games.record_throw(point, :block, p1.id, nil)
       {:ok, _} = Games.end_point(point, :ours)
 
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}/timeline")
@@ -683,20 +805,22 @@ defmodule UltistatsWeb.GameLiveTest do
       |> render_submit()
 
       reloaded = Repo.get!(Event, event.id)
-      assert reloaded.player_id == p2.id
+      assert reloaded.passer_id == p2.id
 
       html = render(live)
       assert html =~ "##{p2.jersey_number}"
     end
 
-    test "editing type from :goal to :turn changes the row but not the point's scoring_team", %{
+    test "editing type from :catch to :stall changes the row but not scoring_team", %{
       conn: conn,
       game: game,
       players: players
     } do
-      [p1 | _] = players
+      [p1, p2 | _] = players
       {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, event} = Games.record_event(point, :goal, p1.id)
+      # Use a passer-only typed event so flipping its type to another
+      # passer-only type doesn't trip the shape validator on receiver_id.
+      {:ok, event} = Games.record_throw(point, :throwaway, p1.id, nil)
       {:ok, _} = Games.end_point(point, :ours)
 
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}/timeline")
@@ -706,21 +830,18 @@ defmodule UltistatsWeb.GameLiveTest do
       |> render_click()
 
       live
-      |> element("#edit-event-modal button[phx-click='set_edit_type'][phx-value-type='turn']")
+      |> element("#edit-event-modal button[phx-click='set_edit_type'][phx-value-type='stall']")
       |> render_click()
 
       live |> element("#edit-event-modal form") |> render_submit()
 
-      assert Repo.get!(Event, event.id).type == :turn
+      assert Repo.get!(Event, event.id).type == :stall
       # scoring_team on the point is intentionally not cascaded — the
-      # tracker manages it manually. The point remains marked `:ours`
-      # even though its goal event has been retyped.
+      # tracker manages it manually.
       assert Repo.get!(Point, point.id).scoring_team == :ours
-      # Score is event-driven (counts non-deleted :goal events on :ours
-      # points), so retyping the only goal to :turn drops the score.
-      # The mismatch between point.scoring_team and score is a known
-      # post-MVP UX gap.
-      assert Games.score(game) == %{ours: 0, theirs: 0}
+
+      # silence unused
+      _ = p2
     end
 
     test "editing rejects a cross-team player", %{
@@ -730,7 +851,7 @@ defmodule UltistatsWeb.GameLiveTest do
     } do
       [p1 | _] = players
       {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, event} = Games.record_event(point, :goal, p1.id)
+      {:ok, event} = Games.record_throw(point, :block, p1.id, nil)
 
       # Set up a stranger from another team.
       other_team = team_fixture()
@@ -750,7 +871,7 @@ defmodule UltistatsWeb.GameLiveTest do
       html = live |> form("#edit-event-modal form") |> render_submit()
 
       assert html =~ "isn&#39;t on this team"
-      assert Repo.get!(Event, event.id).player_id == p1.id
+      assert Repo.get!(Event, event.id).passer_id == p1.id
     end
   end
 
@@ -769,7 +890,7 @@ defmodule UltistatsWeb.GameLiveTest do
     } do
       [scorer | _] = players
       {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, _} = Games.record_event(point, :goal, scorer.id)
+      {:ok, _} = Games.record_throw(point, :goal, scorer.id, scorer.id)
       {:ok, _} = Games.end_point(point, :ours)
 
       {:ok, live, html} = live(conn, ~p"/games/#{game.id}/summary")
@@ -807,7 +928,7 @@ defmodule UltistatsWeb.GameLiveTest do
     } do
       [scorer | _] = players
       {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, _} = Games.record_event(point, :goal, scorer.id)
+      {:ok, _} = Games.record_throw(point, :goal, scorer.id, scorer.id)
       {:ok, _} = Games.end_point(point, :ours)
 
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}/summary")
@@ -824,7 +945,7 @@ defmodule UltistatsWeb.GameLiveTest do
     } do
       [scorer | _] = players
       {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, event} = Games.record_event(point, :goal, scorer.id)
+      {:ok, event} = Games.record_throw(point, :goal, scorer.id, scorer.id)
       {:ok, _} = Games.end_point(point, :ours)
       {:ok, _} = Games.soft_delete_event(event)
 
@@ -860,7 +981,7 @@ defmodule UltistatsWeb.GameLiveTest do
 
     for _ <- 1..n do
       {:ok, point} = Games.start_point(game, player_ids)
-      {:ok, _} = Games.record_event(point, :goal, scorer_id)
+      {:ok, _} = Games.record_throw(point, :goal, scorer_id, scorer_id)
       {:ok, _} = Games.end_point(point, :ours)
     end
 

@@ -24,15 +24,23 @@ Single-game live stat tracking for ultimate frisbee. The whole MVP is one tracke
    - Pick who pulls first.
    - Game format defaults to USAU standard (hard cap 15, soft cap by time, halftime at 8). Score cap, soft/hard caps, timeouts per half, and the gender-ratio rule are configurable per game; teams can save reusable rulesets as templates. Editing a template that's already in use clones it, so historical games keep their original rules.
 
-4. **Per-point loop**
+4. **Per-point loop — per-throw tracking**
    - Tracker picks a line preset (or overrides by selecting players ad-hoc for this point).
    - If next-line gender ratio violates the prevailing-gender rule for the upcoming point, show a non-blocking warning before committing the line.
-   - During the point, tap one of:
-     - **Goal** → pick scorer → point ends, score increments.
-     - **Assist** → pick assister (recorded against the goal that just happened or about to happen — UX detail in `docs/DESIGN.md`).
-     - **Block** → pick blocker (optional event, does not end the point).
-     - **Turn** → pick turner (optional event, does not end the point unless followed by goal).
-   - Confirm point-end on goal so accidental taps don't advance the game.
+   - At point start: identify either the puller (we're defending) or the catcher of the opponent's pull (we're receiving). The catcher becomes the **current passer**.
+   - When **we have the disc** (`:ours` possession), the in-point view shows a current-passer card and the on-field roster as receiver candidates. For each throw the tracker taps:
+     - **Catch** (passer + receiver) → receiver becomes new current passer; possession stays ours.
+     - **Drop** (passer + intended receiver) → possession flips to theirs.
+     - **Goal** (assister + scorer) → point ends, score increments.
+     - **Throwaway** (passer only) → possession flips to theirs.
+     - **Stall** (passer only) → possession flips to theirs.
+   - When **they have the disc** (`:theirs`), the tracker can record:
+     - **Block** (blocker) → possession flips to ours; blocker becomes new current passer.
+     - **They turned it over** → possession flips to ours; tracker prompted to pick who picked it up (or "Unknown").
+     - **They scored** → point ends, opponent score increments.
+   - **Calls** ([Pick] [Foul]) are always available and don't change possession.
+   - Any passer or receiver can be set to **Unknown** when the tracker missed who threw or caught — the event is still recorded, with `nil` for the missed field.
+   - Confirm point-end on goal / opponent goal so accidental taps don't advance the game.
 
 5. **Game lifecycle markers**
    - At score 8 (halftime in a game-to-15), show a halftime banner.
@@ -41,7 +49,7 @@ Single-game live stat tracking for ultimate frisbee. The whole MVP is one tracke
 
 6. **Game summary**
    - Final score.
-   - Per-player tallies for *this game only*: goals, assists, blocks, turns, points played.
+   - Per-player tallies for *this game only*: goals, assists, catches, drops, throwaways, blocks, points played.
    - No cross-game aggregation.
 
 7. **Mistake handling — timeline edit**
@@ -55,7 +63,7 @@ Single-game live stat tracking for ultimate frisbee. The whole MVP is one tracke
 - Player CRUD (within a team).
 - Line preset CRUD.
 - Single-game lifecycle (create → play → summary).
-- Event capture: goal, assist, block, turn.
+- Per-throw event capture: pull, catch, drop, throwaway, stall, goal, block, opponent_turnover, opponent_goal, pick, foul. Passer and receiver default to a player but accept "Unknown" when the tracker missed the play.
 - Gender ratio rule: enforce/warn on next-line composition.
 - USAU cap/halftime markers (halftime banner, hard cap auto-end).
 - Timeline view with edit and soft-delete of events.
@@ -68,7 +76,7 @@ Single-game live stat tracking for ultimate frisbee. The whole MVP is one tracke
 - Cross-game stats and aggregation views.
 - Charts and visualizations.
 - Opposing-team player tracking (opponent is just a name in MVP).
-- Advanced throw types, throw-by-throw tracking, possessions count.
+- Field position / lateral position tracking (UltiAnalytics-style location data).
 - Native mobile apps.
 - **Offline support / PWA install / service worker** — explicitly deferred. MVP assumes connectivity.
 - Auth, multi-user accounts (single local-trusted user assumed for MVP).
@@ -84,4 +92,6 @@ The MVP ships when all of the following are true:
 5. A line whose gender composition violates the prevailing-gender rule produces a visible warning before the point begins (but does not block — this is informational).
 6. At score 8, a halftime banner appears; it can be dismissed and does not interfere with continued play.
 7. When the LiveView socket disconnects, all in-game action buttons disable and a "reconnecting…" banner appears at the top of the screen; on reconnect, buttons re-enable and no events are duplicated or lost.
-8. The full happy-path flow has integration test coverage (LiveView tests using `Phoenix.LiveViewTest`) hitting a real Ecto sandbox — no mocked DB.
+8. Per-throw flow: from receiving the pull through ten consecutive `:catch` events to a `:goal`, the current passer, possession indicator, and recorded events are all consistent and stored as separate rows.
+9. The summary view includes per-player **catches**, **drops**, **throwaways**, and **blocks** counts (in addition to goals and assists), filtered by `deleted_at IS NULL`.
+10. The full happy-path flow has integration test coverage (LiveView tests using `Phoenix.LiveViewTest`) hitting a real Ecto sandbox — no mocked DB.

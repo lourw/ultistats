@@ -275,18 +275,21 @@ defmodule Ultistats.Games do
   # ===========================================================================
 
   @doc """
-  Records a new event on `point`. `player_id` may be `nil` for events
-  not pinned to a player; when given, it must belong to the game's team
+  Records a per-throw event on `point`. `passer_id` and `receiver_id`
+  are both nullable — `nil` means "Unknown" (the tracker missed who
+  threw or caught it). Per-type field shape is enforced in
+  `Event.changeset/2`. Any non-nil id must belong to the game's team
   or the call returns `{:error, :player_not_on_team}`.
   """
-  def record_event(%Point{} = point, type, player_id)
-      when type in [:goal, :assist, :block, :turn] do
-    with :ok <- validate_player_on_team(point, player_id) do
+  def record_throw(%Point{} = point, type, passer_id, receiver_id \\ nil) do
+    with :ok <- validate_player_on_team(point, passer_id),
+         :ok <- validate_player_on_team(point, receiver_id) do
       attrs = %{
         point_id: point.id,
         sequence: next_event_sequence(point),
         type: type,
-        player_id: player_id,
+        passer_id: passer_id,
+        receiver_id: receiver_id,
         occurred_at: now()
       }
 
@@ -307,30 +310,30 @@ defmodule Ultistats.Games do
   end
 
   @doc """
-  Updates an event's `type` and/or `player_id`. Used by the timeline
-  edit flow. Other fields are not editable from the timeline (sequence
-  and occurred_at are stable; deleted_at is set via
+  Updates an event's `type`, `passer_id`, and/or `receiver_id`. Used by
+  the timeline edit flow. Other fields are not editable from the
+  timeline (sequence and occurred_at are stable; deleted_at is set via
   `soft_delete_event/1`).
 
-  When `:player_id` is provided (non-nil), it must belong to the same
-  team as the event's point's game; otherwise `{:error,
-  :player_not_on_team}` is returned without touching the row.
+  When `:passer_id` or `:receiver_id` is provided (non-nil), it must
+  belong to the same team as the event's point's game; otherwise
+  `{:error, :player_not_on_team}` is returned without touching the row.
   """
   def update_event(%Event{} = event, attrs) do
     attrs = normalize_keys(attrs)
-    player_id = Map.get(attrs, :player_id, :unset)
 
-    with :ok <- validate_event_player(event, player_id) do
+    with :ok <- validate_update_player(event, Map.get(attrs, :passer_id, :unset)),
+         :ok <- validate_update_player(event, Map.get(attrs, :receiver_id, :unset)) do
       event
       |> Event.update_changeset(attrs)
       |> Repo.update()
     end
   end
 
-  defp validate_event_player(_event, :unset), do: :ok
-  defp validate_event_player(_event, nil), do: :ok
+  defp validate_update_player(_event, :unset), do: :ok
+  defp validate_update_player(_event, nil), do: :ok
 
-  defp validate_event_player(%Event{point_id: point_id}, player_id) when is_binary(player_id) do
+  defp validate_update_player(%Event{point_id: point_id}, player_id) when is_binary(player_id) do
     point = Repo.get!(Point, point_id)
     validate_player_on_team(point, player_id)
   end
@@ -483,8 +486,10 @@ defmodule Ultistats.Games do
             player: %Ultistats.Teams.Player{},
             goals: integer,
             assists: integer,
+            catches: integer,
+            drops: integer,
+            throwaways: integer,
             blocks: integer,
-            turns: integer,
             points_played: integer
           }
         ]
@@ -522,17 +527,21 @@ defmodule Ultistats.Games do
           join: p in Point,
           on: p.id == e.point_id,
           where: p.game_id == ^game.id and is_nil(e.deleted_at),
-          select: %{type: e.type, player_id: e.player_id}
+          select: %{type: e.type, passer_id: e.passer_id, receiver_id: e.receiver_id}
       )
 
-    # Per-player event tallies. Map of player_id => %{goal: n, assist: n, ...}.
-    event_tallies =
-      events
-      |> Enum.filter(&(not is_nil(&1.player_id) and MapSet.member?(roster_ids, &1.player_id)))
-      |> Enum.group_by(& &1.player_id)
-      |> Map.new(fn {pid, evs} ->
-        counts = Enum.frequencies_by(evs, & &1.type)
-        {pid, counts}
+    # Per-player tallies. The same event contributes to up to two
+    # players: the passer (assister / blocker / thrower / etc.) and the
+    # receiver (catcher / scorer / dropper). `:goal` events count as a
+    # goal for the receiver and an assist for the passer (assists are
+    # derived, not their own event type).
+    empty_tally = %{goals: 0, assists: 0, catches: 0, drops: 0, throwaways: 0, blocks: 0}
+
+    tallies =
+      Enum.reduce(events, %{}, fn ev, acc ->
+        acc
+        |> bump_passer(ev, roster_ids, empty_tally)
+        |> bump_receiver(ev, roster_ids, empty_tally)
       end)
 
     # Per-player points-played tallies.
@@ -553,20 +562,51 @@ defmodule Ultistats.Games do
       roster
       |> Enum.sort_by(&jersey_sort_key/1)
       |> Enum.map(fn player ->
-        counts = Map.get(event_tallies, player.id, %{})
+        counts = Map.get(tallies, player.id, empty_tally)
 
-        %{
+        Map.merge(counts, %{
           player: player,
-          goals: Map.get(counts, :goal, 0),
-          assists: Map.get(counts, :assist, 0),
-          blocks: Map.get(counts, :block, 0),
-          turns: Map.get(counts, :turn, 0),
           points_played: Map.get(points_played_by_player, player.id, 0)
-        }
+        })
       end)
 
     %{score: score(game), players: rows}
   end
+
+  defp bump_passer(acc, %{passer_id: nil}, _roster, _empty), do: acc
+
+  defp bump_passer(acc, %{type: type, passer_id: pid}, roster, empty) do
+    if MapSet.member?(roster, pid) do
+      Map.update(acc, pid, bump(empty, passer_stat(type)), &bump(&1, passer_stat(type)))
+    else
+      acc
+    end
+  end
+
+  defp bump_receiver(acc, %{receiver_id: nil}, _roster, _empty), do: acc
+
+  defp bump_receiver(acc, %{type: type, receiver_id: rid}, roster, empty) do
+    if MapSet.member?(roster, rid) do
+      Map.update(acc, rid, bump(empty, receiver_stat(type)), &bump(&1, receiver_stat(type)))
+    else
+      acc
+    end
+  end
+
+  defp passer_stat(:catch), do: nil
+  defp passer_stat(:goal), do: :assists
+  defp passer_stat(:throwaway), do: :throwaways
+  defp passer_stat(:drop), do: :throwaways
+  defp passer_stat(:block), do: :blocks
+  defp passer_stat(_), do: nil
+
+  defp receiver_stat(:catch), do: :catches
+  defp receiver_stat(:goal), do: :goals
+  defp receiver_stat(:drop), do: :drops
+  defp receiver_stat(_), do: nil
+
+  defp bump(tally, nil), do: tally
+  defp bump(tally, stat), do: Map.update!(tally, stat, &(&1 + 1))
 
   defp snapshot_player_ids(%{"player_ids" => ids}) when is_list(ids), do: ids
   defp snapshot_player_ids(_), do: []
