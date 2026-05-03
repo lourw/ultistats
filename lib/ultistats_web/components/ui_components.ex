@@ -1,0 +1,453 @@
+defmodule UltistatsWeb.UIComponents do
+  @moduledoc """
+  Project-specific UI primitives. These are the only components that
+  feature LiveViews should reach for when composing the live game,
+  line picker, and timeline screens.
+
+  Conforms to `docs/UI_DESIGN.md`. Adding a sixth primitive requires a
+  doc update — propose it in the same PR.
+
+  Components:
+
+    * `action_button/1`     primary in-game action (Goal / Assist / Block / Turn)
+    * `player_chip/1`       tappable jersey-and-name pill
+    * `score_readout/1`     large tabular-nums score display
+    * `line_preset_card/1`  selectable line preset, with ratio warning
+    * `timeline_event/1`    one row in the post-game / mid-game timeline
+
+  All interactive components keep `phx-*` bindings via `:rest` global
+  attrs, so callers wire them like any other Phoenix component.
+
+  Theming note: the accent color is "TBD" per UI_DESIGN.md. We use the
+  daisyUI `primary` token as the interim accent. Update both this module
+  and the doc when the accent is finalized.
+  """
+  use Phoenix.Component
+
+  import UltistatsWeb.CoreComponents, only: [icon: 1]
+
+  ## ---------------------------------------------------------------------
+  ## action_button
+  ## ---------------------------------------------------------------------
+
+  @doc """
+  Primary in-game action button. Renders at min 56x56 (UI_DESIGN.md
+  §Tap targets). Disabled state both *visually* dims and prevents taps
+  via the native `disabled` attribute (UI_DESIGN.md §Connectivity loss).
+
+  ## Examples
+
+      <.action_button kind={:goal} phx-click="record_goal">Goal</.action_button>
+      <.action_button kind={:turn} disabled?={@disconnected}>Turn</.action_button>
+  """
+  attr :kind, :atom, required: true, values: [:goal, :assist, :block, :turn]
+  attr :disabled?, :boolean, default: false
+  attr :class, :any, default: nil
+  attr :rest, :global, include: ~w(phx-click phx-value-id phx-target form name value)
+
+  slot :inner_block
+
+  def action_button(assigns) do
+    assigns = assign(assigns, :meta, action_button_meta(assigns.kind))
+
+    ~H"""
+    <button
+      type="button"
+      disabled={@disabled?}
+      aria-label={@meta.label}
+      class={[
+        "min-h-14 min-w-14 px-4 py-3 rounded-xl",
+        "flex flex-col items-center justify-center gap-1",
+        "text-base font-semibold leading-tight",
+        "transition-colors motion-reduce:transition-none",
+        "active:scale-[0.98] motion-reduce:active:scale-100",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        "disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100",
+        @meta.color_classes,
+        @class
+      ]}
+      {@rest}
+    >
+      <.icon name={@meta.icon} class="size-6" />
+      <span>{render_slot(@inner_block) || @meta.label}</span>
+    </button>
+    """
+  end
+
+  defp action_button_meta(:goal),
+    do: %{
+      label: "Goal",
+      icon: "hero-trophy",
+      color_classes: "bg-success text-success-content active:bg-success/80"
+    }
+
+  defp action_button_meta(:assist),
+    do: %{
+      label: "Assist",
+      icon: "hero-hand-thumb-up",
+      color_classes: "bg-info text-info-content active:bg-info/80"
+    }
+
+  defp action_button_meta(:block),
+    do: %{
+      label: "Block",
+      icon: "hero-shield-check",
+      color_classes: "bg-primary text-primary-content active:bg-primary/80"
+    }
+
+  defp action_button_meta(:turn),
+    do: %{
+      label: "Turn",
+      icon: "hero-arrow-path-rounded-square",
+      color_classes: "bg-error text-error-content active:bg-error/80"
+    }
+
+  ## ---------------------------------------------------------------------
+  ## player_chip
+  ## ---------------------------------------------------------------------
+
+  @doc """
+  Tappable player identity pill. Min 44px height (UI_DESIGN.md
+  §Tap targets). Shows jersey number + name. The `selected?` prop
+  flips the pressed state (visual + `aria-pressed`).
+
+  The `player` prop is a map; we read `:number`/`"number"` and
+  `:name`/`"name"` so the component is friendly to both Ecto structs
+  and bare maps in tests.
+
+  ## Examples
+
+      <.player_chip player={p} selected?={@selected_id == p.id} phx-click="toggle" phx-value-id={p.id} />
+  """
+  attr :player, :map, required: true
+  attr :selected?, :boolean, default: false
+  attr :disabled?, :boolean, default: false
+  attr :class, :any, default: nil
+  attr :rest, :global, include: ~w(phx-click phx-value-id phx-target form name value)
+
+  def player_chip(assigns) do
+    assigns =
+      assigns
+      |> assign(:player_number, fetch(assigns.player, :number))
+      |> assign(:player_name, fetch(assigns.player, :name))
+
+    ~H"""
+    <button
+      type="button"
+      disabled={@disabled?}
+      aria-pressed={to_string(@selected?)}
+      aria-label={"Player #{@player_number} #{@player_name}"}
+      data-selected={to_string(@selected?)}
+      class={[
+        "min-h-11 min-w-11 px-3 py-2 rounded-full",
+        "inline-flex items-center gap-2",
+        "text-base font-medium",
+        "border-2 transition-colors motion-reduce:transition-none",
+        "active:scale-[0.98] motion-reduce:active:scale-100",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        "disabled:opacity-50 disabled:cursor-not-allowed",
+        if(@selected?,
+          do: "bg-primary text-primary-content border-primary",
+          else: "bg-base-100 text-base-content border-base-300 active:bg-base-200"
+        ),
+        @class
+      ]}
+      {@rest}
+    >
+      <span
+        class={[
+          "tabular-nums font-semibold inline-flex items-center justify-center",
+          "size-7 rounded-full text-sm",
+          if(@selected?,
+            do: "bg-primary-content/20 text-primary-content",
+            else: "bg-base-200 text-base-content"
+          )
+        ]}
+        aria-hidden="true"
+      >
+        {@player_number}
+      </span>
+      <span class="truncate">{@player_name}</span>
+      <.icon
+        :if={@selected?}
+        name="hero-check-circle-solid"
+        class="size-5 ml-1"
+      />
+    </button>
+    """
+  end
+
+  ## ---------------------------------------------------------------------
+  ## score_readout
+  ## ---------------------------------------------------------------------
+
+  @doc """
+  Large tabular-nums score display (UI_DESIGN.md §Typography). The
+  `accent` prop highlights whichever side just scored — `:ours`,
+  `:theirs`, or `nil` for the neutral pre-game state.
+
+  ## Examples
+
+      <.score_readout our_score={5} their_score={3} accent={:ours} />
+  """
+  attr :our_score, :integer, required: true
+  attr :their_score, :integer, required: true
+  attr :accent, :atom, default: nil, values: [:ours, :theirs, nil]
+  attr :our_label, :string, default: "Us"
+  attr :their_label, :string, default: "Them"
+  attr :class, :any, default: nil
+
+  def score_readout(assigns) do
+    ~H"""
+    <div
+      class={["flex items-baseline gap-3", @class]}
+      role="status"
+      aria-label={"Score #{@our_label} #{@our_score}, #{@their_label} #{@their_score}"}
+    >
+      <div class="flex flex-col items-start">
+        <span class="text-xs uppercase tracking-wide text-base-content/70">
+          {@our_label}
+        </span>
+        <span class={[
+          "tabular-nums font-bold text-4xl sm:text-5xl leading-none",
+          @accent == :ours && "text-success",
+          @accent != :ours && "text-base-content"
+        ]}>
+          {@our_score}
+        </span>
+      </div>
+      <span class="tabular-nums text-2xl text-base-content/40 font-bold leading-none">
+        :
+      </span>
+      <div class="flex flex-col items-start">
+        <span class="text-xs uppercase tracking-wide text-base-content/70">
+          {@their_label}
+        </span>
+        <span class={[
+          "tabular-nums font-bold text-4xl sm:text-5xl leading-none",
+          @accent == :theirs && "text-success",
+          @accent != :theirs && "text-base-content"
+        ]}>
+          {@their_score}
+        </span>
+      </div>
+    </div>
+    """
+  end
+
+  ## ---------------------------------------------------------------------
+  ## line_preset_card
+  ## ---------------------------------------------------------------------
+
+  @doc """
+  Selectable line preset card shown before a point. When
+  `gender_warning?` is true, an amber badge is shown — color *and* an
+  icon *and* a label, per UI_DESIGN.md §Color (no signal-by-color-alone).
+
+  The `preset` map should expose `:name` and either `:player_count` or
+  a `:players` list we can count.
+  """
+  attr :preset, :map, required: true
+  attr :selected?, :boolean, default: false
+  attr :gender_warning?, :boolean, default: false
+  attr :class, :any, default: nil
+  attr :rest, :global, include: ~w(phx-click phx-value-id phx-target form name value)
+
+  def line_preset_card(assigns) do
+    name = fetch(assigns.preset, :name)
+    count = fetch(assigns.preset, :player_count) || count_players(assigns.preset)
+
+    assigns =
+      assigns
+      |> assign(:preset_name, name)
+      |> assign(:player_count, count)
+
+    ~H"""
+    <button
+      type="button"
+      aria-pressed={to_string(@selected?)}
+      aria-label={"Line preset #{@preset_name}, #{@player_count} players"}
+      data-selected={to_string(@selected?)}
+      class={[
+        "min-h-14 w-full text-left rounded-xl border-2 p-4",
+        "flex items-center gap-3",
+        "transition-colors motion-reduce:transition-none",
+        "active:scale-[0.99] motion-reduce:active:scale-100",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        if(@selected?,
+          do: "bg-primary text-primary-content border-primary",
+          else: "bg-base-100 text-base-content border-base-300 active:bg-base-200"
+        ),
+        @class
+      ]}
+      {@rest}
+    >
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2">
+          <span class="font-semibold text-base truncate">{@preset_name}</span>
+          <.icon
+            :if={@selected?}
+            name="hero-check-circle-solid"
+            class="size-5 shrink-0"
+          />
+        </div>
+        <div class="text-sm opacity-80 tabular-nums">
+          {@player_count} players
+        </div>
+      </div>
+      <span
+        :if={@gender_warning?}
+        class="inline-flex items-center gap-1 rounded-full bg-warning text-warning-content text-xs font-semibold px-2 py-1 shrink-0"
+        role="status"
+      >
+        <.icon name="hero-exclamation-triangle-solid" class="size-4" /> Ratio mismatch
+      </span>
+    </button>
+    """
+  end
+
+  defp count_players(preset) do
+    case fetch(preset, :players) do
+      list when is_list(list) -> length(list)
+      _ -> 0
+    end
+  end
+
+  ## ---------------------------------------------------------------------
+  ## timeline_event
+  ## ---------------------------------------------------------------------
+
+  @doc """
+  One row in the timeline view. Shows event type icon, player label,
+  and timestamp. When `editable?` is true, an edit affordance is
+  rendered (and the optional `:actions` slot can render menu items).
+
+  The `event` map should expose:
+
+    * `:type`         one of `:goal | :assist | :block | :turn | :pull`
+    * `:player_label` text to show (e.g. "#7 Sam")
+    * `:timestamp`    pre-formatted string (e.g. "12:04")
+    * `:point_label`  optional, e.g. "P3"
+  """
+  attr :event, :map, required: true
+  attr :editable?, :boolean, default: false
+  attr :class, :any, default: nil
+  attr :rest, :global
+
+  slot :actions,
+    doc: "optional action menu shown when editable? is true (e.g. edit/delete buttons)"
+
+  def timeline_event(assigns) do
+    type = fetch(assigns.event, :type) || :goal
+    meta = timeline_meta(type)
+
+    assigns =
+      assigns
+      |> assign(:type, type)
+      |> assign(:meta, meta)
+      |> assign(:player_label, fetch(assigns.event, :player_label))
+      |> assign(:timestamp, fetch(assigns.event, :timestamp))
+      |> assign(:point_label, fetch(assigns.event, :point_label))
+
+    ~H"""
+    <div
+      class={[
+        "flex items-center gap-3 py-3 px-3 rounded-lg",
+        "border-b border-base-200 last:border-b-0",
+        @class
+      ]}
+      data-event-type={@type}
+      {@rest}
+    >
+      <span
+        class={[
+          "size-10 shrink-0 rounded-full inline-flex items-center justify-center",
+          @meta.color_classes
+        ]}
+        aria-hidden="true"
+      >
+        <.icon name={@meta.icon} class="size-5" />
+      </span>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2">
+          <span class="font-semibold text-base">{@meta.label}</span>
+          <span :if={@point_label} class="text-xs text-base-content/60 tabular-nums">
+            {@point_label}
+          </span>
+        </div>
+        <div class="text-sm text-base-content/80 truncate">
+          {@player_label}
+        </div>
+      </div>
+      <time class="text-xs text-base-content/60 tabular-nums shrink-0">
+        {@timestamp}
+      </time>
+      <div :if={@editable?} class="shrink-0">
+        <%= if @actions != [] do %>
+          {render_slot(@actions, @event)}
+        <% else %>
+          <button
+            type="button"
+            class="min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            aria-label={"Edit #{@meta.label} event"}
+          >
+            <.icon name="hero-ellipsis-horizontal" class="size-5" />
+          </button>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
+  defp timeline_meta(:goal),
+    do: %{
+      label: "Goal",
+      icon: "hero-trophy",
+      color_classes: "bg-success text-success-content"
+    }
+
+  defp timeline_meta(:assist),
+    do: %{
+      label: "Assist",
+      icon: "hero-hand-thumb-up",
+      color_classes: "bg-info text-info-content"
+    }
+
+  defp timeline_meta(:block),
+    do: %{
+      label: "Block",
+      icon: "hero-shield-check",
+      color_classes: "bg-primary text-primary-content"
+    }
+
+  defp timeline_meta(:turn),
+    do: %{
+      label: "Turn",
+      icon: "hero-arrow-path-rounded-square",
+      color_classes: "bg-error text-error-content"
+    }
+
+  defp timeline_meta(:pull),
+    do: %{
+      label: "Pull",
+      icon: "hero-paper-airplane",
+      color_classes: "bg-base-300 text-base-content"
+    }
+
+  defp timeline_meta(_),
+    do: %{
+      label: "Event",
+      icon: "hero-bolt",
+      color_classes: "bg-base-300 text-base-content"
+    }
+
+  ## ---------------------------------------------------------------------
+  ## helpers
+  ## ---------------------------------------------------------------------
+
+  # Read a field from a struct or a string-keyed map. Lets templates and
+  # tests pass plain maps without ceremony.
+  defp fetch(map, key) when is_atom(key) do
+    Map.get(map, key) || Map.get(map, Atom.to_string(key))
+  end
+end

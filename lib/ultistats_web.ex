@@ -81,6 +81,8 @@ defmodule UltistatsWeb do
       import Phoenix.HTML
       # Core UI components
       import UltistatsWeb.CoreComponents
+      # Project-specific UI primitives (see docs/UI_DESIGN.md)
+      import UltistatsWeb.UIComponents
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS
