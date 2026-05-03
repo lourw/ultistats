@@ -55,12 +55,20 @@ defmodule UltistatsWeb.PlayerLive.Form do
   end
 
   defp apply_action(socket, :new, params) do
-    player = %Player{team_id: params["team_id"]}
+    case params["team_id"] do
+      nil ->
+        socket
+        |> Phoenix.LiveView.put_flash(:error, "Pick a team first to add a player.")
+        |> Phoenix.LiveView.push_navigate(to: ~p"/teams")
 
-    socket
-    |> assign(:page_title, "New Player")
-    |> assign(:player, player)
-    |> assign(:form, to_form(Teams.change_player(player)))
+      team_id ->
+        player = %Player{team_id: team_id}
+
+        socket
+        |> assign(:page_title, "New Player")
+        |> assign(:player, player)
+        |> assign(:form, to_form(Teams.change_player(player)))
+    end
   end
 
   @impl true

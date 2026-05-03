@@ -9,11 +9,9 @@ defmodule UltistatsWeb.PlayerLive.Index do
     <Layouts.app flash={@flash}>
       <.header>
         Listing Players
-        <:actions>
-          <.button variant="primary" navigate={~p"/players/new"}>
-            <.icon name="hero-plus" /> New Player
-          </.button>
-        </:actions>
+        <:subtitle>
+          Players are managed within a team's roster — open a team to add or edit players.
+        </:subtitle>
       </.header>
 
       <.table

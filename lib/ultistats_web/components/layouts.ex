@@ -18,6 +18,19 @@ defmodule UltistatsWeb.Layouts do
 
   def app(assigns) do
     ~H"""
+    <header class="sticky top-0 z-30 bg-base-100 border-b border-base-300 pt-safe">
+      <nav class="mx-auto max-w-2xl px-4 h-14 flex items-center justify-between gap-4">
+        <.link navigate={~p"/"} class="font-semibold text-base-content">
+          Ultistats
+        </.link>
+        <ul class="flex items-center gap-3 text-sm">
+          <li>
+            <.link navigate={~p"/teams"} class="hover:underline">Teams</.link>
+          </li>
+        </ul>
+      </nav>
+    </header>
+
     <main class="min-h-screen bg-base-100 text-base-content pb-safe">
       <div class="mx-auto max-w-2xl px-4 py-6 space-y-4">
         {render_slot(@inner_block)}
