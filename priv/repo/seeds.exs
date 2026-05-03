@@ -1,5 +1,7 @@
-# Idempotent dev seed: one team, 14 players (8 MMP + 6 FMP), and two
-# line presets. Re-running is a no-op as long as a team already exists.
+# Idempotent dev seed: one admin user, one team ("The Misfits"), 14
+# stub-user players (8 MMP + 6 FMP), two line presets, and two rulesets.
+# Re-running is a no-op as long as a team named "The Misfits" already
+# exists.
 #
 # Run manually with: `mix run priv/repo/seeds.exs`
 # Auto-runs on `mix phx.server` in dev (see lib/ultistats/application.ex).
@@ -7,17 +9,53 @@
 alias Ultistats.{Games, Repo, Teams}
 alias Ultistats.Teams.Team
 
-if Repo.aggregate(Team, :count, :id) == 0 do
-  {:ok, team} = Teams.create_team(%{name: "The Misfits"})
+if Repo.get_by(Team, name: "The Misfits") do
+  IO.puts("Seeds: 'The Misfits' already present, skipping")
+else
+  # 1) Admin user — real email/password so dev login works out of the box.
+  # We bypass the registration changeset's 12-char password minimum here so
+  # the dev login can be `admin` / `admin`. Production registration still
+  # enforces the validation; the seed runs only in dev.
+  admin_email = "admin@admin.com"
+  admin_password = "admin"
 
-  # 6 female-matching, 8 male-matching = 14 total. Jersey numbers are
-  # intentionally not in alphabetical order of first name so sort-by
-  # toggles produce visibly different orderings during testing.
+  admin =
+    %Ultistats.Accounts.User{}
+    |> Ecto.Changeset.change(%{
+      email: admin_email,
+      hashed_password: Bcrypt.hash_pwd_salt(admin_password),
+      confirmed_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    })
+    |> Repo.insert!()
+
+  # Profile fields on the admin so the team-stats query treats them as a
+  # full FMP/MMP/etc. player.
+  {:ok, admin} =
+    admin
+    |> Ultistats.Accounts.User.profile_changeset(%{
+      first_name: "Admin",
+      last_name: "Misfit",
+      gender_role: :male_matching,
+      position: :handler
+    })
+    |> Repo.update()
+
+  # 2) The team itself, with the admin's membership inserted in the
+  # same Multi via create_team_with_admin/2.
+  {:ok, %{team: team, membership: admin_membership}} =
+    Teams.create_team_with_admin(%{name: "The Misfits"}, admin)
+
+  # Backfill the jersey number on the admin membership — the helper
+  # always inserts with role: :admin, is_player: true and no jersey.
+  {:ok, _} =
+    Teams.update_team_membership(admin_membership, %{jersey_number: "00"})
+
+  # 3) Existing 14-player roster — created as stub users + memberships.
   player_specs = [
     # FMP (6) — jerseys intentionally shuffled vs first-name alpha order
     {"Brooke", "Lee", "3", :female_matching, :cutter},
     {"Avery", "Stone", "11", :female_matching, :handler},
-    {"Casey", "Park", "00", :female_matching, :cutter},
+    {"Casey", "Park", "01", :female_matching, :cutter},
     {"Frankie", "Holt", "1", :female_matching, :cutter},
     {"Emery", "Vance", "21", :female_matching, :handler},
     {"Devon", "Reed", "8", :female_matching, :hybrid},
@@ -32,30 +70,35 @@ if Repo.aggregate(Team, :count, :id) == 0 do
     {"Jordan", "Diaz", "23", :male_matching, :handler}
   ]
 
-  players =
+  results =
     Enum.map(player_specs, fn {first, last, jersey, gender, position} ->
-      {:ok, p} =
-        Teams.create_player(%{
-          team_id: team.id,
+      {:ok, %{user: user, membership: _}} =
+        Teams.create_member_with_stub_user(team, %{
           first_name: first,
           last_name: last,
-          jersey_number: jersey,
           gender_role: gender,
-          position: position
+          position: position,
+          role: :member,
+          is_player: true,
+          jersey_number: jersey
         })
 
-      p
+      {first, user}
     end)
 
-  by_first = fn name ->
-    Enum.find(players, &(&1.first_name == name))
-  end
+  by_first =
+    fn name ->
+      {_, user} = Enum.find(results, fn {f, _} -> f == name end)
+      user
+    end
 
-  o_line_player_ids =
+  # 4) Line presets — keyed off the new user_ids attribute on
+  #    create_line_preset/1.
+  o_line_user_ids =
     ["Hayden", "Ira", "Jordan", "Kit", "Avery", "Brooke", "Casey"]
     |> Enum.map(&by_first.(&1).id)
 
-  d_line_player_ids =
+  d_line_user_ids =
     ["Logan", "Marlowe", "Niko", "Gabe", "Devon", "Emery", "Frankie"]
     |> Enum.map(&by_first.(&1).id)
 
@@ -63,16 +106,17 @@ if Repo.aggregate(Team, :count, :id) == 0 do
     Teams.create_line_preset(%{
       team_id: team.id,
       name: "O-line",
-      player_ids: o_line_player_ids
+      user_ids: o_line_user_ids
     })
 
   {:ok, _} =
     Teams.create_line_preset(%{
       team_id: team.id,
       name: "D-line",
-      player_ids: d_line_player_ids
+      user_ids: d_line_user_ids
     })
 
+  # 5) Rulesets — unchanged from the prior seed, scoped to the team.
   {:ok, _} =
     Games.create_ruleset(%{
       team_id: team.id,
@@ -103,7 +147,7 @@ if Repo.aggregate(Team, :count, :id) == 0 do
       default_starting_ratio: :four_men_three_women
     })
 
-  IO.puts("Seeded: #{team.name} · 14 players · 2 line presets · 2 rulesets")
-else
-  IO.puts("Seeds: data already present, skipping")
+  IO.puts(
+    "Seeded: #{team.name} · admin=#{admin.email} · 14 stub-user players · 2 line presets · 2 rulesets"
+  )
 end

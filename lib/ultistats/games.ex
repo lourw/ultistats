@@ -11,9 +11,10 @@ defmodule Ultistats.Games do
   import Ecto.Query, warn: false
   alias Ultistats.Repo
 
+  alias Ultistats.Accounts.User
   alias Ultistats.Games.{Event, Game, Point, Ruleset}
   alias Ultistats.Teams
-  alias Ultistats.Teams.{Player, Team}
+  alias Ultistats.Teams.{Team, TeamMembership}
 
   # USAU-standard defaults — used both as the fallback for games with
   # no ruleset attached (legacy / dev rows) and as the seed when
@@ -52,6 +53,26 @@ defmodule Ultistats.Games do
     |> order_by([g], desc: g.started_at)
     |> Repo.all()
   end
+
+  @doc """
+  Returns games for the teams `user` is a member of, newest-started
+  first, with `:team` preloaded.
+  """
+  def list_games_for_user(%User{id: user_id}), do: list_games_for_user(user_id)
+
+  def list_games_for_user(user_id) when is_binary(user_id) do
+    from(g in Game,
+      join: m in TeamMembership,
+      on: m.team_id == g.team_id,
+      where: m.user_id == ^user_id,
+      order_by: [desc: g.started_at],
+      distinct: true,
+      preload: :team
+    )
+    |> Repo.all()
+  end
+
+  def list_games_for_user(_), do: []
 
   @doc "Gets a single game. Raises `Ecto.NoResultsError` if not found."
   def get_game!(id), do: Repo.get!(Game, id)
@@ -170,19 +191,20 @@ defmodule Ultistats.Games do
   # ===========================================================================
 
   @doc """
-  Starts a new point on `game` with the given line of `player_ids`.
+  Starts a new point on `game` with the given line of `user_ids`.
 
-  Player ids are filtered defensively to the game's team — ids belonging
-  to another team are silently dropped (same pattern as line presets).
-  Returns `{:error, changeset}` if the resulting filtered list is empty.
+  User ids are filtered defensively to users who hold a membership on
+  the game's team — ids belonging to another team are silently dropped
+  (same pattern as line presets). Returns `{:error, changeset}` if the
+  resulting filtered list is empty.
   """
-  def start_point(%Game{} = game, player_ids) when is_list(player_ids) do
-    scoped_ids = scope_player_ids_to_team(player_ids, game.team_id)
+  def start_point(%Game{} = game, user_ids) when is_list(user_ids) do
+    scoped_ids = scope_user_ids_to_team(user_ids, game.team_id)
 
     attrs = %{
       game_id: game.id,
       sequence: next_point_sequence(game),
-      our_line_snapshot: %{"player_ids" => scoped_ids},
+      our_line_snapshot: %{"user_ids" => scoped_ids},
       scoring_team: nil
     }
 
@@ -246,18 +268,18 @@ defmodule Ultistats.Games do
   # ===========================================================================
 
   @doc """
-  Records a new event on `point`. `player_id` may be `nil` for events
-  not pinned to a player; when given, it must belong to the game's team
-  or the call returns `{:error, :player_not_on_team}`.
+  Records a new event on `point`. `user_id` may be `nil` for events
+  not pinned to a user; when given, the user must hold a membership on
+  the game's team or the call returns `{:error, :user_not_on_team}`.
   """
-  def record_event(%Point{} = point, type, player_id)
+  def record_event(%Point{} = point, type, user_id)
       when type in [:goal, :assist, :block, :turn] do
-    with :ok <- validate_player_on_team(point, player_id) do
+    with :ok <- validate_user_on_team(point, user_id) do
       attrs = %{
         point_id: point.id,
         sequence: next_event_sequence(point),
         type: type,
-        player_id: player_id,
+        user_id: user_id,
         occurred_at: now()
       }
 
@@ -278,32 +300,32 @@ defmodule Ultistats.Games do
   end
 
   @doc """
-  Updates an event's `type` and/or `player_id`. Used by the timeline
+  Updates an event's `type` and/or `user_id`. Used by the timeline
   edit flow. Other fields are not editable from the timeline (sequence
   and occurred_at are stable; deleted_at is set via
   `soft_delete_event/1`).
 
-  When `:player_id` is provided (non-nil), it must belong to the same
-  team as the event's point's game; otherwise `{:error,
-  :player_not_on_team}` is returned without touching the row.
+  When `:user_id` is provided (non-nil), the user must hold a membership
+  on the same team as the event's point's game; otherwise
+  `{:error, :user_not_on_team}` is returned without touching the row.
   """
   def update_event(%Event{} = event, attrs) do
     attrs = normalize_keys(attrs)
-    player_id = Map.get(attrs, :player_id, :unset)
+    user_id = Map.get(attrs, :user_id, :unset)
 
-    with :ok <- validate_event_player(event, player_id) do
+    with :ok <- validate_event_user(event, user_id) do
       event
       |> Event.update_changeset(attrs)
       |> Repo.update()
     end
   end
 
-  defp validate_event_player(_event, :unset), do: :ok
-  defp validate_event_player(_event, nil), do: :ok
+  defp validate_event_user(_event, :unset), do: :ok
+  defp validate_event_user(_event, nil), do: :ok
 
-  defp validate_event_player(%Event{point_id: point_id}, player_id) when is_binary(player_id) do
+  defp validate_event_user(%Event{point_id: point_id}, user_id) when is_binary(user_id) do
     point = Repo.get!(Point, point_id)
-    validate_player_on_team(point, player_id)
+    validate_user_on_team(point, user_id)
   end
 
   @doc """
@@ -345,7 +367,7 @@ defmodule Ultistats.Games do
     # `:ours` is counted via non-deleted goal events on `:ours` points so
     # soft-deleting a goal in the timeline recomputes the score (per
     # MVP_SPEC.md step 7). `:theirs` is counted via points alone — opposing
-    # goals don't have player-attributed events.
+    # goals don't have user-attributed events.
     ours =
       from(e in Event,
         join: p in Point,
@@ -442,7 +464,7 @@ defmodule Ultistats.Games do
   # ===========================================================================
 
   @doc """
-  Returns the per-player summary for `game`. Soft-deleted events are
+  Returns the per-user summary for `game`. Soft-deleted events are
   excluded (`deleted_at IS NULL`).
 
   Shape:
@@ -451,7 +473,8 @@ defmodule Ultistats.Games do
         score: %{ours: integer, theirs: integer},
         players: [
           %{
-            player: %Ultistats.Teams.Player{},
+            membership: %Ultistats.Teams.TeamMembership{user: %User{}},
+            user: %Ultistats.Accounts.User{},
             goals: integer,
             assists: integer,
             blocks: integer,
@@ -461,20 +484,20 @@ defmodule Ultistats.Games do
         ]
       }
 
-  The `:players` list is the team's roster (so untracked players still
-  appear with all-zero rows). Order: by `jersey_number` ascending —
-  numeric jerseys sort numerically; non-numeric or missing jerseys sort
-  to the end.
+  The `:players` list is the team's roster (memberships where
+  `is_player == true`) so untracked players still appear with all-zero
+  rows. Order: by `jersey_number` ascending — numeric jerseys sort
+  numerically; non-numeric or missing jerseys sort to the end.
 
-  Per-stat tallies count `e.type` matches on non-deleted events tied to
-  `game`'s points. `:points_played` counts points where the player's id
-  appears in the point's `our_line_snapshot["player_ids"]`. Player ids
+  Per-stat tallies count `e.type` matches on non-deleted events tied
+  to `game`'s points. `:points_played` counts points where the user's id
+  appears in the point's `our_line_snapshot["user_ids"]`. User ids
   that aren't on the team are ignored (defensive — they shouldn't be
   there per `start_point/2`).
   """
   def summary_for_game(%Game{} = game) do
     roster = Teams.list_players_for_team(game.team_id)
-    roster_ids = MapSet.new(roster, & &1.id)
+    roster_user_ids = MapSet.new(roster, & &1.user_id)
 
     points =
       Repo.all(
@@ -493,27 +516,27 @@ defmodule Ultistats.Games do
           join: p in Point,
           on: p.id == e.point_id,
           where: p.game_id == ^game.id and is_nil(e.deleted_at),
-          select: %{type: e.type, player_id: e.player_id}
+          select: %{type: e.type, user_id: e.user_id}
       )
 
-    # Per-player event tallies. Map of player_id => %{goal: n, assist: n, ...}.
+    # Per-user event tallies. Map of user_id => %{goal: n, assist: n, ...}.
     event_tallies =
       events
-      |> Enum.filter(&(not is_nil(&1.player_id) and MapSet.member?(roster_ids, &1.player_id)))
-      |> Enum.group_by(& &1.player_id)
-      |> Map.new(fn {pid, evs} ->
+      |> Enum.filter(&(not is_nil(&1.user_id) and MapSet.member?(roster_user_ids, &1.user_id)))
+      |> Enum.group_by(& &1.user_id)
+      |> Map.new(fn {uid, evs} ->
         counts = Enum.frequencies_by(evs, & &1.type)
-        {pid, counts}
+        {uid, counts}
       end)
 
-    # Per-player points-played tallies.
-    points_played_by_player =
+    # Per-user points-played tallies.
+    points_played_by_user =
       Enum.reduce(points, %{}, fn point, acc ->
-        ids = snapshot_player_ids(point.our_line_snapshot)
+        ids = snapshot_user_ids(point.our_line_snapshot)
 
-        Enum.reduce(ids, acc, fn pid, acc2 ->
-          if MapSet.member?(roster_ids, pid) do
-            Map.update(acc2, pid, 1, &(&1 + 1))
+        Enum.reduce(ids, acc, fn uid, acc2 ->
+          if MapSet.member?(roster_user_ids, uid) do
+            Map.update(acc2, uid, 1, &(&1 + 1))
           else
             acc2
           end
@@ -523,33 +546,34 @@ defmodule Ultistats.Games do
     rows =
       roster
       |> Enum.sort_by(&jersey_sort_key/1)
-      |> Enum.map(fn player ->
-        counts = Map.get(event_tallies, player.id, %{})
+      |> Enum.map(fn membership ->
+        counts = Map.get(event_tallies, membership.user_id, %{})
 
         %{
-          player: player,
+          membership: membership,
+          user: membership.user,
           goals: Map.get(counts, :goal, 0),
           assists: Map.get(counts, :assist, 0),
           blocks: Map.get(counts, :block, 0),
           turns: Map.get(counts, :turn, 0),
-          points_played: Map.get(points_played_by_player, player.id, 0)
+          points_played: Map.get(points_played_by_user, membership.user_id, 0)
         }
       end)
 
     %{score: score(game), players: rows}
   end
 
-  defp snapshot_player_ids(%{"player_ids" => ids}) when is_list(ids), do: ids
-  defp snapshot_player_ids(_), do: []
+  defp snapshot_user_ids(%{"user_ids" => ids}) when is_list(ids), do: ids
+  defp snapshot_user_ids(_), do: []
 
   # Sort key: {0, n} for numeric jerseys (so they come first in number
   # order), {1, raw} for non-numeric strings (alphabetic among themselves
   # but after all numbers), {2, ""} for missing. Keeps the comparator
   # total even when the roster mixes numeric and non-numeric entries.
-  defp jersey_sort_key(%Player{jersey_number: nil}), do: {2, ""}
-  defp jersey_sort_key(%Player{jersey_number: ""}), do: {2, ""}
+  defp jersey_sort_key(%TeamMembership{jersey_number: nil}), do: {2, ""}
+  defp jersey_sort_key(%TeamMembership{jersey_number: ""}), do: {2, ""}
 
-  defp jersey_sort_key(%Player{jersey_number: n}) when is_binary(n) do
+  defp jersey_sort_key(%TeamMembership{jersey_number: n}) when is_binary(n) do
     case Integer.parse(n) do
       {int, ""} -> {0, int}
       _ -> {1, n}
@@ -575,42 +599,43 @@ defmodule Ultistats.Games do
     ArgumentError -> attrs
   end
 
-  defp scope_player_ids_to_team([], _team_id), do: []
-  defp scope_player_ids_to_team(_ids, nil), do: []
+  defp scope_user_ids_to_team([], _team_id), do: []
+  defp scope_user_ids_to_team(_ids, nil), do: []
 
-  defp scope_player_ids_to_team(player_ids, team_id) when is_list(player_ids) do
+  defp scope_user_ids_to_team(user_ids, team_id) when is_list(user_ids) do
     valid =
-      Player
-      |> where([p], p.team_id == ^team_id and p.id in ^player_ids)
-      |> select([p], p.id)
+      from(m in TeamMembership,
+        where: m.team_id == ^team_id and m.user_id in ^user_ids,
+        select: m.user_id
+      )
       |> Repo.all()
       |> MapSet.new()
 
-    Enum.filter(player_ids, &MapSet.member?(valid, &1))
+    Enum.filter(user_ids, &MapSet.member?(valid, &1))
   end
 
   defp validate_non_empty_line(changeset, []) do
     Ecto.Changeset.add_error(
       changeset,
       :our_line_snapshot,
-      "must include at least one player from the team's roster"
+      "must include at least one user from the team's roster"
     )
   end
 
   defp validate_non_empty_line(changeset, _ids), do: changeset
 
-  defp validate_player_on_team(_point, nil), do: :ok
+  defp validate_user_on_team(_point, nil), do: :ok
 
-  defp validate_player_on_team(%Point{game_id: game_id}, player_id) when is_binary(player_id) do
+  defp validate_user_on_team(%Point{game_id: game_id}, user_id) when is_binary(user_id) do
     query =
-      from p in Player,
-        join: g in Game,
-        on: g.team_id == p.team_id,
-        where: g.id == ^game_id and p.id == ^player_id,
-        select: p.id
+      from g in Game,
+        join: m in TeamMembership,
+        on: m.team_id == g.team_id,
+        where: g.id == ^game_id and m.user_id == ^user_id,
+        select: m.user_id
 
     case Repo.one(query) do
-      nil -> {:error, :player_not_on_team}
+      nil -> {:error, :user_not_on_team}
       _ -> :ok
     end
   end
@@ -657,6 +682,27 @@ defmodule Ultistats.Games do
     |> preload(:team)
     |> Repo.all()
   end
+
+  @doc """
+  Returns `:template` rulesets for the teams `user` is a member of —
+  not archived, ordered by name asc, with `:team` preloaded. Replaces
+  `list_rulesets_across_teams/0` in user-scoped contexts.
+  """
+  def list_rulesets_for_user(%User{id: user_id}), do: list_rulesets_for_user(user_id)
+
+  def list_rulesets_for_user(user_id) when is_binary(user_id) do
+    from(r in Ruleset,
+      join: m in TeamMembership,
+      on: m.team_id == r.team_id,
+      where: m.user_id == ^user_id and r.kind == :template and is_nil(r.archived_at),
+      order_by: [asc: r.name],
+      distinct: true,
+      preload: :team
+    )
+    |> Repo.all()
+  end
+
+  def list_rulesets_for_user(_), do: []
 
   @doc """
   Gets a single ruleset by id, regardless of `:kind` or archival

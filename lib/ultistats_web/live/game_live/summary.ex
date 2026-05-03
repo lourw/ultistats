@@ -9,19 +9,28 @@ defmodule UltistatsWeb.GameLive.Summary do
   """
   use UltistatsWeb, :live_view
 
-  alias Ultistats.Games
-  alias Ultistats.Teams.Player
+  alias Ultistats.Accounts.User
+  alias Ultistats.{Games, Teams}
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
     game = Games.get_game!(id)
-    summary = Games.summary_for_game(game)
+    user = socket.assigns.current_scope.user
 
-    {:ok,
-     socket
-     |> assign(:page_title, "Summary · vs #{game.opponent_name}")
-     |> assign(:game, game)
-     |> assign(:summary, summary)}
+    if not Teams.user_member_of?(user, game.team_id) do
+      {:ok,
+       socket
+       |> put_flash(:error, "You don't have permission to view that game.")
+       |> push_navigate(to: ~p"/games")}
+    else
+      summary = Games.summary_for_game(game)
+
+      {:ok,
+       socket
+       |> assign(:page_title, "Summary · vs #{game.opponent_name}")
+       |> assign(:game, game)
+       |> assign(:summary, summary)}
+    end
   end
 
   ## ---------------------------------------------------------------------
@@ -31,7 +40,7 @@ defmodule UltistatsWeb.GameLive.Summary do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="flex flex-col gap-6 pb-safe">
         <.summary_header game={@game} score={@summary.score} />
 
@@ -186,10 +195,10 @@ defmodule UltistatsWeb.GameLive.Summary do
             ]}
           >
             <td class="p-3 text-right tabular-nums font-semibold">
-              {jersey_label(row.player.jersey_number)}
+              {jersey_label(row.membership.jersey_number)}
             </td>
             <td class="p-3">
-              <span class="font-medium">{Player.display_name(row.player)}</span>
+              <span class="font-medium">{User.display_name(row.user)}</span>
             </td>
             <td class="p-3 text-right tabular-nums">{row.goals}</td>
             <td class="p-3 text-right tabular-nums">{row.assists}</td>

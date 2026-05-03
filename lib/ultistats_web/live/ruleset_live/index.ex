@@ -1,15 +1,13 @@
 defmodule UltistatsWeb.RulesetLive.Index do
   use UltistatsWeb, :live_view
 
-  import Ecto.Query, only: [where: 3, preload: 2]
-
+  alias Ultistats.{Games, Teams}
   alias Ultistats.Games.Ruleset
-  alias Ultistats.Repo
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
       <.header>
         Rulesets across all teams
         <:subtitle>Reusable rule templates: caps, halftime, timeouts, gender ratio.</:subtitle>
@@ -33,6 +31,7 @@ defmodule UltistatsWeb.RulesetLive.Index do
             </div>
           </div>
           <.link
+            :if={MapSet.member?(@admin_team_ids, r.team_id)}
             navigate={~p"/rulesets/#{r.id}/edit"}
             aria-label={"Edit #{r.name}"}
             class="shrink-0 min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
@@ -51,20 +50,25 @@ defmodule UltistatsWeb.RulesetLive.Index do
 
   @impl true
   def mount(_params, _session, socket) do
+    user = socket.assigns.current_scope.user
+
+    rows =
+      user
+      |> Games.list_rulesets_for_user()
+      |> Enum.map(fn r -> %{ruleset: r, team: r.team} end)
+      |> Enum.sort_by(fn %{team: t, ruleset: r} -> {t.name, r.name} end)
+
+    admin_team_ids =
+      user
+      |> Teams.list_teams_for_user()
+      |> Enum.filter(&Teams.user_admin_of?(user, &1))
+      |> MapSet.new(& &1.id)
+
     {:ok,
      socket
      |> assign(:page_title, "Rulesets")
-     |> assign(:rows, list_rows())}
-  end
-
-  # Templates only, with team preloaded; ordered by team name then ruleset name.
-  defp list_rows do
-    Ruleset
-    |> where([r], r.kind == :template and is_nil(r.archived_at))
-    |> preload(:team)
-    |> Repo.all()
-    |> Enum.map(fn r -> %{ruleset: r, team: r.team} end)
-    |> Enum.sort_by(fn %{team: t, ruleset: r} -> {t.name, r.name} end)
+     |> assign(:rows, rows)
+     |> assign(:admin_team_ids, admin_team_ids)}
   end
 
   defp summary_line(%Ruleset{} = r) do

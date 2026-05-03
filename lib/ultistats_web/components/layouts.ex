@@ -24,12 +24,21 @@ defmodule UltistatsWeb.Layouts do
           Ultistats
         </.link>
         <ul class="flex items-center gap-4 text-sm">
-          <li>
-            <.link navigate={~p"/teams"} class="hover:underline">Teams</.link>
-          </li>
-          <li>
-            <.link navigate={~p"/games"} class="hover:underline">Games</.link>
-          </li>
+          <%= if @current_scope do %>
+            <li>
+              <.link navigate={~p"/teams"} class="hover:underline">Teams</.link>
+            </li>
+            <li>
+              <.link navigate={~p"/games"} class="hover:underline">Games</.link>
+            </li>
+            <li>
+              <.link href={~p"/users/settings"} class="hover:underline">Profile</.link>
+            </li>
+          <% else %>
+            <li>
+              <.link href={~p"/users/log-in"} class="hover:underline">Log in</.link>
+            </li>
+          <% end %>
         </ul>
       </nav>
     </header>

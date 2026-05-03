@@ -7,9 +7,29 @@
 # General application configuration
 import Config
 
+config :ultistats, :scopes,
+  user: [
+    default: true,
+    module: Ultistats.Accounts.Scope,
+    assign_key: :current_scope,
+    access_path: [:user, :id],
+    schema_key: :user_id,
+    schema_type: :binary_id,
+    schema_table: :users,
+    test_data_fixture: Ultistats.AccountsFixtures,
+    test_setup_helper: :register_and_log_in_user
+  ]
+
 config :ultistats,
   ecto_repos: [Ultistats.Repo],
   generators: [timestamp_type: :utc_datetime, binary_id: true]
+
+# Configure Swoosh mailer
+config :ultistats, Ultistats.Mailer, adapter: Swoosh.Adapters.Local
+
+# Disable Swoosh API client during compilation; environments that need it
+# (e.g. production with a real adapter) re-enable in their own config.
+config :swoosh, :api_client, false
 
 # Configure the endpoint
 config :ultistats, UltistatsWeb.Endpoint,

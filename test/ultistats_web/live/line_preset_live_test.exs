@@ -5,13 +5,21 @@ defmodule UltistatsWeb.LinePresetLiveTest do
   import Ultistats.TeamsFixtures
 
   alias Ultistats.Teams
-  alias Ultistats.Teams.Player
+  alias Ultistats.Accounts.User
 
-  defp setup_team_with_roster(_) do
+  defp add_to_team(team, user, role \\ :admin) do
+    {:ok, _m} =
+      Teams.add_team_member(team, user, %{role: role, is_player: true})
+
+    :ok
+  end
+
+  defp setup_team_with_roster(%{user: user}) do
     team = team_fixture(%{name: "Home"})
+    add_to_team(team, user)
 
     p1 =
-      player_fixture(%{
+      member_fixture(%{
         team_id: team.id,
         jersey_number: "7",
         first_name: "Avery",
@@ -19,7 +27,7 @@ defmodule UltistatsWeb.LinePresetLiveTest do
       })
 
     p2 =
-      player_fixture(%{
+      member_fixture(%{
         team_id: team.id,
         jersey_number: "11",
         first_name: "Casey",
@@ -27,7 +35,7 @@ defmodule UltistatsWeb.LinePresetLiveTest do
       })
 
     p3 =
-      player_fixture(%{
+      member_fixture(%{
         team_id: team.id,
         jersey_number: "23",
         first_name: "Drew",
@@ -38,12 +46,7 @@ defmodule UltistatsWeb.LinePresetLiveTest do
   end
 
   describe "New form (with team_id)" do
-    setup [:setup_team_with_roster]
-
-    # Note: the canonical "create new line preset" flow is
-    # /line_presets/new?team_id=ID (entered from the team show page).
-    # The bare /line_presets/new flow is intentionally not covered —
-    # see the PlayerLive test for the same convention.
+    setup [:register_and_log_in_user, :setup_team_with_roster]
 
     test "renders a row for every player on the team", %{
       conn: conn,
@@ -52,12 +55,10 @@ defmodule UltistatsWeb.LinePresetLiveTest do
     } do
       {:ok, _form_live, html} = live(conn, ~p"/line_presets/new?team_id=#{team.id}")
 
-      # Each player's name shows up in the picker.
-      assert html =~ Player.display_name(p1)
-      assert html =~ Player.display_name(p2)
-      assert html =~ Player.display_name(p3)
+      assert html =~ User.display_name(p1)
+      assert html =~ User.display_name(p2)
+      assert html =~ User.display_name(p3)
 
-      # Section starts with 0 selected of 3 (all 3 fixture players are female-matching by default).
       assert html =~ "0 of 3"
     end
 
@@ -102,12 +103,30 @@ defmodule UltistatsWeb.LinePresetLiveTest do
       [preset] = Teams.list_line_presets_for_team(team)
       assert preset.name == "O-line A"
       assert preset.team_id == team.id
-      assert Enum.map(preset.players, & &1.id) |> Enum.sort() == Enum.sort([p1.id, p2.id])
+      assert Enum.map(preset.users, & &1.id) |> Enum.sort() == Enum.sort([p1.id, p2.id])
+    end
+  end
+
+  describe "New form — non-admin" do
+    setup :register_and_log_in_user
+
+    test "non-admin members are redirected from /line_presets/new?team_id=...", %{
+      conn: conn,
+      user: user
+    } do
+      team = team_fixture()
+      add_to_team(team, user, :member)
+
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
+               live(conn, ~p"/line_presets/new?team_id=#{team.id}")
+
+      assert to == ~p"/teams/#{team.id}"
+      assert flash["error"] =~ "permission"
     end
   end
 
   describe "Edit form" do
-    setup [:setup_team_with_roster]
+    setup [:register_and_log_in_user, :setup_team_with_roster]
 
     test "pre-selects the preset's existing players", %{
       conn: conn,
@@ -118,12 +137,11 @@ defmodule UltistatsWeb.LinePresetLiveTest do
         Teams.create_line_preset(%{
           name: "Existing",
           team_id: team.id,
-          player_ids: [p1.id, p2.id]
+          user_ids: [p1.id, p2.id]
         })
 
       {:ok, _form_live, html} = live(conn, ~p"/line_presets/#{preset}/edit")
 
-      # All 3 fixture players are female-matching by default.
       assert html =~ "2 of 3"
     end
 
@@ -136,12 +154,11 @@ defmodule UltistatsWeb.LinePresetLiveTest do
         Teams.create_line_preset(%{
           name: "Existing",
           team_id: team.id,
-          player_ids: [p1.id, p2.id]
+          user_ids: [p1.id, p2.id]
         })
 
       {:ok, form_live, _html} = live(conn, ~p"/line_presets/#{preset}/edit")
 
-      # Deselect p1, select p3 → final set is {p2, p3}.
       form_live |> element("button[phx-value-id='#{p1.id}']") |> render_click()
       form_live |> element("button[phx-value-id='#{p3.id}']") |> render_click()
 
@@ -152,7 +169,7 @@ defmodule UltistatsWeb.LinePresetLiveTest do
                |> follow_redirect(conn, ~p"/line_presets")
 
       reloaded = Teams.get_line_preset!(preset.id)
-      assert Enum.map(reloaded.players, & &1.id) |> Enum.sort() == Enum.sort([p2.id, p3.id])
+      assert Enum.map(reloaded.users, & &1.id) |> Enum.sort() == Enum.sort([p2.id, p3.id])
     end
 
     test "delete affordance on the edit form removes the preset", %{
@@ -164,7 +181,7 @@ defmodule UltistatsWeb.LinePresetLiveTest do
         Teams.create_line_preset(%{
           name: "Going away",
           team_id: team.id,
-          player_ids: [p1.id, p2.id]
+          user_ids: [p1.id, p2.id]
         })
 
       {:ok, edit_live, _html} = live(conn, ~p"/line_presets/#{preset}/edit")
@@ -180,6 +197,30 @@ defmodule UltistatsWeb.LinePresetLiveTest do
       assert_raise Ecto.NoResultsError, fn ->
         Ultistats.Teams.get_line_preset!(preset.id)
       end
+    end
+  end
+
+  describe "Edit form — non-admin" do
+    setup :register_and_log_in_user
+
+    test "non-admin members are redirected from /line_presets/:id/edit", %{
+      conn: conn,
+      user: user
+    } do
+      team = team_fixture()
+      add_to_team(team, user, :member)
+
+      {:ok, preset} =
+        Teams.create_line_preset(%{
+          name: "Existing",
+          team_id: team.id
+        })
+
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
+               live(conn, ~p"/line_presets/#{preset}/edit")
+
+      assert to == ~p"/teams/#{team.id}"
+      assert flash["error"] =~ "permission"
     end
   end
 end

@@ -16,21 +16,21 @@ defmodule Ultistats.Repo.Migrations.CreateLinePresets do
 
     create index(:line_presets, [:team_id])
 
-    # Join table for the many_to_many between line_presets and players.
+    # Join table for the many_to_many between line_presets and users.
     # No timestamps — Ecto's many_to_many with a string `join_through`
     # uses insert_all and does not populate timestamp columns.
-    create table(:line_preset_players, primary_key: false) do
+    create table(:line_preset_users, primary_key: false) do
       add :line_preset_id,
           references(:line_presets, type: :binary_id, on_delete: :delete_all),
           null: false,
           primary_key: true
 
-      add :player_id,
-          references(:players, type: :binary_id, on_delete: :delete_all),
+      add :user_id,
+          references(:users, type: :binary_id, on_delete: :delete_all),
           null: false,
           primary_key: true
     end
 
-    create index(:line_preset_players, [:player_id])
+    create index(:line_preset_users, [:user_id])
   end
 end

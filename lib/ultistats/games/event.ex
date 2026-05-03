@@ -19,7 +19,7 @@ defmodule Ultistats.Games.Event do
     field :deleted_at, :utc_datetime
 
     belongs_to :point, Ultistats.Games.Point
-    belongs_to :player, Ultistats.Teams.Player
+    belongs_to :user, Ultistats.Accounts.User
 
     timestamps(type: :utc_datetime)
   end
@@ -30,28 +30,28 @@ defmodule Ultistats.Games.Event do
   @doc false
   def changeset(event, attrs) do
     event
-    |> cast(attrs, [:point_id, :sequence, :type, :player_id, :occurred_at, :deleted_at])
+    |> cast(attrs, [:point_id, :sequence, :type, :user_id, :occurred_at, :deleted_at])
     |> validate_required([:point_id, :sequence, :type, :occurred_at])
     |> assoc_constraint(:point)
-    |> maybe_assoc_constraint_player()
+    |> maybe_assoc_constraint_user()
   end
 
   @doc """
-  Changeset for the timeline edit flow — only `:type` and `:player_id`
+  Changeset for the timeline edit flow — only `:type` and `:user_id`
   are editable. `:sequence`, `:occurred_at`, and `:deleted_at` are
   intentionally not cast.
   """
   def update_changeset(event, attrs) do
     event
-    |> cast(attrs, [:type, :player_id])
+    |> cast(attrs, [:type, :user_id])
     |> validate_required([:type])
-    |> maybe_assoc_constraint_player()
+    |> maybe_assoc_constraint_user()
   end
 
-  defp maybe_assoc_constraint_player(changeset) do
-    case get_field(changeset, :player_id) do
+  defp maybe_assoc_constraint_user(changeset) do
+    case get_field(changeset, :user_id) do
       nil -> changeset
-      _ -> assoc_constraint(changeset, :player)
+      _ -> assoc_constraint(changeset, :user)
     end
   end
 end

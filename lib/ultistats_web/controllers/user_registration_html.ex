@@ -1,0 +1,5 @@
+defmodule UltistatsWeb.UserRegistrationHTML do
+  use UltistatsWeb, :html
+
+  embed_templates "user_registration_html/*"
+end

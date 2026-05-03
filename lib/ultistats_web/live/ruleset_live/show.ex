@@ -1,13 +1,13 @@
 defmodule UltistatsWeb.RulesetLive.Show do
   use UltistatsWeb, :live_view
 
-  alias Ultistats.Games
+  alias Ultistats.{Games, Teams}
   alias Ultistats.Games.Ruleset
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
       <.header>
         Ruleset {humanized_name(@ruleset)}
         <:subtitle>{kind_subtitle(@ruleset)}</:subtitle>
@@ -15,10 +15,15 @@ defmodule UltistatsWeb.RulesetLive.Show do
           <.button navigate={~p"/games"} aria-label="Back to games">
             <.icon name="hero-arrow-left" />
           </.button>
-          <.button variant="primary" navigate={~p"/rulesets/#{@ruleset}/edit?return_to=show"}>
+          <.button
+            :if={@is_admin?}
+            variant="primary"
+            navigate={~p"/rulesets/#{@ruleset}/edit?return_to=show"}
+          >
             <.icon name="hero-pencil-square" /> Edit ruleset
           </.button>
           <.button
+            :if={@is_admin?}
             phx-click={JS.push("delete_or_archive")}
             data-confirm={"Delete the \"#{humanized_name(@ruleset)}\" ruleset?"}
             class="btn-error"
@@ -52,31 +57,45 @@ defmodule UltistatsWeb.RulesetLive.Show do
   @impl true
   def mount(%{"id" => id}, _session, socket) do
     ruleset = Games.get_ruleset!(id)
+    user = socket.assigns.current_scope.user
 
-    {:ok,
-     socket
-     |> assign(:page_title, "Show Ruleset")
-     |> assign(:ruleset, ruleset)}
+    if Teams.user_member_of?(user, ruleset.team_id) do
+      {:ok,
+       socket
+       |> assign(:page_title, "Show Ruleset")
+       |> assign(:ruleset, ruleset)
+       |> assign(:is_admin?, Teams.user_admin_of?(user, ruleset.team_id))}
+    else
+      {:ok,
+       socket
+       |> put_flash(:error, "You don't have permission to view that ruleset.")
+       |> push_navigate(to: ~p"/games")}
+    end
   end
 
   @impl true
   def handle_event("delete_or_archive", _params, socket) do
     ruleset = socket.assigns.ruleset
+    user = socket.assigns.current_scope.user
 
-    flash_msg =
-      case Games.delete_ruleset(ruleset) do
-        {:ok, _} ->
-          "Ruleset deleted"
+    if not Teams.user_admin_of?(user, ruleset.team_id) do
+      {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
+    else
+      flash_msg =
+        case Games.delete_ruleset(ruleset) do
+          {:ok, _} ->
+            "Ruleset deleted"
 
-        {:error, :referenced_by_games} ->
-          {:ok, _} = Games.archive_ruleset(ruleset)
-          "Archived because games reference it."
-      end
+          {:error, :referenced_by_games} ->
+            {:ok, _} = Games.archive_ruleset(ruleset)
+            "Archived because games reference it."
+        end
 
-    {:noreply,
-     socket
-     |> put_flash(:info, flash_msg)
-     |> push_navigate(to: ~p"/games")}
+      {:noreply,
+       socket
+       |> put_flash(:info, flash_msg)
+       |> push_navigate(to: ~p"/games")}
+    end
   end
 
   defp humanized_name(%Ruleset{name: nil, kind: :game_instance}), do: "(per-game instance)"

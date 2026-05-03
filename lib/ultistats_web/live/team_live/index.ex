@@ -6,7 +6,7 @@ defmodule UltistatsWeb.TeamLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
       <.header>
         Teams
         <:actions>
@@ -16,9 +16,16 @@ defmodule UltistatsWeb.TeamLive.Index do
         </:actions>
       </.header>
 
-      <p :if={@teams_with_stats == []} class="text-base-content/70">
-        No teams yet. <.link navigate={~p"/teams/new"} class="underline">Create your first team</.link>.
-      </p>
+      <div :if={@teams_with_stats == []} id="no-teams-empty-state" class="mt-4">
+        <p class="text-base-content/70">
+          You're not on any teams yet. Create one to get started.
+        </p>
+        <div class="mt-3">
+          <.button variant="primary" navigate={~p"/teams/new"}>
+            <.icon name="hero-plus" /> Create team
+          </.button>
+        </div>
+      </div>
 
       <ul :if={@teams_with_stats != []} id="teams-list" class="divide-y divide-base-200">
         <li :for={%{team: team, stats: s} <- @teams_with_stats} id={"team-#{team.id}"} class="py-3">
@@ -47,10 +54,12 @@ defmodule UltistatsWeb.TeamLive.Index do
 
   @impl true
   def mount(_params, _session, socket) do
+    user = socket.assigns.current_scope.user
+
     {:ok,
      socket
      |> assign(:page_title, "Teams")
-     |> assign(:teams_with_stats, Teams.list_teams_with_stats())}
+     |> assign(:teams_with_stats, Teams.list_teams_with_stats_for_user(user))}
   end
 
   # Record formatting:

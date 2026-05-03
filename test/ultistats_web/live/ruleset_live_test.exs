@@ -5,23 +5,36 @@ defmodule UltistatsWeb.RulesetLiveTest do
   import Ultistats.GamesFixtures
   import Ultistats.TeamsFixtures
 
-  alias Ultistats.Games
+  alias Ultistats.{Games, Teams}
+
+  defp add_to_team(team, user, role \\ :admin) do
+    {:ok, _m} =
+      Teams.add_team_member(team, user, %{role: role, is_player: true})
+
+    :ok
+  end
 
   describe "Index" do
-    test "lists templates only — :game_instance rows are not surfaced", %{conn: conn} do
+    setup :register_and_log_in_user
+
+    test "lists templates only — :game_instance rows are not surfaced", %{
+      conn: conn,
+      user: user
+    } do
       team = team_fixture(%{name: "Home"})
+      add_to_team(team, user)
       template = ruleset_fixture(%{team_id: team.id, name: "Hat League"})
       _instance = ruleset_fixture(%{team_id: team.id, kind: :game_instance, name: nil})
 
       {:ok, _live, html} = live(conn, ~p"/rulesets")
 
       assert html =~ template.name
-      # No anonymous "(per-game instance)" entries make it into the list.
       refute html =~ "(per-game instance)"
     end
 
-    test "shows the team name on each row", %{conn: conn} do
+    test "shows the team name on each row", %{conn: conn, user: user} do
       team = team_fixture(%{name: "Aardvarks"})
+      add_to_team(team, user)
       _r = ruleset_fixture(%{team_id: team.id, name: "Hat League"})
 
       {:ok, _live, html} = live(conn, ~p"/rulesets")
@@ -30,8 +43,9 @@ defmodule UltistatsWeb.RulesetLiveTest do
       assert html =~ "Hat League"
     end
 
-    test "Edit link routes to the form", %{conn: conn} do
+    test "Edit link routes to the form for admins", %{conn: conn, user: user} do
       team = team_fixture()
+      add_to_team(team, user)
       ruleset = ruleset_fixture(%{team_id: team.id, name: "Hat League"})
 
       {:ok, live, _html} = live(conn, ~p"/rulesets")
@@ -41,10 +55,37 @@ defmodule UltistatsWeb.RulesetLiveTest do
              |> has_element?()
     end
 
+    test "non-admin sees no Edit link", %{conn: conn, user: user} do
+      team = team_fixture()
+      add_to_team(team, user, :member)
+      ruleset = ruleset_fixture(%{team_id: team.id, name: "Hat League"})
+
+      {:ok, live, _html} = live(conn, ~p"/rulesets")
+
+      refute live
+             |> element("a[href='/rulesets/#{ruleset.id}/edit']")
+             |> has_element?()
+    end
+
+    test "rulesets across teams the user is NOT on are excluded", %{conn: conn, user: user} do
+      mine = team_fixture(%{name: "Mine"})
+      other = team_fixture(%{name: "Other"})
+      add_to_team(mine, user)
+      _own = ruleset_fixture(%{team_id: mine.id, name: "Mine ruleset"})
+      _stranger = ruleset_fixture(%{team_id: other.id, name: "Stranger ruleset"})
+
+      {:ok, _live, html} = live(conn, ~p"/rulesets")
+
+      assert html =~ "Mine ruleset"
+      refute html =~ "Stranger ruleset"
+    end
+
     test "Delete from the show page removes the ruleset when no games reference it", %{
-      conn: conn
+      conn: conn,
+      user: user
     } do
       team = team_fixture()
+      add_to_team(team, user)
       ruleset = ruleset_fixture(%{team_id: team.id, name: "Hat League"})
 
       {:ok, live, _html} = live(conn, ~p"/rulesets/#{ruleset.id}")
@@ -58,8 +99,12 @@ defmodule UltistatsWeb.RulesetLiveTest do
       assert Games.list_rulesets_for_team(team) == []
     end
 
-    test "Delete falls back to archive when games reference the ruleset", %{conn: conn} do
+    test "Delete falls back to archive when games reference the ruleset", %{
+      conn: conn,
+      user: user
+    } do
       team = team_fixture()
+      add_to_team(team, user)
       ruleset = ruleset_fixture(%{team_id: team.id, name: "Hat League"})
       _game = game_fixture(%{team_id: team.id, ruleset_id: ruleset.id})
 
@@ -72,14 +117,16 @@ defmodule UltistatsWeb.RulesetLiveTest do
                |> follow_redirect(conn, ~p"/games")
 
       assert html =~ "Archived because games reference it."
-      # Row still exists in the DB but is archived.
       assert Games.get_ruleset!(ruleset.id).archived_at
     end
   end
 
-  describe "New form" do
-    test "happy-path: creates a ruleset and redirects to the index", %{conn: conn} do
+  describe "New form — admin" do
+    setup :register_and_log_in_user
+
+    test "happy-path: creates a ruleset and redirects to the index", %{conn: conn, user: user} do
       team = team_fixture()
+      add_to_team(team, user)
 
       {:ok, live, _html} = live(conn, ~p"/rulesets/new?team_id=#{team.id}")
 
@@ -115,9 +162,30 @@ defmodule UltistatsWeb.RulesetLiveTest do
     end
   end
 
-  describe "Edit form" do
-    test "happy-path: updates an existing ruleset", %{conn: conn} do
+  describe "New form — non-admin" do
+    setup :register_and_log_in_user
+
+    test "non-admin members are redirected from /rulesets/new?team_id=...", %{
+      conn: conn,
+      user: user
+    } do
       team = team_fixture()
+      add_to_team(team, user, :member)
+
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
+               live(conn, ~p"/rulesets/new?team_id=#{team.id}")
+
+      assert to == ~p"/teams/#{team.id}"
+      assert flash["error"] =~ "permission"
+    end
+  end
+
+  describe "Edit form — admin" do
+    setup :register_and_log_in_user
+
+    test "happy-path: updates an existing ruleset", %{conn: conn, user: user} do
+      team = team_fixture()
+      add_to_team(team, user)
 
       ruleset =
         ruleset_fixture(%{
@@ -149,6 +217,25 @@ defmodule UltistatsWeb.RulesetLiveTest do
       reloaded = Games.get_ruleset!(ruleset.id)
       assert reloaded.score_cap == 11
       assert reloaded.halftime_target == 6
+    end
+  end
+
+  describe "Edit form — non-admin" do
+    setup :register_and_log_in_user
+
+    test "non-admin members are redirected from /rulesets/:id/edit", %{
+      conn: conn,
+      user: user
+    } do
+      team = team_fixture()
+      add_to_team(team, user, :member)
+      ruleset = ruleset_fixture(%{team_id: team.id})
+
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
+               live(conn, ~p"/rulesets/#{ruleset.id}/edit")
+
+      assert to == ~p"/teams/#{team.id}"
+      assert flash["error"] =~ "permission"
     end
   end
 end

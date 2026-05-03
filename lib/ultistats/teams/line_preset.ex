@@ -9,8 +9,8 @@ defmodule Ultistats.Teams.LinePreset do
 
     belongs_to :team, Ultistats.Teams.Team
 
-    many_to_many :players, Ultistats.Teams.Player,
-      join_through: "line_preset_players",
+    many_to_many :users, Ultistats.Accounts.User,
+      join_through: "line_preset_users",
       on_replace: :delete
 
     timestamps(type: :utc_datetime)
@@ -19,9 +19,9 @@ defmodule Ultistats.Teams.LinePreset do
   @doc """
   Base changeset — casts and validates the scalar fields.
 
-  The associated `:players` collection is *not* set here; the context
-  layer loads the corresponding Player rows (scoped to the same team
-  for safety) and calls `put_assoc(:players, players)` separately.
+  The associated `:users` collection is *not* set here; the context
+  layer loads the corresponding User rows (scoped to the same team
+  for safety) and calls `put_assoc(:users, users)` separately.
   """
   def changeset(line_preset, attrs) do
     line_preset

@@ -5,13 +5,22 @@ defmodule UltistatsWeb.GameLiveTest do
   import Ultistats.GamesFixtures
   import Ultistats.TeamsFixtures
 
-  alias Ultistats.Games
+  alias Ultistats.{Games, Teams}
   alias Ultistats.Repo
+  alias Ultistats.Accounts.User
   alias Ultistats.Games.{Event, Point}
-  alias Ultistats.Teams.Player
+
+  defp add_to_team(team, user, role \\ :admin) do
+    {:ok, _m} =
+      Teams.add_team_member(team, user, %{role: role, is_player: true})
+
+    :ok
+  end
 
   describe "Start" do
-    test "renders the empty state when there are no teams", %{conn: conn} do
+    setup :register_and_log_in_user
+
+    test "renders the empty state when the user has no teams", %{conn: conn} do
       {:ok, _live, html} = live(conn, ~p"/games/new")
 
       assert html =~ "Create a team first"
@@ -19,8 +28,21 @@ defmodule UltistatsWeb.GameLiveTest do
       refute html =~ ~s(id="game-form")
     end
 
-    test "renders the form with first_pull defaulted to :ours", %{conn: conn} do
-      _team = team_fixture()
+    test "only the user's accessible teams populate the picker", %{conn: conn, user: user} do
+      mine = team_fixture(%{name: "Mine"})
+      _theirs = team_fixture(%{name: "Theirs"})
+      add_to_team(mine, user)
+
+      {:ok, _live, html} = live(conn, ~p"/games/new")
+
+      # Single-team flow: hidden team_id field, no select rendered.
+      assert html =~ "Start a game"
+      refute html =~ "Theirs"
+    end
+
+    test "renders the form with first_pull defaulted to :ours", %{conn: conn, user: user} do
+      team = team_fixture()
+      add_to_team(team, user)
 
       {:ok, live, html} = live(conn, ~p"/games/new")
 
@@ -30,17 +52,20 @@ defmodule UltistatsWeb.GameLiveTest do
       assert html =~ "USAU standard (no template)"
     end
 
-    test "pre-selects the team when ?team_id=... is provided", %{conn: conn} do
-      _other = team_fixture(%{name: "Other"})
+    test "pre-selects the team when ?team_id=... is provided", %{conn: conn, user: user} do
+      other = team_fixture(%{name: "Other"})
       target = team_fixture(%{name: "Target"})
+      add_to_team(other, user)
+      add_to_team(target, user)
 
       {:ok, _live, html} = live(conn, ~p"/games/new?team_id=#{target.id}")
 
       assert html =~ ~r/<option[^>]*selected[^>]*value="#{target.id}">Target</
     end
 
-    test "ignores a bogus team_id query param without 404", %{conn: conn} do
-      _team = team_fixture()
+    test "ignores a bogus team_id query param without 404", %{conn: conn, user: user} do
+      team = team_fixture()
+      add_to_team(team, user)
 
       {:ok, _live, html} =
         live(conn, ~p"/games/new?team_id=00000000-0000-0000-0000-000000000000")
@@ -48,8 +73,9 @@ defmodule UltistatsWeb.GameLiveTest do
       assert html =~ "Start a game"
     end
 
-    test "validates required fields — blank opponent shows error", %{conn: conn} do
+    test "validates required fields — blank opponent shows error", %{conn: conn, user: user} do
       team = team_fixture()
+      add_to_team(team, user)
 
       {:ok, live, _html} = live(conn, ~p"/games/new")
 
@@ -63,8 +89,9 @@ defmodule UltistatsWeb.GameLiveTest do
       assert html =~ "can&#39;t be blank"
     end
 
-    test "rejects an opponent name longer than 80 chars", %{conn: conn} do
+    test "rejects an opponent name longer than 80 chars", %{conn: conn, user: user} do
       team = team_fixture()
+      add_to_team(team, user)
       long_name = String.duplicate("x", 81)
 
       {:ok, live, _html} = live(conn, ~p"/games/new")
@@ -79,8 +106,12 @@ defmodule UltistatsWeb.GameLiveTest do
       assert html =~ "should be at most 80 character"
     end
 
-    test "successful submit creates a game and navigates to /games/:id", %{conn: conn} do
+    test "successful submit creates a game and navigates to /games/:id", %{
+      conn: conn,
+      user: user
+    } do
       team = team_fixture()
+      add_to_team(team, user)
 
       {:ok, live, _html} = live(conn, ~p"/games/new")
 
@@ -107,8 +138,9 @@ defmodule UltistatsWeb.GameLiveTest do
       assert to == ~p"/games/#{game.id}"
     end
 
-    test "ruleset picker lists the team's templates", %{conn: conn} do
+    test "ruleset picker lists the team's templates", %{conn: conn, user: user} do
       team = team_fixture()
+      add_to_team(team, user)
       _hat = ruleset_fixture(%{team_id: team.id, name: "Hat League"})
       _strict = ruleset_fixture(%{team_id: team.id, name: "Strict Tourney"})
 
@@ -118,8 +150,9 @@ defmodule UltistatsWeb.GameLiveTest do
       assert html =~ "Strict Tourney"
     end
 
-    test "picking a ruleset prefills the rule fields", %{conn: conn} do
+    test "picking a ruleset prefills the rule fields", %{conn: conn, user: user} do
       team = team_fixture()
+      add_to_team(team, user)
 
       template =
         ruleset_fixture(%{
@@ -147,9 +180,11 @@ defmodule UltistatsWeb.GameLiveTest do
     end
 
     test "per-game tweak creates a :game_instance, not a mutation of the template", %{
-      conn: conn
+      conn: conn,
+      user: user
     } do
       team = team_fixture()
+      add_to_team(team, user)
 
       template =
         ruleset_fixture(%{
@@ -200,8 +235,11 @@ defmodule UltistatsWeb.GameLiveTest do
   end
 
   describe "Show — between points" do
-    setup do
+    setup :register_and_log_in_user
+
+    setup %{user: user} do
       team = team_fixture()
+      add_to_team(team, user)
       players = build_players(team, 7)
       game = game_fixture(%{team_id: team.id, opponent_name: "Stormcrows"})
       %{team: team, players: players, game: game}
@@ -220,7 +258,12 @@ defmodule UltistatsWeb.GameLiveTest do
 
       # First player is rendered as a chip
       first = hd(players)
-      assert has_element?(live, "button[phx-value-id='#{first.id}']", Player.display_name(first))
+
+      assert has_element?(
+               live,
+               "button[phx-value-id='#{first.user_id}']",
+               User.display_name(first.user)
+             )
 
       # Start point button is disabled before any selection.
       assert has_element?(live, "button[phx-click='start_point'][disabled]")
@@ -236,11 +279,11 @@ defmodule UltistatsWeb.GameLiveTest do
       [p1, p2 | _] = players
 
       live
-      |> element("button[phx-value-id='#{p1.id}']")
+      |> element("button[phx-value-id='#{p1.user_id}']")
       |> render_click()
 
       live
-      |> element("button[phx-value-id='#{p2.id}']")
+      |> element("button[phx-value-id='#{p2.user_id}']")
       |> render_click()
 
       assert render(live) =~ "2 selected"
@@ -253,9 +296,9 @@ defmodule UltistatsWeb.GameLiveTest do
       players: players
     } do
       preset_players = Enum.take(players, 5)
-      ids = Enum.map(preset_players, & &1.id)
+      ids = Enum.map(preset_players, & &1.user_id)
 
-      preset = line_preset_fixture(%{team_id: team.id, name: "O-line A", player_ids: ids})
+      preset = line_preset_fixture(%{team_id: team.id, name: "O-line A", user_ids: ids})
 
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
 
@@ -274,7 +317,7 @@ defmodule UltistatsWeb.GameLiveTest do
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
 
       Enum.each(Enum.take(players, 7), fn p ->
-        live |> element("button[phx-value-id='#{p.id}']") |> render_click()
+        live |> element("button[phx-value-id='#{p.user_id}']") |> render_click()
       end)
 
       live |> element("button[phx-click='start_point']") |> render_click()
@@ -294,12 +337,15 @@ defmodule UltistatsWeb.GameLiveTest do
   end
 
   describe "Show — in point" do
-    setup do
+    setup :register_and_log_in_user
+
+    setup %{user: user} do
       team = team_fixture()
+      add_to_team(team, user)
       players = build_players(team, 7)
       game = game_fixture(%{team_id: team.id})
 
-      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
+      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.user_id))
 
       %{team: team, players: players, game: game, point: point}
     end
@@ -318,7 +364,7 @@ defmodule UltistatsWeb.GameLiveTest do
       scorer = hd(players)
 
       live
-      |> element("#player-picker-modal button[phx-value-id='#{scorer.id}']")
+      |> element("#player-picker-modal button[phx-value-id='#{scorer.user_id}']")
       |> render_click()
 
       html = render(live)
@@ -331,7 +377,7 @@ defmodule UltistatsWeb.GameLiveTest do
       assert reloaded.scoring_team == :ours
 
       events = Games.events_for_point(reloaded)
-      assert Enum.any?(events, &(&1.type == :goal and &1.player_id == scorer.id))
+      assert Enum.any?(events, &(&1.type == :goal and &1.user_id == scorer.user_id))
       refute Enum.any?(events, &(&1.type == :assist))
 
       # back to between-points view, score updated
@@ -354,19 +400,19 @@ defmodule UltistatsWeb.GameLiveTest do
       live |> element("button[phx-value-kind='goal']") |> render_click()
 
       live
-      |> element("#player-picker-modal button[phx-value-id='#{scorer.id}']")
+      |> element("#player-picker-modal button[phx-value-id='#{scorer.user_id}']")
       |> render_click()
 
       live
-      |> element("#player-picker-modal button[phx-value-id='#{assister.id}']")
+      |> element("#player-picker-modal button[phx-value-id='#{assister.user_id}']")
       |> render_click()
 
       reloaded = Repo.get!(Point, point.id)
       assert reloaded.scoring_team == :ours
 
       events = Games.events_for_point(reloaded)
-      assert Enum.any?(events, &(&1.type == :goal and &1.player_id == scorer.id))
-      assert Enum.any?(events, &(&1.type == :assist and &1.player_id == assister.id))
+      assert Enum.any?(events, &(&1.type == :goal and &1.user_id == scorer.user_id))
+      assert Enum.any?(events, &(&1.type == :assist and &1.user_id == assister.user_id))
     end
 
     test "Block records an event but does not end the point", %{
@@ -382,7 +428,7 @@ defmodule UltistatsWeb.GameLiveTest do
       live |> element("button[phx-value-kind='block']") |> render_click()
 
       live
-      |> element("#player-picker-modal button[phx-value-id='#{blocker.id}']")
+      |> element("#player-picker-modal button[phx-value-id='#{blocker.user_id}']")
       |> render_click()
 
       reloaded = Repo.get!(Point, point.id)
@@ -390,7 +436,7 @@ defmodule UltistatsWeb.GameLiveTest do
 
       [event] = Repo.all(Event)
       assert event.type == :block
-      assert event.player_id == blocker.id
+      assert event.user_id == blocker.user_id
 
       # Action buttons still visible (point not ended).
       assert has_element?(live, "button[phx-value-kind='goal']")
@@ -415,8 +461,11 @@ defmodule UltistatsWeb.GameLiveTest do
   end
 
   describe "Show — milestones" do
-    setup do
+    setup :register_and_log_in_user
+
+    setup %{user: user} do
       team = team_fixture()
+      add_to_team(team, user)
       players = build_players(team, 7)
       game = game_fixture(%{team_id: team.id})
       %{team: team, players: players, game: game}
@@ -445,7 +494,7 @@ defmodule UltistatsWeb.GameLiveTest do
       # hard cap via the in-LiveView code path.
       score_n_points_for_us(game, players, 14)
 
-      {:ok, _point} = Games.start_point(game, Enum.map(players, & &1.id))
+      {:ok, _point} = Games.start_point(game, Enum.map(players, & &1.user_id))
 
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
 
@@ -453,7 +502,7 @@ defmodule UltistatsWeb.GameLiveTest do
       live |> element("button[phx-value-kind='goal']") |> render_click()
 
       live
-      |> element("#player-picker-modal button[phx-value-id='#{scorer.id}']")
+      |> element("#player-picker-modal button[phx-value-id='#{scorer.user_id}']")
       |> render_click()
 
       assert {:error, {:live_redirect, %{to: to}}} =
@@ -486,8 +535,11 @@ defmodule UltistatsWeb.GameLiveTest do
   end
 
   describe "Timeline" do
-    setup do
+    setup :register_and_log_in_user
+
+    setup %{user: user} do
       team = team_fixture()
+      add_to_team(team, user)
       players = build_players(team, 7)
       game = game_fixture(%{team_id: team.id, opponent_name: "Stormcrows"})
       %{team: team, players: players, game: game}
@@ -507,12 +559,12 @@ defmodule UltistatsWeb.GameLiveTest do
       players: players
     } do
       [scorer, blocker | _] = players
-      {:ok, p1} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, _} = Games.record_event(p1, :block, blocker.id)
-      {:ok, _} = Games.record_event(p1, :goal, scorer.id)
+      {:ok, p1} = Games.start_point(game, Enum.map(players, & &1.user_id))
+      {:ok, _} = Games.record_event(p1, :block, blocker.user_id)
+      {:ok, _} = Games.record_event(p1, :goal, scorer.user_id)
       {:ok, _} = Games.end_point(p1, :ours)
 
-      {:ok, p2} = Games.start_point(game, Enum.map(players, & &1.id))
+      {:ok, p2} = Games.start_point(game, Enum.map(players, & &1.user_id))
       {:ok, _} = Games.end_point(p2, :theirs)
 
       {:ok, _live, html} = live(conn, ~p"/games/#{game.id}/timeline")
@@ -535,8 +587,8 @@ defmodule UltistatsWeb.GameLiveTest do
       players: players
     } do
       [scorer | _] = players
-      {:ok, p1} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, goal} = Games.record_event(p1, :goal, scorer.id)
+      {:ok, p1} = Games.start_point(game, Enum.map(players, & &1.user_id))
+      {:ok, goal} = Games.record_event(p1, :goal, scorer.user_id)
       {:ok, _} = Games.end_point(p1, :ours)
       # Manually un-end the point so deleting the goal makes the score
       # actually change. (Per task notes: scoring_team is not auto-cleared.)
@@ -546,8 +598,8 @@ defmodule UltistatsWeb.GameLiveTest do
         |> Repo.update()
 
       # Score the next point so we have a "1" to start from.
-      {:ok, p2} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, _} = Games.record_event(p2, :goal, scorer.id)
+      {:ok, p2} = Games.start_point(game, Enum.map(players, & &1.user_id))
+      {:ok, _} = Games.record_event(p2, :goal, scorer.user_id)
       {:ok, _} = Games.end_point(p2, :ours)
 
       {:ok, live, html} = live(conn, ~p"/games/#{game.id}/timeline")
@@ -576,8 +628,8 @@ defmodule UltistatsWeb.GameLiveTest do
       players: players
     } do
       [p | _] = players
-      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, event} = Games.record_event(point, :block, p.id)
+      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.user_id))
+      {:ok, event} = Games.record_event(point, :block, p.user_id)
 
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}/timeline")
 
@@ -599,8 +651,8 @@ defmodule UltistatsWeb.GameLiveTest do
       players: players
     } do
       [p | _] = players
-      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, event} = Games.record_event(point, :block, p.id)
+      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.user_id))
+      {:ok, event} = Games.record_event(point, :block, p.user_id)
 
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}/timeline")
 
@@ -623,8 +675,8 @@ defmodule UltistatsWeb.GameLiveTest do
       players: players
     } do
       [p1, p2 | _] = players
-      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, event} = Games.record_event(point, :goal, p1.id)
+      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.user_id))
+      {:ok, event} = Games.record_event(point, :goal, p1.user_id)
       {:ok, _} = Games.end_point(point, :ours)
 
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}/timeline")
@@ -637,7 +689,9 @@ defmodule UltistatsWeb.GameLiveTest do
 
       # Switch to p2.
       live
-      |> element("#edit-event-modal button[phx-click='set_edit_player'][phx-value-id='#{p2.id}']")
+      |> element(
+        "#edit-event-modal button[phx-click='set_edit_player'][phx-value-id='#{p2.user_id}']"
+      )
       |> render_click()
 
       live
@@ -645,7 +699,7 @@ defmodule UltistatsWeb.GameLiveTest do
       |> render_submit()
 
       reloaded = Repo.get!(Event, event.id)
-      assert reloaded.player_id == p2.id
+      assert reloaded.user_id == p2.user_id
 
       html = render(live)
       assert html =~ "##{p2.jersey_number}"
@@ -657,8 +711,8 @@ defmodule UltistatsWeb.GameLiveTest do
       players: players
     } do
       [p1 | _] = players
-      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, event} = Games.record_event(point, :goal, p1.id)
+      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.user_id))
+      {:ok, event} = Games.record_event(point, :goal, p1.user_id)
       {:ok, _} = Games.end_point(point, :ours)
 
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}/timeline")
@@ -691,12 +745,12 @@ defmodule UltistatsWeb.GameLiveTest do
       players: players
     } do
       [p1 | _] = players
-      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, event} = Games.record_event(point, :goal, p1.id)
+      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.user_id))
+      {:ok, event} = Games.record_event(point, :goal, p1.user_id)
 
       # Set up a stranger from another team.
       other_team = team_fixture()
-      stranger = player_fixture(%{team_id: other_team.id, jersey_number: "99"})
+      stranger = member_fixture(%{team_id: other_team.id, jersey_number: "99"})
 
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}/timeline")
 
@@ -712,13 +766,16 @@ defmodule UltistatsWeb.GameLiveTest do
       html = live |> form("#edit-event-modal form") |> render_submit()
 
       assert html =~ "isn&#39;t on this team"
-      assert Repo.get!(Event, event.id).player_id == p1.id
+      assert Repo.get!(Event, event.id).user_id == p1.user_id
     end
   end
 
   describe "Summary" do
-    setup do
+    setup :register_and_log_in_user
+
+    setup %{user: user} do
       team = team_fixture()
+      add_to_team(team, user)
       players = build_players(team, 3)
       game = game_fixture(%{team_id: team.id, opponent_name: "Stormcrows"})
       %{team: team, players: players, game: game}
@@ -730,8 +787,8 @@ defmodule UltistatsWeb.GameLiveTest do
       players: players
     } do
       [scorer | _] = players
-      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, _} = Games.record_event(point, :goal, scorer.id)
+      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.user_id))
+      {:ok, _} = Games.record_event(point, :goal, scorer.user_id)
       {:ok, _} = Games.end_point(point, :ours)
 
       {:ok, live, html} = live(conn, ~p"/games/#{game.id}/summary")
@@ -768,8 +825,8 @@ defmodule UltistatsWeb.GameLiveTest do
       players: players
     } do
       [scorer | _] = players
-      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, _} = Games.record_event(point, :goal, scorer.id)
+      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.user_id))
+      {:ok, _} = Games.record_event(point, :goal, scorer.user_id)
       {:ok, _} = Games.end_point(point, :ours)
 
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}/summary")
@@ -785,15 +842,15 @@ defmodule UltistatsWeb.GameLiveTest do
       players: players
     } do
       [scorer | _] = players
-      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.id))
-      {:ok, event} = Games.record_event(point, :goal, scorer.id)
+      {:ok, point} = Games.start_point(game, Enum.map(players, & &1.user_id))
+      {:ok, event} = Games.record_event(point, :goal, scorer.user_id)
       {:ok, _} = Games.end_point(point, :ours)
       {:ok, _} = Games.soft_delete_event(event)
 
       {:ok, _live, _html} = live(conn, ~p"/games/#{game.id}/summary")
 
       summary = Games.summary_for_game(Repo.get!(Ultistats.Games.Game, game.id))
-      scorer_row = Enum.find(summary.players, &(&1.player.id == scorer.id))
+      scorer_row = Enum.find(summary.players, &(&1.user.id == scorer.user_id))
       assert scorer_row.goals == 0
       assert summary.score.ours == 0
     end
@@ -803,9 +860,12 @@ defmodule UltistatsWeb.GameLiveTest do
   ## helpers
   ## ---------------------------------------------------------------------
 
+  # Returns a list of membership structs (with `:user` preloaded and
+  # `:jersey_number` on the membership). Tests read identity from
+  # `m.user`, `m.user_id`, and jersey from `m.jersey_number`.
   defp build_players(team, n) do
     for i <- 1..n do
-      player_fixture(%{
+      team_membership_fixture(%{
         team_id: team.id,
         first_name: "Player",
         last_name: "Number#{i}",
@@ -817,11 +877,11 @@ defmodule UltistatsWeb.GameLiveTest do
   # Insert N completed points scored by us. Skips going through the
   # action buttons — used to set up score-state preconditions.
   defp score_n_points_for_us(game, players, n) do
-    player_ids = Enum.map(players, & &1.id)
-    scorer_id = hd(player_ids)
+    user_ids = Enum.map(players, & &1.user_id)
+    scorer_id = hd(user_ids)
 
     for _ <- 1..n do
-      {:ok, point} = Games.start_point(game, player_ids)
+      {:ok, point} = Games.start_point(game, user_ids)
       {:ok, _} = Games.record_event(point, :goal, scorer_id)
       {:ok, _} = Games.end_point(point, :ours)
     end

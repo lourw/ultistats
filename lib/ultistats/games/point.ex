@@ -5,16 +5,16 @@ defmodule Ultistats.Games.Point do
 
   ## `our_line_snapshot`
 
-  The list of player ids on the field for this point is denormalized
+  The list of user ids on the field for this point is denormalized
   here so historical points stay correct if a player is later removed
   from the team's roster.
 
   Stored as a `:map` (portable across SQLite and Postgres — see
   `docs/DESIGN.md` adapter rules) under a single key:
 
-      %{"player_ids" => [<player_id>, <player_id>, ...]}
+      %{"user_ids" => [<user_id>, <user_id>, ...]}
 
-  Use string keys ("player_ids") so JSON round-trips on SQLite leave the
+  Use string keys ("user_ids") so JSON round-trips on SQLite leave the
   shape unchanged.
   """
 

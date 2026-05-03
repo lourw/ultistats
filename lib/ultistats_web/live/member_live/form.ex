@@ -1,10 +1,10 @@
-defmodule UltistatsWeb.PlayerLive.Form do
+defmodule UltistatsWeb.MemberLive.Form do
   use UltistatsWeb, :live_view
 
   import UltistatsWeb.UIComponents, only: [gender_radio: 1, position_radio: 1]
 
   alias Ultistats.Teams
-  alias Ultistats.Teams.Player
+  alias Ultistats.Teams.TeamMembership
 
   @impl true
   def render(%{live_action: :new} = assigns), do: render_bulk_new(assigns)
@@ -12,19 +12,19 @@ defmodule UltistatsWeb.PlayerLive.Form do
 
   defp render_bulk_new(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
       <.header>
-        Add players to {@team.name}
+        Add members to {@team.name}
         <:subtitle>
           First name, last name and gender are required. Jersey numbers are optional.
         </:subtitle>
       </.header>
 
-      <form id="bulk-player-form" phx-change="validate" phx-submit="save_all">
+      <form id="bulk-member-form" phx-change="validate" phx-submit="save_all">
         <ul class="flex flex-col gap-3">
           <li
             :for={row <- @rows}
-            id={"player-row-#{row.key}"}
+            id={"member-row-#{row.key}"}
             data-row-key={row.key}
             class="rounded-lg border border-base-300 bg-base-100 p-3 space-y-3"
           >
@@ -115,6 +115,31 @@ defmodule UltistatsWeb.PlayerLive.Form do
                 </p>
               </div>
             </div>
+
+            <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+              <label class="inline-flex items-center gap-2 min-h-11 cursor-pointer">
+                <input type="hidden" name={"row[#{row.key}][is_player]"} value="false" />
+                <input
+                  type="checkbox"
+                  name={"row[#{row.key}][is_player]"}
+                  value="true"
+                  checked={row.is_player}
+                  class="accent-primary size-5"
+                />
+                <span class="text-sm">Include in lines</span>
+              </label>
+              <label class="inline-flex items-center gap-2 min-h-11 cursor-pointer">
+                <input type="hidden" name={"row[#{row.key}][is_admin]"} value="false" />
+                <input
+                  type="checkbox"
+                  name={"row[#{row.key}][is_admin]"}
+                  value="true"
+                  checked={row.role == :admin}
+                  class="accent-primary size-5"
+                />
+                <span class="text-sm">Admin</span>
+              </label>
+            </div>
           </li>
         </ul>
 
@@ -128,7 +153,7 @@ defmodule UltistatsWeb.PlayerLive.Form do
           <.button type="submit" variant="primary" phx-disable-with="Saving...">
             Save all
           </.button>
-          <.button navigate={~p"/teams/#{@team}"}>Cancel</.button>
+          <.button navigate={cancel_path(@return_to, @team)}>Cancel</.button>
         </footer>
       </form>
     </Layouts.app>
@@ -137,10 +162,13 @@ defmodule UltistatsWeb.PlayerLive.Form do
 
   defp render_edit(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
-      <.header>{@page_title}</.header>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
+      <.header>
+        {@page_title}
+        <:subtitle>Edit profile and team-membership fields together.</:subtitle>
+      </.header>
 
-      <.form for={@form} id="player-form" phx-change="validate" phx-submit="save">
+      <.form for={@form} id="member-form" phx-change="validate" phx-submit="save">
         <.input field={@form[:first_name]} type="text" label="First name" />
         <.input field={@form[:last_name]} type="text" label="Last name" />
         <.input field={@form[:jersey_number]} type="text" label="Jersey number" />
@@ -155,28 +183,36 @@ defmodule UltistatsWeb.PlayerLive.Form do
           <.position_radio field={@form[:position]} phx-click="set_position_edit" />
         </div>
 
-        <.input field={@form[:team_id]} type="hidden" />
+        <div class="space-y-3 mt-4">
+          <label class="inline-flex items-center gap-2 min-h-11 cursor-pointer">
+            <input type="hidden" name="member[is_player]" value="false" />
+            <input
+              type="checkbox"
+              name="member[is_player]"
+              value="true"
+              checked={@form[:is_player].value in [true, "true"]}
+              class="accent-primary size-5"
+            />
+            <span class="text-sm">Include in lines</span>
+          </label>
+          <label class="inline-flex items-center gap-2 min-h-11 cursor-pointer">
+            <input type="hidden" name="member[is_admin]" value="false" />
+            <input
+              type="checkbox"
+              name="member[is_admin]"
+              value="true"
+              checked={admin_checked?(@form[:role].value)}
+              class="accent-primary size-5"
+            />
+            <span class="text-sm">Admin</span>
+          </label>
+        </div>
+
         <footer class="mt-4 flex items-center gap-3">
-          <.button phx-disable-with="Saving..." variant="primary">Save</.button>
-          <.button navigate={return_path(@return_to, @player)}>Cancel</.button>
+          <.button phx-disable-with="Saving..." variant="primary">Save member</.button>
+          <.button navigate={return_path(@return_to, @membership)}>Cancel</.button>
         </footer>
       </.form>
-
-      <section class="mt-12 pt-6 border-t border-base-300">
-        <h2 class="text-sm font-semibold text-base-content">Danger zone</h2>
-        <p class="mt-1 text-sm text-base-content/70">
-          Removing a player drops them from the roster, line presets, and any pinned-player events on past games (events stay; their player attribution becomes empty).
-        </p>
-        <button
-          type="button"
-          id="delete-player"
-          phx-click={JS.push("delete_player", value: %{id: @player.id})}
-          data-confirm="Remove this player? This cannot be undone."
-          class="mt-3 min-h-11 inline-flex items-center px-4 rounded-md text-sm font-medium border border-error text-error hover:bg-error/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-error"
-        >
-          Remove player
-        </button>
-      </section>
     </Layouts.app>
     """
   end
@@ -194,30 +230,71 @@ defmodule UltistatsWeb.PlayerLive.Form do
   defp return_to(_), do: "index"
 
   defp apply_action(socket, :edit, %{"id" => id}) do
-    player = Teams.get_player!(id)
+    membership = Teams.get_team_membership!(id)
+    user = membership.user
+    current_user = socket.assigns.current_scope.user
 
-    socket
-    |> assign(:page_title, "Edit Player")
-    |> assign(:player, player)
-    |> assign(:form, to_form(Teams.change_player(player)))
+    cond do
+      not Teams.user_member_of?(current_user, membership.team_id) ->
+        socket
+        |> Phoenix.LiveView.put_flash(:error, "You don't have permission to do that.")
+        |> Phoenix.LiveView.push_navigate(to: ~p"/teams")
+
+      not Teams.user_admin_of?(current_user, membership.team_id) ->
+        socket
+        |> Phoenix.LiveView.put_flash(:error, "You don't have permission to do that.")
+        |> Phoenix.LiveView.push_navigate(to: ~p"/teams/#{membership.team_id}")
+
+      true ->
+        form_data = %{
+          "first_name" => user.first_name,
+          "last_name" => user.last_name,
+          "gender_role" => user.gender_role,
+          "position" => user.position,
+          "jersey_number" => membership.jersey_number,
+          "is_player" => membership.is_player,
+          "role" => membership.role
+        }
+
+        socket
+        |> assign(:page_title, "Edit member")
+        |> assign(:membership, membership)
+        |> assign(:user, user)
+        |> assign(:form, to_form(form_data, as: "member"))
+    end
   end
 
   defp apply_action(socket, :new, params) do
+    current_user = socket.assigns.current_scope.user
+
     case params["team_id"] do
       nil ->
         socket
-        |> Phoenix.LiveView.put_flash(:error, "Pick a team first to add a player.")
+        |> Phoenix.LiveView.put_flash(:error, "Pick a team first to add a member.")
         |> Phoenix.LiveView.push_navigate(to: ~p"/teams")
 
       team_id ->
-        team = Teams.get_team!(team_id)
-        {rows, next_key} = initial_rows()
+        cond do
+          not Teams.user_member_of?(current_user, team_id) ->
+            socket
+            |> Phoenix.LiveView.put_flash(:error, "You don't have permission to do that.")
+            |> Phoenix.LiveView.push_navigate(to: ~p"/teams")
 
-        socket
-        |> assign(:page_title, "Add players")
-        |> assign(:team, team)
-        |> assign(:rows, rows)
-        |> assign(:next_key, next_key)
+          not Teams.user_admin_of?(current_user, team_id) ->
+            socket
+            |> Phoenix.LiveView.put_flash(:error, "You don't have permission to do that.")
+            |> Phoenix.LiveView.push_navigate(to: ~p"/teams/#{team_id}")
+
+          true ->
+            team = Teams.get_team!(team_id)
+            {rows, next_key} = initial_rows()
+
+            socket
+            |> assign(:page_title, "Add members")
+            |> assign(:team, team)
+            |> assign(:rows, rows)
+            |> assign(:next_key, next_key)
+        end
     end
   end
 
@@ -271,21 +348,27 @@ defmodule UltistatsWeb.PlayerLive.Form do
     rows = sync_rows_from_params(socket.assigns.rows, params)
     socket = assign(socket, :rows, rows)
     %{team: team} = socket.assigns
+    current_user = socket.assigns.current_scope.user
 
-    if Enum.all?(rows, &blank_row?/1) do
-      {:noreply, put_flash(socket, :error, "Add at least one player")}
-    else
-      case Teams.bulk_create_players(team, rows_to_attrs(rows)) do
-        {:ok, players} ->
-          {:noreply,
-           socket
-           |> put_flash(:info, "Created #{length(players)} players")
-           |> push_navigate(to: ~p"/teams/#{team}")}
+    cond do
+      not Teams.user_admin_of?(current_user, team) ->
+        {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
 
-        {:error, {failing_index, changeset}} ->
-          rows = attach_changeset_errors(rows, failing_index, changeset)
-          {:noreply, assign(socket, :rows, rows)}
-      end
+      Enum.all?(rows, &blank_row?/1) ->
+        {:noreply, put_flash(socket, :error, "Add at least one member")}
+
+      true ->
+        case Teams.bulk_create_members_with_stub_users(team, rows_to_attrs(rows)) do
+          {:ok, results} ->
+            {:noreply,
+             socket
+             |> put_flash(:info, "Created #{length(results)} members")
+             |> push_navigate(to: ~p"/teams/#{team}")}
+
+          {:error, {failing_index, _step, changeset}} ->
+            rows = attach_changeset_errors(rows, failing_index, changeset)
+            {:noreply, assign(socket, :rows, rows)}
+        end
     end
   end
 
@@ -298,12 +381,7 @@ defmodule UltistatsWeb.PlayerLive.Form do
       (socket.assigns.form.params || %{})
       |> Map.put("gender_role", role_str)
 
-    changeset =
-      socket.assigns.player
-      |> Teams.change_player(params)
-      |> Map.put(:action, :validate)
-
-    {:noreply, assign(socket, :form, to_form(changeset))}
+    {:noreply, assign(socket, :form, to_form(params, as: "member"))}
   end
 
   def handle_event("set_position_edit", %{"position" => position}, socket) do
@@ -313,43 +391,90 @@ defmodule UltistatsWeb.PlayerLive.Form do
       (socket.assigns.form.params || %{})
       |> Map.put("position", pos_str)
 
-    changeset =
-      socket.assigns.player
-      |> Teams.change_player(params)
-      |> Map.put(:action, :validate)
-
-    {:noreply, assign(socket, :form, to_form(changeset))}
+    {:noreply, assign(socket, :form, to_form(params, as: "member"))}
   end
 
-  # Bulk-add validate (rows) — sync names/jersey numbers into @rows.
-  def handle_event("validate", %{"row" => row_params}, socket) do
+  # Bulk-add validate (rows) — sync names/jersey numbers/checkbox state into @rows.
+  def handle_event("validate", %{"row" => row_params} = _params, socket) do
     rows = sync_rows_from_params(socket.assigns.rows, %{"row" => row_params})
     {:noreply, assign(socket, :rows, rows)}
   end
 
-  # Single-edit validate — recompute changeset.
-  def handle_event("validate", %{"player" => player_params}, socket) do
-    changeset = Teams.change_player(socket.assigns.player, player_params)
-    {:noreply, assign(socket, form: to_form(changeset, action: :validate))}
+  # Single-edit validate — keep params intact (we don't run a changeset
+  # here; submission goes through update_member_with_user/2 which will
+  # surface server-side errors).
+  def handle_event("validate", %{"member" => member_params}, socket) do
+    {:noreply, assign(socket, form: to_form(member_params, as: "member"))}
   end
 
   def handle_event("validate", _params, socket) do
     {:noreply, socket}
   end
 
-  def handle_event("save", %{"player" => player_params}, socket) do
-    save_player(socket, socket.assigns.live_action, player_params)
+  def handle_event("save", %{"member" => member_params}, socket) do
+    save_member(socket, member_params)
   end
 
-  def handle_event("delete_player", %{"id" => id}, socket) do
-    player = Teams.get_player!(id)
-    {:ok, _} = Teams.delete_player(player)
+  defp save_member(socket, member_params) do
+    attrs = build_edit_attrs(member_params)
+    current_user = socket.assigns.current_scope.user
+    membership = socket.assigns.membership
 
-    {:noreply,
-     socket
-     |> put_flash(:info, "Player removed")
-     |> push_navigate(to: return_path(socket.assigns.return_to, player))}
+    if not Teams.user_admin_of?(current_user, membership.team_id) do
+      {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
+    else
+      do_save_member(socket, attrs, member_params)
+    end
   end
+
+  defp do_save_member(socket, attrs, member_params) do
+    case Teams.update_member_with_user(socket.assigns.membership, attrs) do
+      {:ok, %{membership: membership}} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Member updated")
+         |> push_navigate(to: edit_return_path(socket.assigns.return_to, membership))}
+
+      {:error, _step, %Ecto.Changeset{} = changeset, _changes} ->
+        # Surface validation errors back into the form. We rebuild
+        # form params from the submitted values plus the failed
+        # changeset's field errors.
+        errors_map =
+          changeset
+          |> Ecto.Changeset.traverse_errors(fn {msg, opts} ->
+            Enum.reduce(opts, msg, fn {k, v}, acc ->
+              String.replace(acc, "%{#{k}}", to_string(v))
+            end)
+          end)
+
+        form =
+          to_form(member_params,
+            as: "member",
+            errors:
+              Enum.flat_map(errors_map, fn {field, [first | _]} -> [{field, {first, []}}] end)
+          )
+
+        {:noreply, assign(socket, :form, form)}
+    end
+  end
+
+  defp build_edit_attrs(member_params) do
+    is_player = member_params["is_player"] in [true, "true"]
+    role = if member_params["is_admin"] in [true, "true"], do: :admin, else: :member
+
+    %{
+      first_name: member_params["first_name"],
+      last_name: member_params["last_name"],
+      gender_role: parse_gender(member_params["gender_role"]),
+      position: parse_position(member_params["position"]),
+      jersey_number: nilify(member_params["jersey_number"]),
+      is_player: is_player,
+      role: role
+    }
+  end
+
+  defp admin_checked?(value) when value in [:admin, "admin", true, "true"], do: true
+  defp admin_checked?(_), do: false
 
   defp sync_rows_from_params(rows, %{"row" => row_params}) do
     Enum.map(rows, fn r ->
@@ -363,7 +488,9 @@ defmodule UltistatsWeb.PlayerLive.Form do
             | first_name: Map.get(fields, "first_name", r.first_name) || "",
               last_name: Map.get(fields, "last_name", r.last_name) || "",
               jersey_number: Map.get(fields, "jersey_number", r.jersey_number) || "",
-              position: parse_position(Map.get(fields, "position")) || r.position
+              position: parse_position(Map.get(fields, "position")) || r.position,
+              is_player: Map.get(fields, "is_player") in ["true", true],
+              role: if(Map.get(fields, "is_admin") in ["true", true], do: :admin, else: :member)
           }
       end
     end)
@@ -371,26 +498,21 @@ defmodule UltistatsWeb.PlayerLive.Form do
 
   defp sync_rows_from_params(rows, _params), do: rows
 
-  defp save_player(socket, :edit, player_params) do
-    case Teams.update_player(socket.assigns.player, player_params) do
-      {:ok, player} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Player updated successfully")
-         |> push_navigate(to: return_path(socket.assigns.return_to, player))}
+  defp cancel_path("team", %_{id: team_id}), do: ~p"/teams/#{team_id}"
+  defp cancel_path(_, _team), do: ~p"/members"
 
-      {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset))}
-    end
-  end
+  defp return_path("team", %TeamMembership{} = membership),
+    do: ~p"/teams/#{membership.team_id}"
 
-  defp return_path("index", _player), do: ~p"/players"
-  defp return_path("show", player), do: ~p"/players/#{player}"
+  defp return_path("show", %TeamMembership{} = membership), do: ~p"/members/#{membership.id}"
+  defp return_path(_, _membership), do: ~p"/members"
 
-  defp return_path("team", %Player{team_id: team_id}) when is_binary(team_id),
-    do: ~p"/teams/#{team_id}"
-
-  defp return_path("team", _player), do: ~p"/players"
+  # On a successful edit, we want to land somewhere sensible. "team"
+  # returns to the team show; "show" returns to the membership show;
+  # default returns to the members index.
+  defp edit_return_path("team", membership), do: ~p"/teams/#{membership.team_id}"
+  defp edit_return_path("show", membership), do: ~p"/members/#{membership.id}"
+  defp edit_return_path(_, _membership), do: ~p"/members"
 
   ## ---- bulk-add helpers -------------------------------------------------
 
@@ -406,6 +528,8 @@ defmodule UltistatsWeb.PlayerLive.Form do
       gender_role: nil,
       position: :cutter,
       jersey_number: "",
+      is_player: true,
+      role: :member,
       errors: %{}
     }
   end
@@ -415,15 +539,18 @@ defmodule UltistatsWeb.PlayerLive.Form do
 
   defp parse_gender("female_matching"), do: :female_matching
   defp parse_gender("male_matching"), do: :male_matching
+  defp parse_gender(value) when value in [:female_matching, :male_matching], do: value
   defp parse_gender(_), do: nil
 
   defp parse_position("handler"), do: :handler
   defp parse_position("cutter"), do: :cutter
   defp parse_position("hybrid"), do: :hybrid
+  defp parse_position(value) when value in [:handler, :cutter, :hybrid], do: value
   defp parse_position(_), do: nil
 
-  # A row is blank only when both names are blank — a row with one filled
-  # name should still try to insert and surface a validation error.
+  # A row is blank only when both names are blank — a row with one
+  # filled name should still try to insert and surface a validation
+  # error.
   defp blank_row?(%{first_name: first, last_name: last}) do
     String.trim(first || "") == "" and String.trim(last || "") == ""
   end
@@ -435,7 +562,9 @@ defmodule UltistatsWeb.PlayerLive.Form do
         last_name: r.last_name,
         gender_role: r.gender_role,
         position: r.position,
-        jersey_number: nilify(r.jersey_number)
+        jersey_number: nilify(r.jersey_number),
+        is_player: r.is_player,
+        role: r.role
       }
     end)
   end
@@ -445,8 +574,6 @@ defmodule UltistatsWeb.PlayerLive.Form do
   defp nilify(value) when is_binary(value), do: value
 
   defp attach_changeset_errors(rows, failing_index, changeset) do
-    # `failing_index` is the index into the *non-blank* rows passed to
-    # bulk_create_players. Map it back to the original row in `rows`.
     non_blank_indices =
       rows
       |> Enum.with_index()

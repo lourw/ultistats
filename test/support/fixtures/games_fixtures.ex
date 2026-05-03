@@ -36,7 +36,7 @@ defmodule Ultistats.GamesFixtures do
 
   @doc """
   Generate a point. Creates a game (and team) automatically if
-  `game_id` is not given. Accepts a `:player_ids` list (defaults to
+  `game_id` is not given. Accepts a `:user_ids` list (defaults to
   `[]`); since `start_point/2` filters cross-team ids defensively, we
   use direct insert here for fixture-level control.
   """
@@ -44,7 +44,7 @@ defmodule Ultistats.GamesFixtures do
     attrs = Enum.into(attrs, %{})
 
     attrs = Map.put_new_lazy(attrs, :game_id, fn -> game_fixture().id end)
-    player_ids = Map.get(attrs, :player_ids, [])
+    user_ids = Map.get(attrs, :user_ids, [])
 
     sequence =
       Map.get_lazy(attrs, :sequence, fn ->
@@ -52,7 +52,7 @@ defmodule Ultistats.GamesFixtures do
       end)
 
     snapshot =
-      Map.get(attrs, :our_line_snapshot, %{"player_ids" => player_ids})
+      Map.get(attrs, :our_line_snapshot, %{"user_ids" => user_ids})
 
     point_attrs = %{
       game_id: attrs.game_id,
@@ -87,7 +87,7 @@ defmodule Ultistats.GamesFixtures do
       point_id: attrs.point_id,
       sequence: sequence,
       type: Map.get(attrs, :type, :goal),
-      player_id: Map.get(attrs, :player_id),
+      user_id: Map.get(attrs, :user_id),
       occurred_at: Map.get(attrs, :occurred_at, ~U[2026-05-02 02:11:00Z]),
       deleted_at: Map.get(attrs, :deleted_at)
     }

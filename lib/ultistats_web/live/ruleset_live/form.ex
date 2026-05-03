@@ -3,13 +3,13 @@ defmodule UltistatsWeb.RulesetLive.Form do
 
   import UltistatsWeb.UIComponents, only: [gender_ratio_radio: 1, starting_ratio_radio: 1]
 
-  alias Ultistats.Games
+  alias Ultistats.{Games, Teams}
   alias Ultistats.Games.Ruleset
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
       <.header>
         {@page_title}
         <:subtitle>
@@ -114,26 +114,55 @@ defmodule UltistatsWeb.RulesetLive.Form do
 
   defp apply_action(socket, :edit, %{"id" => id}) do
     ruleset = Games.get_ruleset!(id)
+    current_user = socket.assigns.current_scope.user
 
-    socket
-    |> assign(:page_title, "Edit Ruleset")
-    |> assign(:ruleset, ruleset)
-    |> assign(:form, to_form(Games.change_ruleset(ruleset)))
+    cond do
+      not Teams.user_member_of?(current_user, ruleset.team_id) ->
+        socket
+        |> Phoenix.LiveView.put_flash(:error, "You don't have permission to do that.")
+        |> Phoenix.LiveView.push_navigate(to: ~p"/teams")
+
+      not Teams.user_admin_of?(current_user, ruleset.team_id) ->
+        socket
+        |> Phoenix.LiveView.put_flash(:error, "You don't have permission to do that.")
+        |> Phoenix.LiveView.push_navigate(to: ~p"/teams/#{ruleset.team_id}")
+
+      true ->
+        socket
+        |> assign(:page_title, "Edit Ruleset")
+        |> assign(:ruleset, ruleset)
+        |> assign(:form, to_form(Games.change_ruleset(ruleset)))
+    end
   end
 
   defp apply_action(socket, :new, %{"team_id" => team_id} = _params) when is_binary(team_id) do
-    ruleset = %Ruleset{
-      team_id: team_id,
-      kind: :template,
-      timeouts_per_half: 2,
-      gender_ratio_rule: :endzone,
-      default_starting_ratio: :four_men_three_women
-    }
+    current_user = socket.assigns.current_scope.user
 
-    socket
-    |> assign(:page_title, "New Ruleset")
-    |> assign(:ruleset, ruleset)
-    |> assign(:form, to_form(Games.change_ruleset(ruleset)))
+    cond do
+      not Teams.user_member_of?(current_user, team_id) ->
+        socket
+        |> Phoenix.LiveView.put_flash(:error, "You don't have permission to do that.")
+        |> Phoenix.LiveView.push_navigate(to: ~p"/teams")
+
+      not Teams.user_admin_of?(current_user, team_id) ->
+        socket
+        |> Phoenix.LiveView.put_flash(:error, "You don't have permission to do that.")
+        |> Phoenix.LiveView.push_navigate(to: ~p"/teams/#{team_id}")
+
+      true ->
+        ruleset = %Ruleset{
+          team_id: team_id,
+          kind: :template,
+          timeouts_per_half: 2,
+          gender_ratio_rule: :endzone,
+          default_starting_ratio: :four_men_three_women
+        }
+
+        socket
+        |> assign(:page_title, "New Ruleset")
+        |> assign(:ruleset, ruleset)
+        |> assign(:form, to_form(Games.change_ruleset(ruleset)))
+    end
   end
 
   defp apply_action(socket, :new, _params) do
@@ -189,30 +218,43 @@ defmodule UltistatsWeb.RulesetLive.Form do
   defp maybe_clear_starting_ratio(params, _), do: params
 
   defp save_ruleset(socket, :edit, ruleset_params) do
-    case Games.update_ruleset(socket.assigns.ruleset, ruleset_params) do
-      {:ok, ruleset} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Ruleset updated successfully")
-         |> push_navigate(to: return_path(socket.assigns.return_to, ruleset))}
+    user = socket.assigns.current_scope.user
 
-      {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset))}
+    if not Teams.user_admin_of?(user, socket.assigns.ruleset.team_id) do
+      {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
+    else
+      case Games.update_ruleset(socket.assigns.ruleset, ruleset_params) do
+        {:ok, ruleset} ->
+          {:noreply,
+           socket
+           |> put_flash(:info, "Ruleset updated successfully")
+           |> push_navigate(to: return_path(socket.assigns.return_to, ruleset))}
+
+        {:error, %Ecto.Changeset{} = changeset} ->
+          {:noreply, assign(socket, form: to_form(changeset))}
+      end
     end
   end
 
   defp save_ruleset(socket, :new, ruleset_params) do
-    attrs = Map.put_new(ruleset_params, "kind", "template")
+    user = socket.assigns.current_scope.user
+    team_id = socket.assigns.ruleset.team_id
 
-    case Games.create_ruleset(attrs) do
-      {:ok, ruleset} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Ruleset created successfully")
-         |> push_navigate(to: return_path(socket.assigns.return_to, ruleset))}
+    if not Teams.user_admin_of?(user, team_id) do
+      {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
+    else
+      attrs = Map.put_new(ruleset_params, "kind", "template")
 
-      {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset))}
+      case Games.create_ruleset(attrs) do
+        {:ok, ruleset} ->
+          {:noreply,
+           socket
+           |> put_flash(:info, "Ruleset created successfully")
+           |> push_navigate(to: return_path(socket.assigns.return_to, ruleset))}
+
+        {:error, %Ecto.Changeset{} = changeset} ->
+          {:noreply, assign(socket, form: to_form(changeset))}
+      end
     end
   end
 

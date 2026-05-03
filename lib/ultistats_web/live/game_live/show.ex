@@ -19,12 +19,26 @@ defmodule UltistatsWeb.GameLive.Show do
   use UltistatsWeb, :live_view
 
   alias Ultistats.{Games, Teams}
-  alias Ultistats.Teams.Player
+  alias Ultistats.Accounts.User
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
     game = Games.get_game!(id)
+    user = socket.assigns.current_scope.user
 
+    cond do
+      not Teams.user_member_of?(user, game.team_id) ->
+        {:ok,
+         socket
+         |> put_flash(:error, "You don't have permission to view that game.")
+         |> push_navigate(to: ~p"/games")}
+
+      true ->
+        do_mount_game(socket, game)
+    end
+  end
+
+  defp do_mount_game(socket, game) do
     if game.status == :finished do
       {:ok,
        socket
@@ -47,10 +61,10 @@ defmodule UltistatsWeb.GameLive.Show do
        |> assign(:current_point, current_point)
        |> assign(:score, score)
        |> assign(:events, events)
-       |> assign(:selected_player_ids, MapSet.new())
+       |> assign(:selected_user_ids, MapSet.new())
        |> assign(:selected_preset_id, nil)
        |> assign(:pending_event, nil)
-       |> assign(:pending_goal_player_id, nil)
+       |> assign(:pending_goal_user_id, nil)
        |> assign(:halftime_dismissed?, false)
        # Disconnect-driven button-disable is a TODO; the connectivity flash
        # banner from `Layouts.flash_group/1` already covers visual feedback.
@@ -68,7 +82,7 @@ defmodule UltistatsWeb.GameLive.Show do
     # While push_navigate to /games/:id/summary is in flight, render a
     # tiny placeholder so the framework always has markup to mount.
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
       <p class="text-sm text-base-content/70 py-6">Loading summary…</p>
     </Layouts.app>
     """
@@ -76,7 +90,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="flex flex-col min-h-[calc(100vh-3rem)]">
         <.score_header
           game={@game}
@@ -99,7 +113,7 @@ defmodule UltistatsWeb.GameLive.Show do
               point_number={length_of_points(@game) + 1}
               line_presets={@line_presets}
               team_players={@team_players}
-              selected_player_ids={@selected_player_ids}
+              selected_user_ids={@selected_user_ids}
               selected_preset_id={@selected_preset_id}
             />
         <% end %>
@@ -107,7 +121,7 @@ defmodule UltistatsWeb.GameLive.Show do
         <.bottom_action_bar
           game={@game}
           current_point={@current_point}
-          selected_player_ids={@selected_player_ids}
+          selected_user_ids={@selected_user_ids}
           disconnected?={@disconnected?}
           pending_event={@pending_event}
         />
@@ -116,7 +130,7 @@ defmodule UltistatsWeb.GameLive.Show do
       <.player_picker_modal
         :if={@pending_event}
         pending_event={@pending_event}
-        pending_goal_player_id={@pending_goal_player_id}
+        pending_goal_user_id={@pending_goal_user_id}
         current_point={@current_point}
         team_players={@team_players}
       />
@@ -206,7 +220,7 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :point_number, :integer, required: true
   attr :line_presets, :list, required: true
   attr :team_players, :list, required: true
-  attr :selected_player_ids, :any, required: true
+  attr :selected_user_ids, :any, required: true
   attr :selected_preset_id, :any, required: true
 
   defp between_points_view(assigns) do
@@ -226,7 +240,7 @@ defmodule UltistatsWeb.GameLive.Show do
         <div class="grid grid-cols-1 gap-2">
           <.line_preset_card
             :for={preset <- @line_presets}
-            preset={%{name: preset.name, players: preset.players}}
+            preset={%{name: preset.name, players: preset.users}}
             selected?={@selected_preset_id == preset.id}
             phx-click="select_preset"
             phx-value-id={preset.id}
@@ -240,7 +254,7 @@ defmodule UltistatsWeb.GameLive.Show do
             Roster
           </h3>
           <span class="text-sm text-base-content/70 tabular-nums">
-            {MapSet.size(@selected_player_ids)} selected
+            {MapSet.size(@selected_user_ids)} selected
           </span>
         </div>
 
@@ -255,10 +269,10 @@ defmodule UltistatsWeb.GameLive.Show do
           <div class="flex flex-wrap gap-2">
             <.player_chip
               :for={player <- @team_players}
-              player={%{number: player.jersey_number, name: Player.display_name(player)}}
-              selected?={MapSet.member?(@selected_player_ids, player.id)}
+              player={%{number: player.jersey_number, name: User.display_name(player.user)}}
+              selected?={MapSet.member?(@selected_user_ids, player.user_id)}
               phx-click="toggle_player"
-              phx-value-id={player.id}
+              phx-value-id={player.user_id}
             />
           </div>
         <% end %>
@@ -272,9 +286,9 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :events, :list, required: true
 
   defp in_point_view(assigns) do
-    line_player_ids = line_player_ids(assigns.current_point)
-    on_field = Enum.filter(assigns.team_players, &(&1.id in line_player_ids))
-    player_lookup = Map.new(assigns.team_players, &{&1.id, &1})
+    line_user_ids = line_user_ids(assigns.current_point)
+    on_field = Enum.filter(assigns.team_players, &(&1.user_id in line_user_ids))
+    player_lookup = Map.new(assigns.team_players, &{&1.user_id, &1})
     recent = assigns.events |> Enum.reverse() |> Enum.take(5)
 
     assigns =
@@ -292,7 +306,7 @@ defmodule UltistatsWeb.GameLive.Show do
         <div class="flex flex-wrap gap-2">
           <.player_chip
             :for={player <- @on_field}
-            player={%{number: player.jersey_number, name: Player.display_name(player)}}
+            player={%{number: player.jersey_number, name: User.display_name(player.user)}}
             selected?={true}
             disabled?={true}
           />
@@ -316,7 +330,7 @@ defmodule UltistatsWeb.GameLive.Show do
               />
               <span class="font-semibold capitalize text-sm">{ev.type}</span>
               <span class="flex-1 text-sm truncate text-base-content/80">
-                {player_label(@player_lookup, ev.player_id)}
+                {player_label(@player_lookup, ev.user_id)}
               </span>
               <time class="tabular-nums text-xs text-base-content/60 shrink-0">
                 {format_time(ev.occurred_at)}
@@ -331,7 +345,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
   attr :game, :map, required: true
   attr :current_point, :any, required: true
-  attr :selected_player_ids, :any, required: true
+  attr :selected_user_ids, :any, required: true
   attr :disconnected?, :boolean, required: true
   attr :pending_event, :any, required: true
 
@@ -382,7 +396,7 @@ defmodule UltistatsWeb.GameLive.Show do
           <button
             type="button"
             phx-click="start_point"
-            disabled={MapSet.size(@selected_player_ids) == 0 or @disconnected?}
+            disabled={MapSet.size(@selected_user_ids) == 0 or @disconnected?}
             class={[
               "w-full min-h-14 rounded-xl px-4 py-3",
               "text-lg font-semibold",
@@ -406,13 +420,13 @@ defmodule UltistatsWeb.GameLive.Show do
   # backdrop overlay with daisyUI tokens instead. The Cancel button
   # provides explicit dismissal; tapping the backdrop also cancels.
   attr :pending_event, :any, required: true
-  attr :pending_goal_player_id, :any, required: true
+  attr :pending_goal_user_id, :any, required: true
   attr :current_point, :any, required: true
   attr :team_players, :list, required: true
 
   defp player_picker_modal(assigns) do
-    line_ids = line_player_ids(assigns.current_point)
-    on_field = Enum.filter(assigns.team_players, &(&1.id in line_ids))
+    line_ids = line_user_ids(assigns.current_point)
+    on_field = Enum.filter(assigns.team_players, &(&1.user_id in line_ids))
 
     {title, mode} = picker_title(assigns.pending_event)
 
@@ -454,9 +468,9 @@ defmodule UltistatsWeb.GameLive.Show do
           <div class="flex flex-wrap gap-2">
             <.player_chip
               :for={player <- @on_field}
-              player={%{number: player.jersey_number, name: Player.display_name(player)}}
+              player={%{number: player.jersey_number, name: User.display_name(player.user)}}
               phx-click={picker_event_name(@mode)}
-              phx-value-id={player.id}
+              phx-value-id={player.user_id}
             />
           </div>
 
@@ -485,17 +499,17 @@ defmodule UltistatsWeb.GameLive.Show do
   ## ---------------------------------------------------------------------
 
   @impl true
-  def handle_event("toggle_player", %{"id" => player_id}, socket) do
+  def handle_event("toggle_player", %{"id" => user_id}, socket) do
     selected =
-      if MapSet.member?(socket.assigns.selected_player_ids, player_id) do
-        MapSet.delete(socket.assigns.selected_player_ids, player_id)
+      if MapSet.member?(socket.assigns.selected_user_ids, user_id) do
+        MapSet.delete(socket.assigns.selected_user_ids, user_id)
       else
-        MapSet.put(socket.assigns.selected_player_ids, player_id)
+        MapSet.put(socket.assigns.selected_user_ids, user_id)
       end
 
     {:noreply,
      socket
-     |> assign(:selected_player_ids, selected)
+     |> assign(:selected_user_ids, selected)
      |> assign(:selected_preset_id, nil)}
   end
 
@@ -505,25 +519,25 @@ defmodule UltistatsWeb.GameLive.Show do
         {:noreply, socket}
 
       preset ->
-        ids = Enum.map(preset.players, & &1.id) |> MapSet.new()
+        ids = Enum.map(preset.users, & &1.id) |> MapSet.new()
 
         {:noreply,
          socket
-         |> assign(:selected_player_ids, ids)
+         |> assign(:selected_user_ids, ids)
          |> assign(:selected_preset_id, preset_id)}
     end
   end
 
   def handle_event("start_point", _params, socket) do
-    player_ids = MapSet.to_list(socket.assigns.selected_player_ids)
+    user_ids = MapSet.to_list(socket.assigns.selected_user_ids)
 
-    case Games.start_point(socket.assigns.game, player_ids) do
+    case Games.start_point(socket.assigns.game, user_ids) do
       {:ok, point} ->
         {:noreply,
          socket
          |> assign(:current_point, point)
          |> assign(:events, [])
-         |> assign(:selected_player_ids, MapSet.new())
+         |> assign(:selected_user_ids, MapSet.new())
          |> assign(:selected_preset_id, nil)}
 
       {:error, _changeset} ->
@@ -540,7 +554,7 @@ defmodule UltistatsWeb.GameLive.Show do
         {:noreply,
          socket
          |> assign(:pending_event, String.to_existing_atom(kind))
-         |> assign(:pending_goal_player_id, nil)}
+         |> assign(:pending_goal_user_id, nil)}
     end
   end
 
@@ -548,20 +562,20 @@ defmodule UltistatsWeb.GameLive.Show do
     {:noreply,
      socket
      |> assign(:pending_event, nil)
-     |> assign(:pending_goal_player_id, nil)}
+     |> assign(:pending_goal_user_id, nil)}
   end
 
   # Goal flow: record goal event, then prompt for assist before ending
   # the point.
-  def handle_event("pick_goal_scorer", %{"id" => player_id}, socket) do
+  def handle_event("pick_goal_scorer", %{"id" => user_id}, socket) do
     point = socket.assigns.current_point
 
-    case Games.record_event(point, :goal, player_id) do
+    case Games.record_event(point, :goal, user_id) do
       {:ok, _event} ->
         {:noreply,
          socket
          |> assign(:pending_event, :goal_assist)
-         |> assign(:pending_goal_player_id, player_id)
+         |> assign(:pending_goal_user_id, user_id)
          |> assign(:events, Games.events_for_point(point))}
 
       {:error, _} ->
@@ -569,10 +583,10 @@ defmodule UltistatsWeb.GameLive.Show do
     end
   end
 
-  def handle_event("pick_goal_assister", %{"id" => player_id}, socket) do
+  def handle_event("pick_goal_assister", %{"id" => user_id}, socket) do
     point = socket.assigns.current_point
 
-    case Games.record_event(point, :assist, player_id) do
+    case Games.record_event(point, :assist, user_id) do
       {:ok, _event} ->
         {:noreply, finalize_our_goal(socket)}
 
@@ -587,10 +601,10 @@ defmodule UltistatsWeb.GameLive.Show do
 
   # Standalone assist: rare, but supported (action_button kind={:assist}
   # exists per UI_DESIGN.md §Components). Doesn't end the point.
-  def handle_event("pick_standalone_assist", %{"id" => player_id}, socket) do
+  def handle_event("pick_standalone_assist", %{"id" => user_id}, socket) do
     point = socket.assigns.current_point
 
-    case Games.record_event(point, :assist, player_id) do
+    case Games.record_event(point, :assist, user_id) do
       {:ok, _event} ->
         {:noreply,
          socket
@@ -602,12 +616,12 @@ defmodule UltistatsWeb.GameLive.Show do
     end
   end
 
-  def handle_event("pick_block", %{"id" => player_id}, socket) do
-    record_non_terminal_event(socket, :block, player_id)
+  def handle_event("pick_block", %{"id" => user_id}, socket) do
+    record_non_terminal_event(socket, :block, user_id)
   end
 
-  def handle_event("pick_turn", %{"id" => player_id}, socket) do
-    record_non_terminal_event(socket, :turn, player_id)
+  def handle_event("pick_turn", %{"id" => user_id}, socket) do
+    record_non_terminal_event(socket, :turn, user_id)
   end
 
   def handle_event("they_scored", _params, socket) do
@@ -634,10 +648,10 @@ defmodule UltistatsWeb.GameLive.Show do
   ## helpers
   ## ---------------------------------------------------------------------
 
-  defp record_non_terminal_event(socket, type, player_id) do
+  defp record_non_terminal_event(socket, type, user_id) do
     point = socket.assigns.current_point
 
-    case Games.record_event(point, type, player_id) do
+    case Games.record_event(point, type, user_id) do
       {:ok, _event} ->
         {:noreply,
          socket
@@ -656,7 +670,7 @@ defmodule UltistatsWeb.GameLive.Show do
       {:ok, _ended} ->
         socket
         |> assign(:pending_event, nil)
-        |> assign(:pending_goal_player_id, nil)
+        |> assign(:pending_goal_user_id, nil)
         |> after_point_end()
 
       {:error, _} ->
@@ -676,7 +690,7 @@ defmodule UltistatsWeb.GameLive.Show do
       |> assign(:score, score)
       |> assign(:current_point, nil)
       |> assign(:events, [])
-      |> assign(:selected_player_ids, MapSet.new())
+      |> assign(:selected_user_ids, MapSet.new())
       |> assign(:selected_preset_id, nil)
 
     if Games.hard_cap_reached?(game) do
@@ -701,10 +715,10 @@ defmodule UltistatsWeb.GameLive.Show do
     end
   end
 
-  defp line_player_ids(nil), do: []
+  defp line_user_ids(nil), do: []
 
-  defp line_player_ids(%{our_line_snapshot: %{"player_ids" => ids}}) when is_list(ids), do: ids
-  defp line_player_ids(_), do: []
+  defp line_user_ids(%{our_line_snapshot: %{"user_ids" => ids}}) when is_list(ids), do: ids
+  defp line_user_ids(_), do: []
 
   defp picker_title(:goal), do: {"Who scored?", :goal}
   defp picker_title(:goal_assist), do: {"Who got the assist?", :goal_assist}
@@ -734,10 +748,10 @@ defmodule UltistatsWeb.GameLive.Show do
 
   defp player_label(_lookup, nil), do: "—"
 
-  defp player_label(lookup, player_id) do
-    case Map.get(lookup, player_id) do
+  defp player_label(lookup, user_id) do
+    case Map.get(lookup, user_id) do
       nil -> "—"
-      player -> "##{player.jersey_number} #{Player.display_name(player)}"
+      member -> "##{member.jersey_number} #{User.display_name(member.user)}"
     end
   end
 

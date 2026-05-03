@@ -21,25 +21,34 @@ defmodule UltistatsWeb.GameLive.Timeline do
   use UltistatsWeb, :live_view
 
   alias Ultistats.{Games, Teams}
-  alias Ultistats.Teams.Player
+  alias Ultistats.Accounts.User
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
     game = Games.get_game_with_points!(id)
-    team_players = Teams.list_players_for_team(game.team_id)
-    players_by_id = Map.new(team_players, &{&1.id, &1})
+    user = socket.assigns.current_scope.user
 
-    {:ok,
-     socket
-     |> assign(:page_title, "Timeline · vs #{game.opponent_name}")
-     |> assign(:game, game)
-     |> assign(:team_players, team_players)
-     |> assign(:players_by_id, players_by_id)
-     |> assign(:editing_event_id, nil)
-     |> assign(:edit_type, nil)
-     |> assign(:edit_player_id, nil)
-     |> assign(:confirming_delete_id, nil)
-     |> reload_timeline()}
+    if not Teams.user_member_of?(user, game.team_id) do
+      {:ok,
+       socket
+       |> put_flash(:error, "You don't have permission to view that game.")
+       |> push_navigate(to: ~p"/games")}
+    else
+      team_players = Teams.list_players_for_team(game.team_id)
+      members_by_user_id = Map.new(team_players, &{&1.user_id, &1})
+
+      {:ok,
+       socket
+       |> assign(:page_title, "Timeline · vs #{game.opponent_name}")
+       |> assign(:game, game)
+       |> assign(:team_players, team_players)
+       |> assign(:players_by_id, members_by_user_id)
+       |> assign(:editing_event_id, nil)
+       |> assign(:edit_type, nil)
+       |> assign(:edit_user_id, nil)
+       |> assign(:confirming_delete_id, nil)
+       |> reload_timeline()}
+    end
   end
 
   ## ---------------------------------------------------------------------
@@ -49,7 +58,7 @@ defmodule UltistatsWeb.GameLive.Timeline do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="flex flex-col gap-6 pb-safe">
         <.timeline_header game={@game} score={@score} />
 
@@ -73,7 +82,7 @@ defmodule UltistatsWeb.GameLive.Timeline do
         :if={@editing_event_id}
         editing_event={editing_event(@timeline, @editing_event_id)}
         edit_type={@edit_type}
-        edit_player_id={@edit_player_id}
+        edit_user_id={@edit_user_id}
         team_players={@team_players}
       />
     </Layouts.app>
@@ -246,7 +255,7 @@ defmodule UltistatsWeb.GameLive.Timeline do
   # (per UI_DESIGN.md §Components — sixth-primitive rule applies).
   attr :editing_event, :map, required: true
   attr :edit_type, :atom, required: true
-  attr :edit_player_id, :any, required: true
+  attr :edit_user_id, :any, required: true
   attr :team_players, :list, required: true
 
   defp edit_event_modal(assigns) do
@@ -299,12 +308,12 @@ defmodule UltistatsWeb.GameLive.Timeline do
                 type="button"
                 phx-click="set_edit_player"
                 phx-value-id=""
-                aria-pressed={to_string(is_nil(@edit_player_id))}
+                aria-pressed={to_string(is_nil(@edit_user_id))}
                 class={[
                   "min-h-11 px-3 py-2 rounded-full text-base font-medium border-2",
                   "active:scale-[0.98] motion-reduce:active:scale-100 transition-colors motion-reduce:transition-none",
                   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                  if(is_nil(@edit_player_id),
+                  if(is_nil(@edit_user_id),
                     do: "bg-primary text-primary-content border-primary",
                     else: "bg-base-100 text-base-content border-base-300 active:bg-base-200"
                   )
@@ -314,10 +323,10 @@ defmodule UltistatsWeb.GameLive.Timeline do
               </button>
               <.player_chip
                 :for={player <- @team_players}
-                player={%{number: player.jersey_number, name: Player.display_name(player)}}
-                selected?={@edit_player_id == player.id}
+                player={%{number: player.jersey_number, name: User.display_name(player.user)}}
+                selected?={@edit_user_id == player.user_id}
                 phx-click="set_edit_player"
-                phx-value-id={player.id}
+                phx-value-id={player.user_id}
               />
             </div>
           </fieldset>
@@ -387,7 +396,7 @@ defmodule UltistatsWeb.GameLive.Timeline do
          socket
          |> assign(:editing_event_id, event.id)
          |> assign(:edit_type, event.type)
-         |> assign(:edit_player_id, event.player_id)
+         |> assign(:edit_user_id, event.user_id)
          |> assign(:confirming_delete_id, nil)}
     end
   end
@@ -397,7 +406,7 @@ defmodule UltistatsWeb.GameLive.Timeline do
      socket
      |> assign(:editing_event_id, nil)
      |> assign(:edit_type, nil)
-     |> assign(:edit_player_id, nil)}
+     |> assign(:edit_user_id, nil)}
   end
 
   def handle_event("set_edit_type", %{"type" => type}, socket) do
@@ -405,27 +414,27 @@ defmodule UltistatsWeb.GameLive.Timeline do
   end
 
   def handle_event("set_edit_player", %{"id" => ""}, socket) do
-    {:noreply, assign(socket, :edit_player_id, nil)}
+    {:noreply, assign(socket, :edit_user_id, nil)}
   end
 
-  def handle_event("set_edit_player", %{"id" => player_id}, socket) do
-    {:noreply, assign(socket, :edit_player_id, player_id)}
+  def handle_event("set_edit_player", %{"id" => user_id}, socket) do
+    {:noreply, assign(socket, :edit_user_id, user_id)}
   end
 
   def handle_event("save_edit", _params, socket) do
     %{
       editing_event_id: id,
       edit_type: type,
-      edit_player_id: player_id
+      edit_user_id: user_id
     } = socket.assigns
 
     with event when not is_nil(event) <- find_event(socket.assigns.timeline, id),
-         {:ok, _updated} <- Games.update_event(event, %{type: type, player_id: player_id}) do
+         {:ok, _updated} <- Games.update_event(event, %{type: type, user_id: user_id}) do
       {:noreply,
        socket
        |> assign(:editing_event_id, nil)
        |> assign(:edit_type, nil)
-       |> assign(:edit_player_id, nil)
+       |> assign(:edit_user_id, nil)
        |> reload_timeline()}
     else
       nil ->
@@ -434,7 +443,7 @@ defmodule UltistatsWeb.GameLive.Timeline do
          |> assign(:editing_event_id, nil)
          |> put_flash(:error, "Event no longer exists.")}
 
-      {:error, :player_not_on_team} ->
+      {:error, :user_not_on_team} ->
         {:noreply, put_flash(socket, :error, "That player isn't on this team.")}
 
       {:error, %Ecto.Changeset{}} ->
@@ -500,7 +509,7 @@ defmodule UltistatsWeb.GameLive.Timeline do
   def event_view(event, players_by_id, point) do
     %{
       type: event.type,
-      player_label: player_label(event.player_id, players_by_id),
+      player_label: player_label(event.user_id, players_by_id),
       timestamp: format_time(event.occurred_at),
       point_label: "P#{point.sequence}"
     }
@@ -508,10 +517,10 @@ defmodule UltistatsWeb.GameLive.Timeline do
 
   defp player_label(nil, _players_by_id), do: "—"
 
-  defp player_label(player_id, players_by_id) do
-    case Map.get(players_by_id, player_id) do
+  defp player_label(user_id, players_by_id) do
+    case Map.get(players_by_id, user_id) do
       nil -> "—"
-      player -> "##{player.jersey_number} #{Player.display_name(player)}"
+      member -> "##{member.jersey_number} #{User.display_name(member.user)}"
     end
   end
 

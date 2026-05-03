@@ -35,7 +35,7 @@ defmodule UltistatsWeb.GameLive.Start do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
       <.header>
         Start a game
         <:subtitle>Pick the team, name the opponent, and call the first pull.</:subtitle>
@@ -190,7 +190,8 @@ defmodule UltistatsWeb.GameLive.Start do
 
   @impl true
   def mount(params, _session, socket) do
-    teams = Teams.list_teams()
+    user = socket.assigns.current_scope.user
+    teams = Teams.list_teams_for_user(user)
     requested_team_id = params["team_id"]
 
     selected_team_id = pick_team_id(teams, requested_team_id)

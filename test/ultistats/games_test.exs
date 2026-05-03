@@ -4,7 +4,6 @@ defmodule Ultistats.GamesTest do
   alias Ultistats.Games
   alias Ultistats.Games.{Event, Game, Point}
   alias Ultistats.Repo
-  alias Ultistats.Teams
 
   import Ultistats.GamesFixtures
   import Ultistats.TeamsFixtures
@@ -263,7 +262,7 @@ defmodule Ultistats.GamesTest do
           ruleset_id: template.id
         })
 
-      player = player_fixture(team_id: team.id)
+      player = member_fixture(team_id: team.id)
       score_n_points(game, player, :ours, 8)
 
       refute Games.halftime?(Games.get_game!(game.id))
@@ -289,7 +288,7 @@ defmodule Ultistats.GamesTest do
           ruleset_id: template.id
         })
 
-      player = player_fixture(team_id: team.id)
+      player = member_fixture(team_id: team.id)
       score_n_points(game, player, :ours, 20)
 
       refute Games.hard_cap_reached?(Games.get_game!(game.id))
@@ -315,8 +314,8 @@ defmodule Ultistats.GamesTest do
     setup do
       team = team_fixture()
       game = game_fixture(team_id: team.id)
-      p1 = player_fixture(team_id: team.id, jersey_number: "1")
-      p2 = player_fixture(team_id: team.id, jersey_number: "2")
+      p1 = member_fixture(team_id: team.id, jersey_number: "1")
+      p2 = member_fixture(team_id: team.id, jersey_number: "2")
       %{team: team, game: game, p1: p1, p2: p2}
     end
 
@@ -324,7 +323,7 @@ defmodule Ultistats.GamesTest do
       assert {:ok, pt1} = Games.start_point(game, [p1.id, p2.id])
       assert pt1.sequence == 1
       assert pt1.scoring_team == nil
-      assert pt1.our_line_snapshot == %{"player_ids" => [p1.id, p2.id]}
+      assert pt1.our_line_snapshot == %{"user_ids" => [p1.id, p2.id]}
 
       # End point 1 so it's no longer the active point.
       {:ok, _} = Games.end_point(pt1, :ours)
@@ -335,15 +334,15 @@ defmodule Ultistats.GamesTest do
 
     test "filters out player ids from another team", %{game: game, p1: p1} do
       other_team = team_fixture()
-      stranger = player_fixture(team_id: other_team.id, jersey_number: "9")
+      stranger = member_fixture(team_id: other_team.id, jersey_number: "9")
 
       assert {:ok, pt} = Games.start_point(game, [p1.id, stranger.id])
-      assert pt.our_line_snapshot["player_ids"] == [p1.id]
+      assert pt.our_line_snapshot["user_ids"] == [p1.id]
     end
 
-    test "all-foreign player_ids yields a changeset error", %{game: game} do
+    test "all-foreign user_ids yields a changeset error", %{game: game} do
       other_team = team_fixture()
-      stranger = player_fixture(team_id: other_team.id, jersey_number: "9")
+      stranger = member_fixture(team_id: other_team.id, jersey_number: "9")
 
       assert {:error, changeset} = Games.start_point(game, [stranger.id])
       assert %{our_line_snapshot: [_msg]} = errors_on(changeset)
@@ -353,7 +352,7 @@ defmodule Ultistats.GamesTest do
       assert {:ok, pt} = Games.start_point(game, [p1.id])
       reloaded = Repo.get!(Point, pt.id)
       assert is_map(reloaded.our_line_snapshot)
-      assert reloaded.our_line_snapshot["player_ids"] == [p1.id]
+      assert reloaded.our_line_snapshot["user_ids"] == [p1.id]
     end
   end
 
@@ -361,7 +360,7 @@ defmodule Ultistats.GamesTest do
     setup do
       team = team_fixture()
       game = game_fixture(team_id: team.id)
-      player = player_fixture(team_id: team.id)
+      player = member_fixture(team_id: team.id)
       {:ok, point} = Games.start_point(game, [player.id])
       %{game: game, point: point}
     end
@@ -387,7 +386,7 @@ defmodule Ultistats.GamesTest do
     setup do
       team = team_fixture()
       game = game_fixture(team_id: team.id)
-      player = player_fixture(team_id: team.id)
+      player = member_fixture(team_id: team.id)
       %{team: team, game: game, player: player}
     end
 
@@ -430,7 +429,7 @@ defmodule Ultistats.GamesTest do
     setup do
       team = team_fixture()
       game = game_fixture(team_id: team.id)
-      player = player_fixture(team_id: team.id)
+      player = member_fixture(team_id: team.id)
       {:ok, point} = Games.start_point(game, [player.id])
       %{team: team, game: game, player: player, point: point}
     end
@@ -438,21 +437,21 @@ defmodule Ultistats.GamesTest do
     test "records a goal pinned to a player", %{point: point, player: player} do
       assert {:ok, ev} = Games.record_event(point, :goal, player.id)
       assert ev.type == :goal
-      assert ev.player_id == player.id
+      assert ev.user_id == player.id
       assert ev.sequence == 1
       assert ev.occurred_at
     end
 
-    test "records an event with no player (player_id=nil)", %{point: point} do
+    test "records an event with no player (user_id=nil)", %{point: point} do
       assert {:ok, ev} = Games.record_event(point, :turn, nil)
-      assert ev.player_id == nil
+      assert ev.user_id == nil
     end
 
     test "rejects a player not on the team's roster", %{point: point} do
       other_team = team_fixture()
-      stranger = player_fixture(team_id: other_team.id)
+      stranger = member_fixture(team_id: other_team.id)
 
-      assert {:error, :player_not_on_team} =
+      assert {:error, :user_not_on_team} =
                Games.record_event(point, :goal, stranger.id)
     end
 
@@ -468,8 +467,8 @@ defmodule Ultistats.GamesTest do
     setup do
       team = team_fixture()
       game = game_fixture(team_id: team.id)
-      player = player_fixture(team_id: team.id)
-      other_player = player_fixture(team_id: team.id, jersey_number: "9")
+      player = member_fixture(team_id: team.id)
+      other_player = member_fixture(team_id: team.id, jersey_number: "9")
       {:ok, point} = Games.start_point(game, [player.id, other_player.id])
       {:ok, event} = Games.record_event(point, :goal, player.id)
 
@@ -489,21 +488,21 @@ defmodule Ultistats.GamesTest do
       assert Repo.get!(Event, event.id).type == :turn
     end
 
-    test "updates :player_id to a same-team player", %{event: event, other_player: other_player} do
-      assert {:ok, updated} = Games.update_event(event, %{player_id: other_player.id})
-      assert updated.player_id == other_player.id
+    test "updates :user_id to a same-team player", %{event: event, other_player: other_player} do
+      assert {:ok, updated} = Games.update_event(event, %{user_id: other_player.id})
+      assert updated.user_id == other_player.id
     end
 
-    test "rejects a :player_id from a different team's roster", %{event: event} do
+    test "rejects a :user_id from a different team's roster", %{event: event} do
       other_team = team_fixture()
-      stranger = player_fixture(team_id: other_team.id, jersey_number: "99")
+      stranger = member_fixture(team_id: other_team.id, jersey_number: "99")
 
-      assert {:error, :player_not_on_team} =
-               Games.update_event(event, %{player_id: stranger.id})
+      assert {:error, :user_not_on_team} =
+               Games.update_event(event, %{user_id: stranger.id})
 
       # No fields touched.
       reloaded = Repo.get!(Event, event.id)
-      assert reloaded.player_id == event.player_id
+      assert reloaded.user_id == event.user_id
       assert reloaded.type == event.type
     end
 
@@ -524,9 +523,9 @@ defmodule Ultistats.GamesTest do
       assert is_nil(updated.deleted_at)
     end
 
-    test "accepts player_id=nil to clear the attribution", %{event: event} do
-      assert {:ok, updated} = Games.update_event(event, %{player_id: nil})
-      assert is_nil(updated.player_id)
+    test "accepts user_id=nil to clear the attribution", %{event: event} do
+      assert {:ok, updated} = Games.update_event(event, %{user_id: nil})
+      assert is_nil(updated.user_id)
     end
 
     test "validates :type presence — bogus type is rejected", %{event: event} do
@@ -538,7 +537,7 @@ defmodule Ultistats.GamesTest do
     setup do
       team = team_fixture()
       game = game_fixture(team_id: team.id)
-      player = player_fixture(team_id: team.id)
+      player = member_fixture(team_id: team.id)
       {:ok, point} = Games.start_point(game, [player.id])
       %{point: point, player: player}
     end
@@ -582,7 +581,7 @@ defmodule Ultistats.GamesTest do
     setup do
       team = team_fixture()
       game = game_fixture(team_id: team.id, format: :usau_standard)
-      player = player_fixture(team_id: team.id)
+      player = member_fixture(team_id: team.id)
       %{team: team, game: game, player: player}
     end
 
@@ -638,7 +637,7 @@ defmodule Ultistats.GamesTest do
     test "deleting a game deletes its points and events" do
       team = team_fixture()
       game = game_fixture(team_id: team.id)
-      player = player_fixture(team_id: team.id)
+      player = member_fixture(team_id: team.id)
       {:ok, point} = Games.start_point(game, [player.id])
       {:ok, event} = Games.record_event(point, :goal, player.id)
 
@@ -648,17 +647,17 @@ defmodule Ultistats.GamesTest do
       refute Repo.get(Event, event.id)
     end
 
-    test "deleting a player nilifies player_id on existing events" do
+    test "deleting a user nilifies user_id on existing events" do
       team = team_fixture()
       game = game_fixture(team_id: team.id)
-      player = player_fixture(team_id: team.id)
+      player = member_fixture(team_id: team.id)
       {:ok, point} = Games.start_point(game, [player.id])
       {:ok, event} = Games.record_event(point, :goal, player.id)
 
-      {:ok, _} = Teams.delete_player(player)
+      {:ok, _} = Repo.delete(player)
 
       reloaded = Repo.get!(Event, event.id)
-      assert reloaded.player_id == nil
+      assert reloaded.user_id == nil
     end
   end
 
@@ -668,13 +667,13 @@ defmodule Ultistats.GamesTest do
       game = game_fixture(team_id: team.id)
 
       # Numeric jerseys: 3, 7, 11; plus a nil-jersey player (sorts last).
-      pa = player_fixture(team_id: team.id, first_name: "Ada", last_name: "A", jersey_number: "7")
+      pa = member_fixture(team_id: team.id, first_name: "Ada", last_name: "A", jersey_number: "7")
 
       pb =
-        player_fixture(team_id: team.id, first_name: "Bea", last_name: "B", jersey_number: "11")
+        member_fixture(team_id: team.id, first_name: "Bea", last_name: "B", jersey_number: "11")
 
-      pc = player_fixture(team_id: team.id, first_name: "Cal", last_name: "C", jersey_number: "3")
-      pd = player_fixture(team_id: team.id, first_name: "Dee", last_name: "D", jersey_number: nil)
+      pc = member_fixture(team_id: team.id, first_name: "Cal", last_name: "C", jersey_number: "3")
+      pd = member_fixture(team_id: team.id, first_name: "Dee", last_name: "D", jersey_number: nil)
 
       %{team: team, game: game, pa: pa, pb: pb, pc: pc, pd: pd}
     end
@@ -701,8 +700,8 @@ defmodule Ultistats.GamesTest do
       summary = Games.summary_for_game(game)
       assert summary.score == %{ours: 1, theirs: 0}
 
-      a_row = Enum.find(summary.players, &(&1.player.id == pa.id))
-      b_row = Enum.find(summary.players, &(&1.player.id == pb.id))
+      a_row = Enum.find(summary.players, &(&1.user.id == pa.id))
+      b_row = Enum.find(summary.players, &(&1.user.id == pb.id))
 
       assert a_row.goals == 1
       assert b_row.goals == 0
@@ -718,7 +717,7 @@ defmodule Ultistats.GamesTest do
       {:ok, _} = Games.soft_delete_event(event)
 
       summary = Games.summary_for_game(game)
-      a_row = Enum.find(summary.players, &(&1.player.id == pa.id))
+      a_row = Enum.find(summary.players, &(&1.user.id == pa.id))
       assert a_row.goals == 0
       # Score also drops back to 0 since `:ours` is event-driven.
       assert summary.score.ours == 0
@@ -736,8 +735,8 @@ defmodule Ultistats.GamesTest do
       {:ok, _} = Games.end_point(point2, :theirs)
 
       summary = Games.summary_for_game(game)
-      a_row = Enum.find(summary.players, &(&1.player.id == pa.id))
-      b_row = Enum.find(summary.players, &(&1.player.id == pb.id))
+      a_row = Enum.find(summary.players, &(&1.user.id == pa.id))
+      b_row = Enum.find(summary.players, &(&1.user.id == pb.id))
 
       assert a_row.points_played == 2
       assert b_row.points_played == 1
@@ -751,19 +750,19 @@ defmodule Ultistats.GamesTest do
       pa: pa
     } do
       other_team = team_fixture()
-      stranger = player_fixture(team_id: other_team.id, jersey_number: "99")
+      stranger = member_fixture(team_id: other_team.id, jersey_number: "99")
 
       # Bypass start_point/2's filter to simulate a corrupt snapshot.
       _point =
         point_fixture(
           game_id: game.id,
-          our_line_snapshot: %{"player_ids" => [pa.id, stranger.id]}
+          our_line_snapshot: %{"user_ids" => [pa.id, stranger.id]}
         )
 
       summary = Games.summary_for_game(game)
       # stranger doesn't appear in players (roster-scoped).
-      refute Enum.any?(summary.players, &(&1.player.id == stranger.id))
-      a_row = Enum.find(summary.players, &(&1.player.id == pa.id))
+      refute Enum.any?(summary.players, &(&1.user.id == stranger.id))
+      a_row = Enum.find(summary.players, &(&1.user.id == pa.id))
       assert a_row.points_played == 1
 
       # silence unused
@@ -778,7 +777,7 @@ defmodule Ultistats.GamesTest do
       pd: pd
     } do
       summary = Games.summary_for_game(game)
-      ids_in_order = Enum.map(summary.players, & &1.player.id)
+      ids_in_order = Enum.map(summary.players, & &1.user.id)
       # Numeric: 3 (pc), 7 (pa), 11 (pb), then nil-jersey pd.
       assert ids_in_order == [pc.id, pa.id, pb.id, pd.id]
     end

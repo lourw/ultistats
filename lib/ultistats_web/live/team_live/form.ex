@@ -7,7 +7,7 @@ defmodule UltistatsWeb.TeamLive.Form do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
       <.header>
         {@page_title}
       </.header>
@@ -52,11 +52,25 @@ defmodule UltistatsWeb.TeamLive.Form do
 
   defp apply_action(socket, :edit, %{"id" => id}) do
     team = Teams.get_team!(id)
+    user = socket.assigns.current_scope.user
 
-    socket
-    |> assign(:page_title, "Edit #{team.name}")
-    |> assign(:team, team)
-    |> assign(:form, to_form(Teams.change_team(team)))
+    cond do
+      not Teams.user_member_of?(user, team) ->
+        socket
+        |> put_flash(:error, "You don't have permission to do that.")
+        |> push_navigate(to: ~p"/teams")
+
+      not Teams.user_admin_of?(user, team) ->
+        socket
+        |> put_flash(:error, "You don't have permission to do that.")
+        |> push_navigate(to: ~p"/teams/#{team}")
+
+      true ->
+        socket
+        |> assign(:page_title, "Edit #{team.name}")
+        |> assign(:team, team)
+        |> assign(:form, to_form(Teams.change_team(team)))
+    end
   end
 
   defp apply_action(socket, :new, _params) do
@@ -80,36 +94,53 @@ defmodule UltistatsWeb.TeamLive.Form do
 
   def handle_event("delete_team", %{"id" => id}, socket) do
     team = Teams.get_team!(id)
-    {:ok, _} = Teams.delete_team(team)
+    user = socket.assigns.current_scope.user
 
-    {:noreply,
-     socket
-     |> put_flash(:info, "Team deleted")
-     |> push_navigate(to: ~p"/teams")}
+    if Teams.user_admin_of?(user, team) do
+      {:ok, _} = Teams.delete_team(team)
+
+      {:noreply,
+       socket
+       |> put_flash(:info, "Team deleted")
+       |> push_navigate(to: ~p"/teams")}
+    else
+      {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
+    end
   end
 
   defp save_team(socket, :edit, team_params) do
-    case Teams.update_team(socket.assigns.team, team_params) do
-      {:ok, team} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Team updated successfully")
-         |> push_navigate(to: return_path(socket.assigns.return_to, team))}
+    user = socket.assigns.current_scope.user
 
-      {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset))}
+    if Teams.user_admin_of?(user, socket.assigns.team) do
+      case Teams.update_team(socket.assigns.team, team_params) do
+        {:ok, team} ->
+          {:noreply,
+           socket
+           |> put_flash(:info, "Team updated successfully")
+           |> push_navigate(to: return_path(socket.assigns.return_to, team))}
+
+        {:error, %Ecto.Changeset{} = changeset} ->
+          {:noreply, assign(socket, form: to_form(changeset))}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
     end
   end
 
   defp save_team(socket, :new, team_params) do
-    case Teams.create_team(team_params) do
-      {:ok, team} ->
+    user = socket.assigns.current_scope.user
+
+    case Teams.create_team_with_admin(team_params, user) do
+      {:ok, %{team: team}} ->
         {:noreply,
          socket
          |> put_flash(:info, "Team created successfully")
          |> push_navigate(to: return_path(socket.assigns.return_to, team))}
 
-      {:error, %Ecto.Changeset{} = changeset} ->
+      {:error, :team, %Ecto.Changeset{} = changeset, _changes} ->
+        {:noreply, assign(socket, form: to_form(changeset))}
+
+      {:error, _step, %Ecto.Changeset{} = changeset, _changes} ->
         {:noreply, assign(socket, form: to_form(changeset))}
     end
   end

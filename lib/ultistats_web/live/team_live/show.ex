@@ -1,13 +1,13 @@
 defmodule UltistatsWeb.TeamLive.Show do
   use UltistatsWeb, :live_view
 
+  alias Ultistats.Accounts.User
   alias Ultistats.Teams
-  alias Ultistats.Teams.Player
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
       <.header>
         <span class="inline-flex items-center gap-3">
           <.link
@@ -20,7 +20,11 @@ defmodule UltistatsWeb.TeamLive.Show do
           {@team.name}
         </span>
         <:actions>
-          <.button variant="primary" navigate={~p"/teams/#{@team}/edit?return_to=show"}>
+          <.button
+            :if={@is_admin?}
+            variant="primary"
+            navigate={~p"/teams/#{@team}/edit?return_to=show"}
+          >
             <.icon name="hero-pencil-square" /> Edit team
           </.button>
         </:actions>
@@ -48,7 +52,7 @@ defmodule UltistatsWeb.TeamLive.Show do
               else: "bg-base-200 text-base-content/70"
             )
           ]}>
-            {length(@players)}
+            {length(@members)}
           </span>
         </button>
         <button
@@ -74,28 +78,39 @@ defmodule UltistatsWeb.TeamLive.Show do
       </div>
 
       <section :if={@active_tab == :roster} class="mt-4 pb-24" aria-labelledby="tab-roster">
-        <ul :if={@players != []} id="team-roster" class="divide-y divide-base-300">
+        <ul :if={@members != []} id="team-roster" class="divide-y divide-base-300">
           <li
-            :for={player <- @players}
-            id={"player-#{player.id}"}
+            :for={membership <- @members}
+            id={"member-#{membership.id}"}
             class="flex items-center justify-between gap-3 py-3"
           >
-            <div class="flex items-center gap-3 min-w-0">
-              <span
-                :if={player.jersey_number}
-                class="inline-flex items-center justify-center w-8 h-7 px-1 rounded-full bg-base-200 text-base-content text-sm font-semibold tabular-nums shrink-0"
-              >
-                {player.jersey_number}
+            <div class="flex items-center gap-3 min-w-0 flex-wrap">
+              <span class="inline-flex items-center justify-center w-8 h-7 px-1 rounded-full bg-base-200 text-base-content text-sm font-semibold tabular-nums shrink-0">
+                {membership.jersey_number || "—"}
               </span>
-              <span class="font-medium truncate">{Player.display_name(player)}</span>
+              <span class="font-medium truncate">{User.display_name(membership.user)}</span>
               <span class="text-lg leading-none shrink-0" aria-hidden="true">
-                {gender_glyph(player.gender_role)}
+                {gender_glyph(membership.user.gender_role)}
               </span>
-              <span class="sr-only">{humanize_gender_role(player.gender_role)}</span>
+              <span class="sr-only">{humanize_gender_role(membership.user.gender_role)}</span>
+
+              <span
+                :if={membership.role == :admin}
+                class="inline-flex items-center rounded-full bg-primary/10 text-primary text-xs font-semibold px-2 py-0.5 shrink-0"
+              >
+                Admin
+              </span>
+              <span
+                :if={membership.is_player == false}
+                class="inline-flex items-center rounded-full bg-base-200 text-base-content/70 text-xs font-semibold px-2 py-0.5 shrink-0"
+              >
+                Non-player
+              </span>
             </div>
             <.link
-              navigate={~p"/players/#{player}/edit?return_to=team"}
-              aria-label={"Edit #{Player.display_name(player)}"}
+              :if={@is_admin?}
+              navigate={~p"/members/#{membership.id}/edit?return_to=team"}
+              aria-label={"Edit #{User.display_name(membership.user)}"}
               class="shrink-0 min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               <.icon name="hero-pencil-square" class="size-5" />
@@ -103,8 +118,8 @@ defmodule UltistatsWeb.TeamLive.Show do
           </li>
         </ul>
 
-        <p :if={@players == []} class="mt-4 text-base-content/70">
-          No players yet. Add the first one to start building the roster.
+        <p :if={@members == []} class="mt-4 text-base-content/70">
+          No members yet. Add the first one to start building the roster.
         </p>
       </section>
 
@@ -117,11 +132,12 @@ defmodule UltistatsWeb.TeamLive.Show do
           >
             <div class="flex items-center gap-3 min-w-0">
               <span class="inline-flex items-center justify-center min-w-8 h-7 px-2 rounded-full bg-base-200 text-base-content text-sm font-semibold tabular-nums shrink-0">
-                {length(preset.players)}
+                {length(preset.users)}
               </span>
               <span class="font-medium truncate">{preset.name}</span>
             </div>
             <.link
+              :if={@is_admin?}
               navigate={~p"/line_presets/#{preset}/edit?return_to=team"}
               aria-label={"Edit #{preset.name}"}
               class="shrink-0 min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
@@ -137,16 +153,16 @@ defmodule UltistatsWeb.TeamLive.Show do
       </section>
 
       <.link
-        :if={@active_tab == :roster}
-        navigate={~p"/players/new?team_id=#{@team.id}&return_to=team"}
-        aria-label="Add player"
+        :if={@is_admin? and @active_tab == :roster}
+        navigate={~p"/members/new?team_id=#{@team.id}&return_to=team"}
+        aria-label="Add member"
         class="fixed bottom-6 right-6 z-40 size-14 rounded-full bg-primary text-primary-content shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:active:scale-100"
       >
         <.icon name="hero-plus" class="size-6" />
       </.link>
 
       <.link
-        :if={@active_tab == :presets}
+        :if={@is_admin? and @active_tab == :presets}
         navigate={~p"/line_presets/new?team_id=#{@team.id}&return_to=team"}
         aria-label="Add line"
         class="fixed bottom-6 right-6 z-40 size-14 rounded-full bg-primary text-primary-content shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:active:scale-100"
@@ -160,14 +176,23 @@ defmodule UltistatsWeb.TeamLive.Show do
   @impl true
   def mount(%{"id" => id}, _session, socket) do
     team = Teams.get_team!(id)
+    user = socket.assigns.current_scope.user
 
-    {:ok,
-     socket
-     |> assign(:page_title, team.name)
-     |> assign(:team, team)
-     |> assign(:active_tab, :roster)
-     |> assign(:players, Teams.list_players_for_team(team))
-     |> assign(:line_presets, Teams.list_line_presets_for_team(team))}
+    if Teams.user_member_of?(user, team) do
+      {:ok,
+       socket
+       |> assign(:page_title, team.name)
+       |> assign(:team, team)
+       |> assign(:is_admin?, Teams.user_admin_of?(user, team))
+       |> assign(:active_tab, :roster)
+       |> assign(:members, Teams.list_team_members_for_team(team))
+       |> assign(:line_presets, Teams.list_line_presets_for_team(team))}
+    else
+      {:ok,
+       socket
+       |> put_flash(:error, "You don't have permission to view that team.")
+       |> push_navigate(to: ~p"/teams")}
+    end
   end
 
   @impl true

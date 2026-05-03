@@ -1,14 +1,14 @@
 defmodule UltistatsWeb.LinePresetLive.Form do
   use UltistatsWeb, :live_view
 
+  alias Ultistats.Accounts.User
   alias Ultistats.Teams
   alias Ultistats.Teams.LinePreset
-  alias Ultistats.Teams.Player
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
       <.form for={@form} id="line_preset-form" phx-change="validate" phx-submit="save">
         <label
           for={@form[:name].id}
@@ -20,12 +20,12 @@ defmodule UltistatsWeb.LinePresetLive.Form do
         <.input field={@form[:team_id]} type="hidden" />
 
         <section class="mt-6">
-          <div :if={@team_players == []} class="text-base-content/70">
+          <div :if={@team_members == []} class="text-base-content/70">
             This team has no players yet. Add some to the roster first.
           </div>
 
           <div
-            :if={@team_players != []}
+            :if={@team_members != []}
             class="flex items-center gap-2 text-xs text-base-content/60 mb-6"
           >
             <span>Sort:</span>
@@ -55,17 +55,17 @@ defmodule UltistatsWeb.LinePresetLive.Form do
             </div>
           </div>
 
-          <div :if={@team_players != []} id="preset-roster" class="space-y-6">
+          <div :if={@team_members != []} id="preset-roster" class="space-y-6">
             <.preset_roster_section
               :for={role <- [:male_matching, :female_matching]}
-              :if={Enum.any?(@team_players, &(&1.gender_role == role))}
+              :if={Enum.any?(@team_members, &(&1.user.gender_role == role))}
               role={role}
-              players={
-                @team_players
-                |> Enum.filter(&(&1.gender_role == role))
-                |> sort_players(@sort_by)
+              members={
+                @team_members
+                |> Enum.filter(&(&1.user.gender_role == role))
+                |> sort_members(@sort_by)
               }
-              selected_ids={@selected_player_ids}
+              selected_ids={@selected_user_ids}
             />
           </div>
         </section>
@@ -109,55 +109,92 @@ defmodule UltistatsWeb.LinePresetLive.Form do
 
   defp apply_action(socket, :edit, %{"id" => id}) do
     line_preset = Teams.get_line_preset!(id)
-    team_players = Teams.list_players_for_team(line_preset.team_id)
+    current_user = socket.assigns.current_scope.user
 
-    selected_player_ids =
-      line_preset.players
-      |> Enum.map(& &1.id)
-      |> MapSet.new()
+    cond do
+      not Teams.user_member_of?(current_user, line_preset.team_id) ->
+        socket
+        |> Phoenix.LiveView.put_flash(:error, "You don't have permission to do that.")
+        |> Phoenix.LiveView.push_navigate(to: ~p"/teams")
 
-    socket
-    |> assign(:page_title, "Edit line")
-    |> assign(:line_preset, line_preset)
-    |> assign(:team_players, team_players)
-    |> assign(:selected_player_ids, selected_player_ids)
-    |> assign(:form, to_form(Teams.change_line_preset(line_preset)))
-    |> assign_new(:sort_by, fn -> :jersey end)
+      not Teams.user_admin_of?(current_user, line_preset.team_id) ->
+        socket
+        |> Phoenix.LiveView.put_flash(:error, "You don't have permission to do that.")
+        |> Phoenix.LiveView.push_navigate(to: ~p"/teams/#{line_preset.team_id}")
+
+      true ->
+        team_members = Teams.list_players_for_team(line_preset.team_id)
+
+        selected_user_ids =
+          line_preset.users
+          |> Enum.map(& &1.id)
+          |> MapSet.new()
+
+        socket
+        |> assign(:page_title, "Edit line")
+        |> assign(:line_preset, line_preset)
+        |> assign(:team_members, team_members)
+        |> assign(:selected_user_ids, selected_user_ids)
+        |> assign(:form, to_form(Teams.change_line_preset(line_preset)))
+        |> assign_new(:sort_by, fn -> :jersey end)
+    end
   end
 
   defp apply_action(socket, :new, params) do
-    line_preset = %LinePreset{team_id: params["team_id"], players: []}
+    current_user = socket.assigns.current_scope.user
+    team_id = params["team_id"]
 
-    team_players =
-      case params["team_id"] do
-        nil -> []
-        team_id -> Teams.list_players_for_team(team_id)
-      end
+    cond do
+      is_nil(team_id) ->
+        line_preset = %LinePreset{team_id: nil}
 
-    socket
-    |> assign(:page_title, "New line")
-    |> assign(:line_preset, line_preset)
-    |> assign(:team_players, team_players)
-    |> assign(:selected_player_ids, MapSet.new())
-    |> assign(:form, to_form(Teams.change_line_preset(line_preset)))
-    |> assign_new(:sort_by, fn -> :jersey end)
+        socket
+        |> assign(:page_title, "New line")
+        |> assign(:line_preset, line_preset)
+        |> assign(:team_members, [])
+        |> assign(:selected_user_ids, MapSet.new())
+        |> assign(:form, to_form(Teams.change_line_preset(line_preset)))
+        |> assign_new(:sort_by, fn -> :jersey end)
+
+      not Teams.user_member_of?(current_user, team_id) ->
+        socket
+        |> Phoenix.LiveView.put_flash(:error, "You don't have permission to do that.")
+        |> Phoenix.LiveView.push_navigate(to: ~p"/teams")
+
+      not Teams.user_admin_of?(current_user, team_id) ->
+        socket
+        |> Phoenix.LiveView.put_flash(:error, "You don't have permission to do that.")
+        |> Phoenix.LiveView.push_navigate(to: ~p"/teams/#{team_id}")
+
+      true ->
+        line_preset = %LinePreset{team_id: team_id}
+        team_members = Teams.list_players_for_team(team_id)
+
+        socket
+        |> assign(:page_title, "New line")
+        |> assign(:line_preset, line_preset)
+        |> assign(:team_members, team_members)
+        |> assign(:selected_user_ids, MapSet.new())
+        |> assign(:form, to_form(Teams.change_line_preset(line_preset)))
+        |> assign_new(:sort_by, fn -> :jersey end)
+    end
   end
 
   @impl true
   def handle_event("toggle_player", %{"id" => id}, socket) do
     selected =
-      if MapSet.member?(socket.assigns.selected_player_ids, id) do
-        MapSet.delete(socket.assigns.selected_player_ids, id)
+      if MapSet.member?(socket.assigns.selected_user_ids, id) do
+        MapSet.delete(socket.assigns.selected_user_ids, id)
       else
-        # Defensive: only allow toggling players in the team roster.
-        if Enum.any?(socket.assigns.team_players, &(&1.id == id)) do
-          MapSet.put(socket.assigns.selected_player_ids, id)
+        # Defensive: only allow toggling users in the team roster.
+        if Enum.any?(socket.assigns.team_members, &(&1.user_id == id)) do
+          MapSet.put(socket.assigns.selected_user_ids, id)
         else
-          socket.assigns.selected_player_ids
+          socket.assigns.selected_user_ids
         end
       end
 
-    {:noreply, assign(socket, :selected_player_ids, selected)}
+    {:noreply, assign(socket, :selected_user_ids, selected)}
   end
 
   def handle_event("validate", %{"line_preset" => line_preset_params}, socket) do
@@ -179,55 +216,74 @@ defmodule UltistatsWeb.LinePresetLive.Form do
 
   def handle_event("delete_line_preset", %{"id" => id}, socket) do
     preset = Teams.get_line_preset!(id)
-    {:ok, _} = Teams.delete_line_preset(preset)
+    user = socket.assigns.current_scope.user
 
-    {:noreply,
-     socket
-     |> put_flash(:info, "Line deleted")
-     |> push_navigate(to: return_path(socket.assigns.return_to, preset))}
+    if Teams.user_admin_of?(user, preset.team_id) do
+      {:ok, _} = Teams.delete_line_preset(preset)
+
+      {:noreply,
+       socket
+       |> put_flash(:info, "Line deleted")
+       |> push_navigate(to: return_path(socket.assigns.return_to, preset))}
+    else
+      {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
+    end
   end
 
   defp save_line_preset(socket, :edit, line_preset_params) do
-    attrs = with_player_ids(line_preset_params, socket.assigns.selected_player_ids)
+    user = socket.assigns.current_scope.user
 
-    case Teams.update_line_preset(socket.assigns.line_preset, attrs) do
-      {:ok, line_preset} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Line updated")
-         |> push_navigate(to: return_path(socket.assigns.return_to, line_preset))}
+    if not Teams.user_admin_of?(user, socket.assigns.line_preset.team_id) do
+      {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
+    else
+      attrs = with_user_ids(line_preset_params, socket.assigns.selected_user_ids)
 
-      {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset))}
+      case Teams.update_line_preset(socket.assigns.line_preset, attrs) do
+        {:ok, line_preset} ->
+          {:noreply,
+           socket
+           |> put_flash(:info, "Line updated")
+           |> push_navigate(to: return_path(socket.assigns.return_to, line_preset))}
+
+        {:error, %Ecto.Changeset{} = changeset} ->
+          {:noreply, assign(socket, form: to_form(changeset))}
+      end
     end
   end
 
   defp save_line_preset(socket, :new, line_preset_params) do
-    attrs = with_player_ids(line_preset_params, socket.assigns.selected_player_ids)
+    user = socket.assigns.current_scope.user
+    team_id = socket.assigns.line_preset.team_id
 
-    case Teams.create_line_preset(attrs) do
-      {:ok, line_preset} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Line created")
-         |> push_navigate(to: return_path(socket.assigns.return_to, line_preset))}
+    if not Teams.user_admin_of?(user, team_id) do
+      {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
+    else
+      attrs = with_user_ids(line_preset_params, socket.assigns.selected_user_ids)
 
-      {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset))}
+      case Teams.create_line_preset(attrs) do
+        {:ok, line_preset} ->
+          {:noreply,
+           socket
+           |> put_flash(:info, "Line created")
+           |> push_navigate(to: return_path(socket.assigns.return_to, line_preset))}
+
+        {:error, %Ecto.Changeset{} = changeset} ->
+          {:noreply, assign(socket, form: to_form(changeset))}
+      end
     end
   end
 
-  defp with_player_ids(params, selected) when is_map(params) do
-    Map.put(params, "player_ids", MapSet.to_list(selected))
+  defp with_user_ids(params, selected) when is_map(params) do
+    Map.put(params, "user_ids", MapSet.to_list(selected))
   end
 
   attr :role, :atom, required: true, values: [:female_matching, :male_matching]
-  attr :players, :list, required: true
+  attr :members, :list, required: true
   attr :selected_ids, MapSet, required: true
 
   defp preset_roster_section(assigns) do
     selected_in_section =
-      Enum.count(assigns.players, &MapSet.member?(assigns.selected_ids, &1.id))
+      Enum.count(assigns.members, &MapSet.member?(assigns.selected_ids, &1.user_id))
 
     assigns = assign(assigns, :selected_in_section, selected_in_section)
 
@@ -237,22 +293,22 @@ defmodule UltistatsWeb.LinePresetLive.Form do
         <span class="text-xl leading-none" aria-hidden="true">{gender_glyph(@role)}</span>
         <span>{role_label(@role)}</span>
         <span class="tabular-nums text-sm font-medium text-base-content/60">
-          {@selected_in_section} of {length(@players)}
+          {@selected_in_section} of {length(@members)}
         </span>
       </h3>
 
       <ul class="divide-y divide-base-300">
-        <li :for={player <- @players} id={"preset-player-#{player.id}"}>
+        <li :for={member <- @members} id={"preset-player-#{member.user_id}"}>
           <button
             type="button"
             phx-click="toggle_player"
-            phx-value-id={player.id}
-            aria-pressed={to_string(MapSet.member?(@selected_ids, player.id))}
+            phx-value-id={member.user_id}
+            aria-pressed={to_string(MapSet.member?(@selected_ids, member.user_id))}
             class={[
               "w-full flex items-center justify-between gap-3 py-3 px-2 -mx-2 rounded-md",
               "text-left transition-colors motion-reduce:transition-none",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-              if(MapSet.member?(@selected_ids, player.id),
+              if(MapSet.member?(@selected_ids, member.user_id),
                 do: "bg-primary/10 hover:bg-primary/15",
                 else: "hover:bg-base-200"
               )
@@ -260,20 +316,20 @@ defmodule UltistatsWeb.LinePresetLive.Form do
           >
             <div class="flex items-center gap-3 min-w-0">
               <span
-                :if={player.jersey_number}
+                :if={member.jersey_number}
                 class="inline-flex items-center justify-center w-8 h-7 px-1 rounded-full bg-base-200 text-base-content text-sm font-semibold tabular-nums shrink-0"
               >
-                {player.jersey_number}
+                {member.jersey_number}
               </span>
-              <span class="font-medium truncate">{Player.display_name(player)}</span>
+              <span class="font-medium truncate">{User.display_name(member.user)}</span>
             </div>
             <.icon
-              :if={MapSet.member?(@selected_ids, player.id)}
+              :if={MapSet.member?(@selected_ids, member.user_id)}
               name="hero-check-circle-solid"
               class="size-5 text-primary shrink-0"
             />
             <span
-              :if={!MapSet.member?(@selected_ids, player.id)}
+              :if={!MapSet.member?(@selected_ids, member.user_id)}
               class="size-5 shrink-0"
               aria-hidden="true"
             />
@@ -294,12 +350,12 @@ defmodule UltistatsWeb.LinePresetLive.Form do
   # Numeric ordering on jersey_number when parseable (so "9" < "10");
   # non-numeric jerseys fall back to a lexicographic compare against
   # other non-numerics; nil/blank jerseys sort to the end.
-  defp sort_players(players, :jersey) do
-    Enum.sort_by(players, &jersey_sort_key/1)
+  defp sort_members(members, :jersey) do
+    Enum.sort_by(members, &jersey_sort_key/1)
   end
 
-  defp sort_players(players, :first_name) do
-    Enum.sort_by(players, &String.downcase(&1.first_name || ""))
+  defp sort_members(members, :first_name) do
+    Enum.sort_by(members, &String.downcase(&1.user.first_name || ""))
   end
 
   defp jersey_sort_key(%{jersey_number: nil}), do: {2, 0, ""}

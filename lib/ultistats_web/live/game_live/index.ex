@@ -1,12 +1,12 @@
 defmodule UltistatsWeb.GameLive.Index do
   use UltistatsWeb, :live_view
 
-  alias Ultistats.{Games, Repo, Teams}
+  alias Ultistats.{Games, Teams}
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
       <.header>
         Games
       </.header>
@@ -122,6 +122,7 @@ defmodule UltistatsWeb.GameLive.Index do
               </div>
             </div>
             <.link
+              :if={MapSet.member?(@admin_team_ids, r.team_id)}
               navigate={~p"/rulesets/#{r.id}/edit"}
               aria-label={"Edit #{r.name}"}
               class="shrink-0 min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
@@ -150,7 +151,10 @@ defmodule UltistatsWeb.GameLive.Index do
       </.link>
 
       <.link
-        :if={@active_tab == :rulesets and @new_ruleset_team_id}
+        :if={
+          @active_tab == :rulesets and @new_ruleset_team_id and
+            MapSet.member?(@admin_team_ids, @new_ruleset_team_id)
+        }
         navigate={~p"/rulesets/new?team_id=#{@new_ruleset_team_id}"}
         aria-label="Add ruleset"
         class="fixed bottom-6 right-6 z-40 size-14 rounded-full bg-primary text-primary-content shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:active:scale-100"
@@ -163,16 +167,25 @@ defmodule UltistatsWeb.GameLive.Index do
 
   @impl true
   def mount(_params, _session, socket) do
-    teams = Teams.list_teams()
-    new_ruleset_team_id = pick_default_team_id(teams)
+    user = socket.assigns.current_scope.user
+    teams = Teams.list_teams_for_user(user)
+    admin_team_ids = MapSet.new(teams, & &1.id) |> filter_admin_teams(user)
+    new_ruleset_team_id = pick_default_team_id(admin_team_ids, teams)
 
     {:ok,
      socket
      |> assign(:active_tab, :games)
      |> assign(:teams, teams)
+     |> assign(:admin_team_ids, admin_team_ids)
      |> assign(:new_ruleset_team_id, new_ruleset_team_id)
-     |> assign(:games, list_games())
-     |> assign(:rulesets, Games.list_rulesets_across_teams())}
+     |> assign(:games, list_games_for_user(user))
+     |> assign(:rulesets, Games.list_rulesets_for_user(user))}
+  end
+
+  defp filter_admin_teams(team_ids_set, user) do
+    team_ids_set
+    |> Enum.filter(&Teams.user_admin_of?(user, &1))
+    |> MapSet.new()
   end
 
   @impl true
@@ -188,14 +201,21 @@ defmodule UltistatsWeb.GameLive.Index do
     {:noreply, assign(socket, :new_ruleset_team_id, team_id)}
   end
 
-  defp list_games do
-    Games.list_games()
-    |> Repo.preload(:team)
-    |> Enum.sort_by(& &1.started_at, {:desc, DateTime})
+  defp list_games_for_user(user) do
+    Games.list_games_for_user(user)
   end
 
-  defp pick_default_team_id([]), do: nil
-  defp pick_default_team_id([t | _]), do: t.id
+  # Prefer a team where the user is an admin (so the FAB can navigate
+  # to /rulesets/new). If no admin teams exist, falls back to the first
+  # member team (FAB will be hidden anyway by the admin-gate).
+  defp pick_default_team_id(_admin_team_ids, []), do: nil
+
+  defp pick_default_team_id(admin_team_ids, [first | _] = teams) do
+    case Enum.find(teams, &MapSet.member?(admin_team_ids, &1.id)) do
+      nil -> first.id
+      t -> t.id
+    end
+  end
 
   defp team_name(%{team: %{name: name}}), do: name
   defp team_name(_), do: "—"

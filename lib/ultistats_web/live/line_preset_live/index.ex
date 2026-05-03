@@ -6,7 +6,7 @@ defmodule UltistatsWeb.LinePresetLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
       <.header>
         Listing Line presets
       </.header>
@@ -17,7 +17,7 @@ defmodule UltistatsWeb.LinePresetLive.Index do
         row_click={fn {_id, line_preset} -> JS.navigate(~p"/line_presets/#{line_preset}") end}
       >
         <:col :let={{_id, line_preset}} label="Name">{line_preset.name}</:col>
-        <:col :let={{_id, line_preset}} label="Players">{length(line_preset.players)}</:col>
+        <:col :let={{_id, line_preset}} label="Players">{length(line_preset.users)}</:col>
         <:action :let={{_id, line_preset}}>
           <div class="sr-only">
             <.link navigate={~p"/line_presets/#{line_preset}"}>Show</.link>
@@ -39,21 +39,30 @@ defmodule UltistatsWeb.LinePresetLive.Index do
 
   @impl true
   def mount(_params, _session, socket) do
+    user = socket.assigns.current_scope.user
+    user_team_ids = MapSet.new(Teams.list_teams_for_user(user), & &1.id)
+
+    presets =
+      Teams.list_line_presets()
+      |> Enum.filter(&MapSet.member?(user_team_ids, &1.team_id))
+
     {:ok,
      socket
      |> assign(:page_title, "Listing Line presets")
-     |> stream(:line_presets, list_line_presets())}
+     |> stream(:line_presets, presets)}
   end
 
   @impl true
   def handle_event("delete", %{"id" => id}, socket) do
     line_preset = Teams.get_line_preset!(id)
-    {:ok, _} = Teams.delete_line_preset(line_preset)
+    user = socket.assigns.current_scope.user
 
-    {:noreply, stream_delete(socket, :line_presets, line_preset)}
-  end
+    if Teams.user_admin_of?(user, line_preset.team_id) do
+      {:ok, _} = Teams.delete_line_preset(line_preset)
 
-  defp list_line_presets() do
-    Teams.list_line_presets()
+      {:noreply, stream_delete(socket, :line_presets, line_preset)}
+    else
+      {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
+    end
   end
 end
