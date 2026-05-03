@@ -629,6 +629,100 @@ defmodule Ultistats.Games do
     %{score: score(game), players: rows}
   end
 
+  @doc """
+  Returns aggregate per-user tallies across every game on `team`.
+  Soft-deleted events are excluded (`deleted_at IS NULL`).
+
+  Same shape as `summary_for_game/1` minus the `:score` key — just the
+  list of player rows:
+
+      [
+        %{
+          membership: %Ultistats.Teams.TeamMembership{user: %User{}},
+          user: %Ultistats.Accounts.User{},
+          goals: integer,
+          assists: integer,
+          catches: integer,
+          drops: integer,
+          throwaways: integer,
+          blocks: integer,
+          points_played: integer
+        }
+      ]
+
+  The roster (memberships where `is_player == true`) is the basis of
+  the result, so untracked players still appear with all-zero rows.
+  Order: by `jersey_number` ascending — numeric jerseys sort
+  numerically; non-numeric or missing jerseys sort to the end.
+  Accepts a `%Team{}` or a binary team id.
+  """
+  def leaderboard_for_team(%Team{id: team_id}), do: leaderboard_for_team(team_id)
+
+  def leaderboard_for_team(team_id) when is_binary(team_id) do
+    roster = Teams.list_players_for_team(team_id)
+    roster_user_ids = MapSet.new(roster, & &1.user_id)
+
+    points =
+      Repo.all(
+        from p in Point,
+          join: g in Game,
+          on: g.id == p.game_id,
+          where: g.team_id == ^team_id,
+          select: %{our_line_snapshot: p.our_line_snapshot}
+      )
+
+    events =
+      Repo.all(
+        from e in Event,
+          join: p in Point,
+          on: p.id == e.point_id,
+          join: g in Game,
+          on: g.id == p.game_id,
+          where: g.team_id == ^team_id and is_nil(e.deleted_at),
+          select: %{
+            type: e.type,
+            passer_user_id: e.passer_user_id,
+            receiver_user_id: e.receiver_user_id
+          }
+      )
+
+    empty_tally = %{goals: 0, assists: 0, catches: 0, drops: 0, throwaways: 0, blocks: 0}
+
+    tallies =
+      Enum.reduce(events, %{}, fn ev, acc ->
+        acc
+        |> bump_passer(ev, roster_user_ids, empty_tally)
+        |> bump_receiver(ev, roster_user_ids, empty_tally)
+      end)
+
+    points_played_by_user =
+      Enum.reduce(points, %{}, fn point, acc ->
+        ids = snapshot_user_ids(point.our_line_snapshot)
+
+        Enum.reduce(ids, acc, fn uid, acc2 ->
+          if MapSet.member?(roster_user_ids, uid) do
+            Map.update(acc2, uid, 1, &(&1 + 1))
+          else
+            acc2
+          end
+        end)
+      end)
+
+    roster
+    |> Enum.sort_by(&jersey_sort_key/1)
+    |> Enum.map(fn membership ->
+      counts = Map.get(tallies, membership.user_id, empty_tally)
+
+      Map.merge(counts, %{
+        membership: membership,
+        user: membership.user,
+        points_played: Map.get(points_played_by_user, membership.user_id, 0)
+      })
+    end)
+  end
+
+  def leaderboard_for_team(_), do: []
+
   defp snapshot_user_ids(%{"user_ids" => ids}) when is_list(ids), do: ids
   defp snapshot_user_ids(_), do: []
 

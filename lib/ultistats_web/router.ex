@@ -30,6 +30,8 @@ defmodule UltistatsWeb.Router do
 
     live_session :authenticated,
       on_mount: [{UltistatsWeb.UserAuth, :ensure_authenticated}] do
+      live "/dashboard", DashboardLive.Index, :index
+
       live "/teams", TeamLive.Index, :index
       live "/teams/new", TeamLive.Form, :new
       live "/teams/:id", TeamLive.Show, :show

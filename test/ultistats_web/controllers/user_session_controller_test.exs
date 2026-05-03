@@ -38,8 +38,11 @@ defmodule UltistatsWeb.UserSessionControllerTest do
       assert get_session(conn, :user_token)
       assert redirected_to(conn) == ~p"/"
 
-      # Now do a logged in request and assert on the menu
+      # Authenticated users get bounced from / to the dashboard.
       conn = get(conn, ~p"/")
+      assert redirected_to(conn) == ~p"/dashboard"
+
+      conn = get(conn, ~p"/dashboard")
       response = html_response(conn, 200)
       assert response =~ ~p"/users/settings"
     end
