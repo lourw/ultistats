@@ -78,50 +78,43 @@ defmodule UltistatsWeb.TeamLive.Show do
       </div>
 
       <section :if={@active_tab == :roster} class="mt-4 pb-24" aria-labelledby="tab-roster">
-        <ul
-          :if={@members != []}
-          id="team-roster"
-          class="-mx-4 border-y border-base-200 divide-y divide-base-200"
-        >
-          <li
-            :for={membership <- @members}
-            id={"member-#{membership.id}"}
-            class="min-h-9 flex items-center gap-2 px-4 py-0.5"
+        <div :if={@members != []} class="flex items-center justify-end gap-1 mb-2">
+          <span class="text-[11px] uppercase tracking-wide text-base-content/60 mr-1">
+            Sort
+          </span>
+          <button
+            type="button"
+            phx-click="set_member_sort"
+            phx-value-sort="jersey"
+            aria-pressed={to_string(@member_sort == :jersey)}
+            class={sort_chip_classes(@member_sort == :jersey)}
           >
-            <span class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0">
-              {membership.jersey_number || "—"}
-            </span>
-            <span class="font-medium text-sm truncate flex-1 leading-tight">
-              {User.display_name(membership.user)}
-            </span>
-            <span class="text-sm leading-none shrink-0" aria-hidden="true">
-              {gender_glyph(membership.user.gender_role)}
-            </span>
-            <span class="sr-only">{humanize_gender_role(membership.user.gender_role)}</span>
+            Jersey
+          </button>
+          <button
+            type="button"
+            phx-click="set_member_sort"
+            phx-value-sort="first_name"
+            aria-pressed={to_string(@member_sort == :first_name)}
+            class={sort_chip_classes(@member_sort == :first_name)}
+          >
+            First name
+          </button>
+        </div>
 
-            <span
-              :if={membership.role == :admin}
-              class="inline-flex items-center rounded-full bg-primary/10 text-primary text-[10px] font-semibold px-1.5 py-0.5 shrink-0"
-            >
-              Admin
-            </span>
-            <span
-              :if={membership.is_player == false}
-              class="inline-flex items-center rounded-full bg-base-200 text-base-content/70 text-[10px] font-semibold px-1.5 py-0.5 shrink-0"
-            >
-              Non-player
-            </span>
-
-            <.link
-              :if={@is_admin?}
-              navigate={~p"/members/#{membership.id}/edit?return_to=team"}
-              aria-label={"Edit #{User.display_name(membership.user)}"}
-              class="shrink-0 min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            >
-              <.icon name="hero-pencil-square" class="size-4" />
-            </.link>
-          </li>
-        </ul>
+        <div :if={@members != []} id="team-roster" class="space-y-4">
+          <.roster_section
+            :for={role <- [:male_matching, :female_matching]}
+            :if={Enum.any?(@members, &(&1.user.gender_role == role))}
+            role={role}
+            members={
+              @members
+              |> Enum.filter(&(&1.user.gender_role == role))
+              |> sort_members(@member_sort)
+            }
+            is_admin?={@is_admin?}
+          />
+        </div>
 
         <p :if={@members == []} class="mt-4 text-base-content/70">
           No members yet. Add the first one to start building the roster.
@@ -192,6 +185,7 @@ defmodule UltistatsWeb.TeamLive.Show do
        |> assign(:team, team)
        |> assign(:is_admin?, Teams.user_admin_of?(user, team))
        |> assign(:active_tab, :roster)
+       |> assign(:member_sort, :jersey)
        |> assign(:members, Teams.list_team_members_for_team(team))
        |> assign(:line_presets, Teams.list_line_presets_for_team(team))}
     else
@@ -209,6 +203,90 @@ defmodule UltistatsWeb.TeamLive.Show do
 
   def handle_event("set_tab", %{"tab" => "presets"}, socket) do
     {:noreply, assign(socket, :active_tab, :presets)}
+  end
+
+  def handle_event("set_member_sort", %{"sort" => sort}, socket)
+      when sort in ["jersey", "first_name"] do
+    {:noreply, assign(socket, :member_sort, String.to_existing_atom(sort))}
+  end
+
+  attr :role, :atom, required: true, values: [:male_matching, :female_matching]
+  attr :members, :list, required: true
+  attr :is_admin?, :boolean, required: true
+
+  defp roster_section(assigns) do
+    ~H"""
+    <section class="space-y-1">
+      <h3 class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
+        <span class="text-sm leading-none" aria-hidden="true">{gender_glyph(@role)}</span>
+        <span>{humanize_gender_role(@role)}</span>
+        <span class="tabular-nums text-base-content/50">
+          {length(@members)}
+        </span>
+      </h3>
+
+      <ul class="-mx-4 border-y border-base-200 divide-y divide-base-200">
+        <li
+          :for={membership <- @members}
+          id={"member-#{membership.id}"}
+          class="min-h-9 flex items-center gap-2 px-4 py-0.5"
+        >
+          <span class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0">
+            {membership.jersey_number || "—"}
+          </span>
+          <span class="font-medium text-sm truncate flex-1 leading-tight">
+            {User.display_name(membership.user)}
+          </span>
+          <span
+            :if={membership.role == :admin}
+            class="inline-flex items-center rounded-full bg-primary/10 text-primary text-[10px] font-semibold px-1.5 py-0.5 shrink-0"
+          >
+            Admin
+          </span>
+          <span
+            :if={membership.is_player == false}
+            class="inline-flex items-center rounded-full bg-base-200 text-base-content/70 text-[10px] font-semibold px-1.5 py-0.5 shrink-0"
+          >
+            Non-player
+          </span>
+          <.link
+            :if={@is_admin?}
+            navigate={~p"/members/#{membership.id}/edit?return_to=team"}
+            aria-label={"Edit #{User.display_name(membership.user)}"}
+            class="shrink-0 min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <.icon name="hero-pencil-square" class="size-4" />
+          </.link>
+        </li>
+      </ul>
+    </section>
+    """
+  end
+
+  defp sort_chip_classes(true),
+    do:
+      "min-h-9 inline-flex items-center px-2 rounded-md text-xs font-semibold bg-primary text-primary-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+
+  defp sort_chip_classes(false),
+    do:
+      "min-h-9 inline-flex items-center px-2 rounded-md text-xs font-semibold border border-base-300 text-base-content/80 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+
+  defp sort_members(members, :first_name),
+    do: Enum.sort_by(members, &String.downcase(&1.user.first_name || ""))
+
+  defp sort_members(members, :jersey) do
+    Enum.sort_by(members, &jersey_sort_key/1)
+  end
+
+  # Numeric jersey numbers sort numerically; non-numeric (or nil) fall to
+  # the bottom in lexicographic order.
+  defp jersey_sort_key(%{jersey_number: nil}), do: {1, ""}
+
+  defp jersey_sort_key(%{jersey_number: j}) do
+    case Integer.parse(j) do
+      {n, ""} -> {0, n}
+      _ -> {1, j}
+    end
   end
 
   defp tab_classes(true),
