@@ -29,6 +29,8 @@ defmodule Ultistats.Games.Point do
     field :sequence, :integer
     field :scoring_team, Ecto.Enum, values: @scoring_teams
     field :our_line_snapshot, :map
+    field :started_at, :utc_datetime
+    field :ended_at, :utc_datetime
 
     belongs_to :game, Ultistats.Games.Game
     has_many :events, Ultistats.Games.Event, preload_order: [asc: :sequence]
@@ -42,7 +44,14 @@ defmodule Ultistats.Games.Point do
   @doc false
   def changeset(point, attrs) do
     point
-    |> cast(attrs, [:game_id, :sequence, :scoring_team, :our_line_snapshot])
+    |> cast(attrs, [
+      :game_id,
+      :sequence,
+      :scoring_team,
+      :our_line_snapshot,
+      :started_at,
+      :ended_at
+    ])
     |> validate_required([:game_id, :sequence, :our_line_snapshot])
     |> unique_constraint([:game_id, :sequence], name: :points_game_id_sequence_index)
     |> assoc_constraint(:game)
