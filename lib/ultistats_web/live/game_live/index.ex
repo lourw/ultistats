@@ -125,7 +125,7 @@ defmodule UltistatsWeb.GameLive.Index do
         </ul>
 
         <p :if={@games == []} class="mt-4 text-base-content/70">
-          No games yet. Tap the + button to start one.
+          No games yet, create a new one to start collecting your stats.
         </p>
       </section>
 

@@ -10,7 +10,7 @@ defmodule UltistatsWeb.TeamLive.Index do
       <.header>
         Teams
         <:actions>
-          <.button variant="primary" navigate={~p"/teams/new"}>
+          <.button :if={@teams_with_stats != []} variant="primary" navigate={~p"/teams/new"}>
             <.icon name="hero-plus" /> New team
           </.button>
         </:actions>

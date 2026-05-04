@@ -120,11 +120,23 @@ const CopyJoinLink = {
   },
 }
 
+// Auto-dismiss flash banners after 2 seconds. The flash root already has
+// `phx-click` wired to clear the flash and hide itself, so we just trigger a
+// click programmatically when the timer fires.
+const AutoCloseFlash = {
+  mounted() {
+    this._t = setTimeout(() => this.el.click(), 2000)
+  },
+  destroyed() {
+    clearTimeout(this._t)
+  },
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, ScrollAwareNav, CopyJoinLink},
+  hooks: {...colocatedHooks, ScrollAwareNav, CopyJoinLink, AutoCloseFlash},
 })
 
 // Show progress bar on live navigation and form submits

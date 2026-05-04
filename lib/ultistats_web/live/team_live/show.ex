@@ -181,7 +181,7 @@ defmodule UltistatsWeb.TeamLive.Show do
         </div>
 
         <p :if={@players == [] and @non_players == []} class="mt-4 text-base-content/70">
-          No members yet. Add the first one to start building the roster.
+          Your roster is empty. Create players or share the invite link with your team.
         </p>
       </section>
 
