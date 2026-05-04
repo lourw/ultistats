@@ -25,6 +25,16 @@ if [ -d /Applications/OrbStack.app ]; then
   open -ga OrbStack
 fi
 
+# Pick a compose runtime: prefer docker, fall back to podman.
+if command -v docker >/dev/null 2>&1; then
+  compose=(docker compose)
+elif command -v podman >/dev/null 2>&1; then
+  compose=(podman compose)
+else
+  echo "bin/db: neither docker nor podman found on PATH" >&2
+  exit 1
+fi
+
 if [ ! -f .env ]; then
   # Hash worktree path to a port in [54320, 54820). Stable per worktree, so
   # multiple worktrees coexist on different ports without collisions.
@@ -42,17 +52,17 @@ shift || true
 
 case "$cmd" in
   up)
-    docker compose up -d "$@"
-    docker compose exec -T postgres bash -c 'until pg_isready -U postgres >/dev/null 2>&1; do sleep 0.2; done'
+    "${compose[@]}" up -d "$@"
+    "${compose[@]}" exec -T postgres bash -c 'until pg_isready -U postgres >/dev/null 2>&1; do sleep 0.2; done'
     echo "postgres ready on localhost:${POSTGRES_PORT}"
     ;;
   down)
-    docker compose down "$@"
+    "${compose[@]}" down "$@"
     ;;
   psql)
-    docker compose exec postgres psql -U postgres "$@"
+    "${compose[@]}" exec postgres psql -U postgres "$@"
     ;;
   *)
-    docker compose "$cmd" "$@"
+    "${compose[@]}" "$cmd" "$@"
     ;;
 esac
