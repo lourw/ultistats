@@ -101,29 +101,48 @@ defmodule UltistatsWeb.GameLive.Show do
   # Called from mount + every state transition that flips between
   # in-point and between-points OR changes selection.
   defp assign_line_picker_state(socket) do
+    socket
+    |> assign_line_picker_game_state()
+    |> assign_line_picker_selection_state()
+  end
+
+  # Game-state-derived picker assigns. These hit the DB
+  # (`points_played_by_user`, `starting_possession_for_next_point`) so we
+  # only refresh them when the underlying game state changed (mount,
+  # start/cancel point, goal, undo/redo, resume from stoppage). Toggling
+  # which players are selected does NOT need this.
+  defp assign_line_picker_game_state(socket) do
     game = socket.assigns.game
     next_seq = length_of_points(game) + 1
     required = Games.required_ratio_for_point(game, next_seq)
     starting = Games.starting_possession_for_next_point(game)
     required_line_size = Games.line_size_for(game)
-
-    selected = selected_memberships(socket.assigns.team_players, socket.assigns.selected_user_ids)
-    violation = Games.line_ratio_violation(selected, required)
     points_played = Games.points_played_by_user(game)
-
-    line_size_violation =
-      Games.line_size_violation(
-        socket.assigns.selected_user_ids |> MapSet.to_list(),
-        required_line_size
-      )
 
     socket
     |> assign(:next_point_sequence, next_seq)
     |> assign(:required_ratio, required)
     |> assign(:starting_possession_preview, starting)
-    |> assign(:ratio_violation, violation)
-    |> assign(:points_played_by_user, points_played)
     |> assign(:required_line_size, required_line_size)
+    |> assign(:points_played_by_user, points_played)
+  end
+
+  # Selection-derived picker assigns. Pure computation against current
+  # selection + already-loaded `team_players` and the cached
+  # `:required_ratio` / `:required_line_size`. Safe to call on every
+  # toggle without a DB round-trip.
+  defp assign_line_picker_selection_state(socket) do
+    selected = selected_memberships(socket.assigns.team_players, socket.assigns.selected_user_ids)
+    violation = Games.line_ratio_violation(selected, socket.assigns.required_ratio)
+
+    line_size_violation =
+      Games.line_size_violation(
+        socket.assigns.selected_user_ids |> MapSet.to_list(),
+        socket.assigns.required_line_size
+      )
+
+    socket
+    |> assign(:ratio_violation, violation)
     |> assign(:line_size_violation, line_size_violation)
   end
 
@@ -1546,7 +1565,7 @@ defmodule UltistatsWeb.GameLive.Show do
      socket
      |> assign(:selected_user_ids, selected)
      |> assign(:selected_preset_id, nil)
-     |> assign_line_picker_state()}
+     |> assign_line_picker_selection_state()}
   end
 
   def handle_event("toggle_split_by_position", _params, socket) do
@@ -1570,7 +1589,7 @@ defmodule UltistatsWeb.GameLive.Show do
      socket
      |> assign(:selected_user_ids, MapSet.new())
      |> assign(:selected_preset_id, nil)
-     |> assign_line_picker_state()}
+     |> assign_line_picker_selection_state()}
   end
 
   def handle_event("select_preset", %{"id" => preset_id}, socket) do
@@ -1585,7 +1604,7 @@ defmodule UltistatsWeb.GameLive.Show do
          socket
          |> assign(:selected_user_ids, ids)
          |> assign(:selected_preset_id, preset_id)
-         |> assign_line_picker_state()}
+         |> assign_line_picker_selection_state()}
     end
   end
 
@@ -2422,6 +2441,7 @@ defmodule UltistatsWeb.GameLive.Show do
                 "w-full min-h-9 px-3 py-0.5 flex items-center gap-2 text-left",
                 "transition-colors motion-reduce:transition-none active:bg-base-200",
                 "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                "phx-click-loading:bg-primary/10",
                 if(MapSet.member?(@selected_ids, member.user_id), do: "bg-primary/10", else: "")
               ]}
             >

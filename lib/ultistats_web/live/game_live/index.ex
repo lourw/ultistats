@@ -38,7 +38,10 @@ defmodule UltistatsWeb.GameLive.Index do
           aria-selected={to_string(@active_tab == :games)}
           phx-click="set_tab"
           phx-value-tab="games"
-          class={tab_classes(@active_tab == :games)}
+          class={[
+            tab_classes(@active_tab == :games),
+            "phx-click-loading:text-primary phx-click-loading:border-primary"
+          ]}
         >
           Games
           <span class={[
@@ -58,7 +61,10 @@ defmodule UltistatsWeb.GameLive.Index do
           aria-selected={to_string(@active_tab == :rulesets)}
           phx-click="set_tab"
           phx-value-tab="rulesets"
-          class={tab_classes(@active_tab == :rulesets)}
+          class={[
+            tab_classes(@active_tab == :rulesets),
+            "phx-click-loading:text-primary phx-click-loading:border-primary"
+          ]}
         >
           Rulesets
           <span class={[

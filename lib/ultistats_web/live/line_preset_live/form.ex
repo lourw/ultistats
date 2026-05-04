@@ -44,7 +44,10 @@ defmodule UltistatsWeb.LinePresetLive.Form do
                 phx-click="set_sort"
                 phx-value-by="jersey"
                 aria-pressed={to_string(@sort_by == :jersey)}
-                class={sort_button_classes(@sort_by == :jersey)}
+                class={[
+                  sort_button_classes(@sort_by == :jersey),
+                  "phx-click-loading:bg-primary phx-click-loading:text-primary-content"
+                ]}
               >
                 Jersey
               </button>
@@ -53,7 +56,10 @@ defmodule UltistatsWeb.LinePresetLive.Form do
                 phx-click="set_sort"
                 phx-value-by="first_name"
                 aria-pressed={to_string(@sort_by == :first_name)}
-                class={sort_button_classes(@sort_by == :first_name)}
+                class={[
+                  sort_button_classes(@sort_by == :first_name),
+                  "phx-click-loading:bg-primary phx-click-loading:text-primary-content"
+                ]}
               >
                 First name
               </button>
@@ -62,14 +68,9 @@ defmodule UltistatsWeb.LinePresetLive.Form do
 
           <div :if={@team_members != []} id="preset-roster" class="flex flex-col gap-6">
             <.preset_roster_section
-              :for={role <- [:male_matching, :female_matching]}
-              :if={Enum.any?(@team_members, &(&1.user.gender_role == role))}
+              :for={{role, members} <- @members_by_role}
               role={role}
-              members={
-                @team_members
-                |> Enum.filter(&(&1.user.gender_role == role))
-                |> sort_members(@sort_by)
-              }
+              members={members}
               selected_ids={@selected_user_ids}
             />
           </div>
@@ -87,10 +88,7 @@ defmodule UltistatsWeb.LinePresetLive.Form do
           <span class="text-base-content/30" aria-hidden="true">·</span>
           <span
             :for={pos <- [:handler, :cutter, :hybrid, :unspecified]}
-            :if={
-              selected_position_counts(@team_members, @selected_user_ids)[pos] not in [nil, 0] or
-                pos != :unspecified
-            }
+            :if={@position_counts[pos] not in [nil, 0] or pos != :unspecified}
             class="inline-flex items-center gap-1"
           >
             <span
@@ -104,7 +102,7 @@ defmodule UltistatsWeb.LinePresetLive.Form do
               {position_letter(pos)}
             </span>
             <span class="tabular-nums text-base-content/80">
-              {selected_position_counts(@team_members, @selected_user_ids)[pos] || 0}
+              {@position_counts[pos] || 0}
             </span>
           </span>
         </div>
@@ -169,13 +167,17 @@ defmodule UltistatsWeb.LinePresetLive.Form do
           |> Enum.map(& &1.id)
           |> MapSet.new()
 
+        sort_by = socket.assigns[:sort_by] || :jersey
+
         socket
         |> assign(:page_title, "Edit line")
         |> assign(:line_preset, line_preset)
         |> assign(:team_members, team_members)
         |> assign(:selected_user_ids, selected_user_ids)
         |> assign(:form, to_form(Teams.change_line_preset(line_preset)))
-        |> assign_new(:sort_by, fn -> :jersey end)
+        |> assign(:sort_by, sort_by)
+        |> assign(:members_by_role, members_by_role(team_members, sort_by))
+        |> assign(:position_counts, position_counts(team_members, selected_user_ids))
     end
   end
 
@@ -194,6 +196,8 @@ defmodule UltistatsWeb.LinePresetLive.Form do
         |> assign(:selected_user_ids, MapSet.new())
         |> assign(:form, to_form(Teams.change_line_preset(line_preset)))
         |> assign_new(:sort_by, fn -> :jersey end)
+        |> assign(:members_by_role, [])
+        |> assign(:position_counts, %{})
 
       not Teams.user_member_of?(current_user, team_id) ->
         socket
@@ -208,6 +212,7 @@ defmodule UltistatsWeb.LinePresetLive.Form do
       true ->
         line_preset = %LinePreset{team_id: team_id}
         team_members = Teams.list_players_for_team(team_id)
+        sort_by = socket.assigns[:sort_by] || :jersey
 
         socket
         |> assign(:page_title, "New line")
@@ -215,7 +220,9 @@ defmodule UltistatsWeb.LinePresetLive.Form do
         |> assign(:team_members, team_members)
         |> assign(:selected_user_ids, MapSet.new())
         |> assign(:form, to_form(Teams.change_line_preset(line_preset)))
-        |> assign_new(:sort_by, fn -> :jersey end)
+        |> assign(:sort_by, sort_by)
+        |> assign(:members_by_role, members_by_role(team_members, sort_by))
+        |> assign(:position_counts, %{})
     end
   end
 
@@ -233,7 +240,10 @@ defmodule UltistatsWeb.LinePresetLive.Form do
         end
       end
 
-    {:noreply, assign(socket, :selected_user_ids, selected)}
+    {:noreply,
+     socket
+     |> assign(:selected_user_ids, selected)
+     |> assign(:position_counts, position_counts(socket.assigns.team_members, selected))}
   end
 
   def handle_event("validate", %{"line_preset" => line_preset_params}, socket) do
@@ -246,11 +256,11 @@ defmodule UltistatsWeb.LinePresetLive.Form do
   end
 
   def handle_event("set_sort", %{"by" => "jersey"}, socket) do
-    {:noreply, assign(socket, :sort_by, :jersey)}
+    {:noreply, apply_sort(socket, :jersey)}
   end
 
   def handle_event("set_sort", %{"by" => "first_name"}, socket) do
-    {:noreply, assign(socket, :sort_by, :first_name)}
+    {:noreply, apply_sort(socket, :first_name)}
   end
 
   def handle_event("delete_line_preset", %{"id" => id}, socket) do
@@ -267,6 +277,12 @@ defmodule UltistatsWeb.LinePresetLive.Form do
     else
       {:noreply, put_flash(socket, :error, "You don't have permission to do that.")}
     end
+  end
+
+  defp apply_sort(socket, sort_by) do
+    socket
+    |> assign(:sort_by, sort_by)
+    |> assign(:members_by_role, members_by_role(socket.assigns.team_members, sort_by))
   end
 
   defp save_line_preset(socket, :edit, line_preset_params) do
@@ -347,6 +363,7 @@ defmodule UltistatsWeb.LinePresetLive.Form do
               "w-full min-h-9 pl-10 pr-4 py-0.5 flex items-center gap-2 text-left",
               "transition-colors motion-reduce:transition-none active:bg-base-200",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              "phx-click-loading:bg-primary/10",
               if(MapSet.member?(@selected_ids, member.user_id), do: "bg-primary/10", else: "")
             ]}
           >
@@ -398,11 +415,24 @@ defmodule UltistatsWeb.LinePresetLive.Form do
   defp gender_glyph(:male_matching), do: "♂"
   defp gender_glyph(_), do: ""
 
-  defp selected_position_counts(team_members, selected_ids) do
+  defp position_counts(team_members, selected_ids) do
     team_members
     |> Enum.filter(&MapSet.member?(selected_ids, &1.user_id))
     |> Enum.group_by(fn m -> Teams.resolved_position(m) || :unspecified end)
     |> Map.new(fn {k, v} -> {k, length(v)} end)
+  end
+
+  # Pre-grouped + sorted members per gender role, computed once per
+  # roster/sort change so the template doesn't redo it on every render.
+  defp members_by_role(team_members, sort_by) do
+    for role <- [:male_matching, :female_matching],
+        members =
+          team_members
+          |> Enum.filter(&(&1.user.gender_role == role))
+          |> sort_members(sort_by),
+        members != [] do
+      {role, members}
+    end
   end
 
   defp position_letter(:handler), do: "H"

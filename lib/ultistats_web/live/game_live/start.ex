@@ -102,7 +102,10 @@ defmodule UltistatsWeb.GameLive.Start do
                 aria-checked={to_string(@division == value)}
                 phx-click="set_division"
                 phx-value-division={value}
-                class={division_chip_classes(@division == value)}
+                class={[
+                  division_chip_classes(@division == value),
+                  "phx-click-loading:bg-primary phx-click-loading:text-primary-content"
+                ]}
               >
                 {label}
               </button>

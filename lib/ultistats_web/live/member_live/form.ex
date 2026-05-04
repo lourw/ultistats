@@ -21,7 +21,12 @@ defmodule UltistatsWeb.MemberLive.Form do
         </:subtitle>
       </.header>
 
-      <form id="bulk-member-form" phx-change="validate" phx-submit="save_all">
+      <form
+        id="bulk-member-form"
+        phx-change="validate"
+        phx-submit="save_all"
+        phx-debounce="300"
+      >
         <ul class="flex flex-col gap-3">
           <li
             :for={row <- @rows}
@@ -174,6 +179,7 @@ defmodule UltistatsWeb.MemberLive.Form do
         id="member-form"
         phx-change="validate"
         phx-submit="save"
+        phx-debounce="300"
         class="flex flex-col gap-3"
       >
         <input type="hidden" name="member[team_id]" value={@membership.team_id} />

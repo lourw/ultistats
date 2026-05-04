@@ -70,7 +70,10 @@ defmodule UltistatsWeb.TeamLive.Show do
           aria-selected={to_string(@active_tab == :roster)}
           phx-click="set_tab"
           phx-value-tab="roster"
-          class={tab_classes(@active_tab == :roster)}
+          class={[
+            tab_classes(@active_tab == :roster),
+            "phx-click-loading:text-primary phx-click-loading:border-primary"
+          ]}
         >
           Roster
           <span class={[
@@ -90,7 +93,10 @@ defmodule UltistatsWeb.TeamLive.Show do
           aria-selected={to_string(@active_tab == :presets)}
           phx-click="set_tab"
           phx-value-tab="presets"
-          class={tab_classes(@active_tab == :presets)}
+          class={[
+            tab_classes(@active_tab == :presets),
+            "phx-click-loading:text-primary phx-click-loading:border-primary"
+          ]}
         >
           Lines
           <span class={[
@@ -119,7 +125,10 @@ defmodule UltistatsWeb.TeamLive.Show do
               phx-click="set_member_sort"
               phx-value-sort="jersey"
               aria-pressed={to_string(@member_sort == :jersey)}
-              class={sort_chip_classes(@member_sort == :jersey)}
+              class={[
+                sort_chip_classes(@member_sort == :jersey),
+                "phx-click-loading:bg-primary phx-click-loading:text-primary-content"
+              ]}
             >
               Jersey
             </button>
@@ -128,7 +137,10 @@ defmodule UltistatsWeb.TeamLive.Show do
               phx-click="set_member_sort"
               phx-value-sort="first_name"
               aria-pressed={to_string(@member_sort == :first_name)}
-              class={sort_chip_classes(@member_sort == :first_name)}
+              class={[
+                sort_chip_classes(@member_sort == :first_name),
+                "phx-click-loading:bg-primary phx-click-loading:text-primary-content"
+              ]}
             >
               First name
             </button>
