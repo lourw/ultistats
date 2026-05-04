@@ -345,7 +345,7 @@ defmodule UltistatsWeb.LinePresetLive.Form do
     ~H"""
     <section class="space-y-1">
       <h3 class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-base-content/60 px-4">
-        <span class="text-sm leading-none" aria-hidden="true">{gender_glyph(@role)}</span>
+        <span class="text-xs font-bold leading-none" aria-hidden="true">{gender_glyph(@role)}</span>
         <span>{role_label(@role)}</span>
         <span class="tabular-nums text-base-content/50">
           {@selected_in_section} of {length(@members)}
@@ -411,8 +411,8 @@ defmodule UltistatsWeb.LinePresetLive.Form do
   defp role_label(:male_matching), do: "Male-matching"
   defp role_label(:female_matching), do: "Female-matching"
 
-  defp gender_glyph(:female_matching), do: "♀"
-  defp gender_glyph(:male_matching), do: "♂"
+  defp gender_glyph(:female_matching), do: "F"
+  defp gender_glyph(:male_matching), do: "M"
   defp gender_glyph(_), do: ""
 
   defp position_counts(team_members, selected_ids) do

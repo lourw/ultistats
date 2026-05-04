@@ -70,8 +70,8 @@ defmodule UltistatsWeb.TeamLive.Index do
             <div class="text-xs text-base-content/70 flex flex-wrap gap-x-2 gap-y-0.5 tabular-nums leading-tight">
               <span>{s.total_players} players</span>
               <span aria-hidden="true">·</span>
-              <span>♂ {s.male_matching}</span>
-              <span>♀ {s.female_matching}</span>
+              <span><span class="font-semibold">M</span> {s.male_matching}</span>
+              <span><span class="font-semibold">F</span> {s.female_matching}</span>
               <span aria-hidden="true">·</span>
               <span>{games_label(total_games(s))}</span>
             </div>
