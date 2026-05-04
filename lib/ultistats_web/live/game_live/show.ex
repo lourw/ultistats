@@ -164,6 +164,7 @@ defmodule UltistatsWeb.GameLive.Show do
             possession={@possession}
             banner_state={banner_state(@possession, @events)}
             halftime?={Games.halftime?(@game) and not @halftime_dismissed? and not @halftime_active?}
+            halftime_recorded?={@halftime_recorded?}
             undo_stack={@undo_stack}
             redo_stack={@redo_stack}
             last_ended={@last_ended}
@@ -233,6 +234,7 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :possession, :any, required: true
   attr :banner_state, :any, required: true
   attr :halftime?, :boolean, required: true
+  attr :halftime_recorded?, :boolean, required: true
   attr :undo_stack, :list, required: true
   attr :redo_stack, :list, required: true
   attr :last_ended, :any, required: true
@@ -323,6 +325,9 @@ defmodule UltistatsWeb.GameLive.Show do
           {@score.theirs}
         </span>
         <span class="text-xs text-base-content/60 truncate ml-1">vs {@game.opponent_name}</span>
+        <span class="ml-1 inline-flex items-center rounded-full bg-base-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-base-content/70 shrink-0">
+          {if @halftime_recorded?, do: "Half 2", else: "Half 1"}
+        </span>
       </div>
 
       <span :if={@current_point} class="sr-only" aria-live="polite">
@@ -387,15 +392,6 @@ defmodule UltistatsWeb.GameLive.Show do
       >
         <.icon name={starting_possession_icon(@starting_possession_preview)} class="size-4 shrink-0" />
         <span>{starting_possession_label(@starting_possession_preview)}</span>
-      </div>
-
-      <div
-        :if={@ratio_violation}
-        class="-mx-4 flex items-center gap-2 px-4 py-1.5 text-xs font-medium bg-warning/10 text-warning"
-        role="status"
-      >
-        <.icon name="hero-exclamation-triangle-solid" class="size-4 shrink-0" />
-        <span>{ratio_mismatch_text(@ratio_violation)}</span>
       </div>
 
       <details :if={@line_presets != []} class="group">
@@ -1483,6 +1479,9 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :disconnected?, :boolean, required: true
 
   defp bottom_action_bar(assigns) do
+    counts = selected_position_counts(assigns.team_players, assigns.selected_user_ids)
+    assigns = assign(assigns, :position_counts, counts)
+
     ~H"""
     <div
       :if={@game.status != :finished and is_nil(@current_point)}
@@ -1503,13 +1502,31 @@ defmodule UltistatsWeb.GameLive.Show do
           ]}
         >
           <span>Start point</span>
-          <span class="tabular-nums opacity-90">
+          <span aria-hidden="true">-</span>
+          <span class="tabular-nums">
+            H {@position_counts.handler} · C {@position_counts.cutter} · X {@position_counts.hybrid}
+          </span>
+          <span aria-hidden="true">-</span>
+          <span class="tabular-nums">
             {MapSet.size(@selected_user_ids)} / {@required_line_size}
           </span>
         </button>
       </div>
     </div>
     """
+  end
+
+  defp selected_position_counts(team_players, selected_user_ids) do
+    team_players
+    |> Enum.filter(&MapSet.member?(selected_user_ids, &1.user_id))
+    |> Enum.reduce(%{handler: 0, cutter: 0, hybrid: 0}, fn p, acc ->
+      case Teams.resolved_position(p) do
+        :handler -> %{acc | handler: acc.handler + 1}
+        :cutter -> %{acc | cutter: acc.cutter + 1}
+        :hybrid -> %{acc | hybrid: acc.hybrid + 1}
+        _ -> acc
+      end
+    end)
   end
 
   ## ---------------------------------------------------------------------
@@ -2315,10 +2332,6 @@ defmodule UltistatsWeb.GameLive.Show do
   defp starting_possession_icon(:theirs), do: "hero-shield-check"
   defp starting_possession_icon(_), do: "hero-question-mark-circle"
 
-  defp ratio_mismatch_text(%{actual: %{m: m, f: f}, required: %{m: rm, f: rf}}) do
-    "Ratio mismatch — selected #{m}M / #{f}F, ruleset requires #{rm}M / #{rf}F."
-  end
-
   # Possession at the start of the point comes from the pull/receive rules
   # (`Games.starting_possession/2`); per-throw events flip per the table
   # in `docs/DESIGN.md`. Calls (`:pick`, `:foul`) leave possession alone.
@@ -2449,11 +2462,6 @@ defmodule UltistatsWeb.GameLive.Show do
                 <.icon name="hero-clock" class="size-3.5" />
                 {Map.get(@points_played_by_user, member.user_id, 0)}
               </span>
-              <.icon
-                :if={MapSet.member?(@selected_ids, member.user_id)}
-                name="hero-check-circle-solid"
-                class="size-4 text-primary shrink-0"
-              />
             </button>
           </li>
         </ul>
