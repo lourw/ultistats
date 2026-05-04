@@ -823,8 +823,7 @@ defmodule UltistatsWeb.GameLive.Show do
     ~H"""
     <div class={[
       "min-h-9 flex items-center gap-2 px-4 py-1",
-      @unknown? && "italic",
-      @is_current_passer? && "bg-success/15"
+      @unknown? && "italic"
     ]}>
       <button
         type="button"
@@ -833,9 +832,10 @@ defmodule UltistatsWeb.GameLive.Show do
         disabled={@disconnected? or @passer_set?}
         aria-label={"Set #{@name} as current passer"}
         class={[
-          "flex items-center gap-2 flex-1 min-w-0 text-left rounded-md",
+          "flex items-center gap-2 flex-1 min-w-0 text-left rounded-md py-1 -my-1",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-          "disabled:cursor-default"
+          "disabled:cursor-default",
+          @is_current_passer? && "bg-success/15 px-2 -mx-2"
         ]}
       >
         <span
