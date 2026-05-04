@@ -834,7 +834,7 @@ defmodule UltistatsWeb.GameLive.Show do
     ~H"""
     <div class="space-y-2">
       <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
-        Actions from our team
+        Offense actions
       </h3>
 
       <.current_passer_card
@@ -1231,54 +1231,44 @@ defmodule UltistatsWeb.GameLive.Show do
   defp their_possession_view(assigns) do
     ~H"""
     <div class="space-y-2">
-      <%= if @pull_pending? do %>
-        <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
-          Who pulled?
-        </h3>
+      <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
+        Defense actions
+      </h3>
 
-        <p class="text-xs text-base-content/70" aria-live="polite">
-          Tap the player who pulled the disc.
-        </p>
-
-        <ul
-          class="-mx-4 border-y border-base-200 divide-y divide-base-200"
-          role="list"
-          aria-label="On-field pullers"
-        >
-          <li :for={member <- @on_field}>
-            <.pull_picker_row
-              player_id={member.user_id}
-              jersey={Teams.resolved_jersey_number(member)}
-              name={User.display_name(member.user)}
-              disconnected?={@disconnected?}
-            />
-          </li>
-          <li>
-            <.pull_picker_row
-              player_id={:unknown}
-              jersey={nil}
-              name="Unknown"
-              disconnected?={@disconnected?}
-              unknown?={true}
-            />
-          </li>
-        </ul>
-      <% else %>
-        <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
-          Actions from our team
-        </h3>
-
-        <p class="text-xs text-base-content/70" aria-live="polite">
+      <p class="text-xs text-base-content/70" aria-live="polite">
+        <%= if @pull_pending? do %>
+          Tap the puller to start.
+        <% else %>
           Tap the action next to the defender who got the disc back.
-        </p>
+        <% end %>
+      </p>
 
-        <.action_legend variant={:theirs} />
+      <.action_legend :if={not @pull_pending?} variant={:theirs} />
 
-        <ul
-          class="-mx-4 border-y border-base-200 divide-y divide-base-200"
-          role="list"
-          aria-label="On-field defenders"
-        >
+      <ul
+        class="-mx-4 border-y border-base-200 divide-y divide-base-200"
+        role="list"
+        aria-label={if @pull_pending?, do: "On-field pullers", else: "On-field defenders"}
+      >
+        <%= if @pull_pending? do %>
+          <li :for={member <- @on_field}>
+            <.pull_picker_row
+              player_id={member.user_id}
+              jersey={Teams.resolved_jersey_number(member)}
+              name={User.display_name(member.user)}
+              disconnected?={@disconnected?}
+            />
+          </li>
+          <li>
+            <.pull_picker_row
+              player_id={:unknown}
+              jersey={nil}
+              name="Unknown"
+              disconnected?={@disconnected?}
+              unknown?={true}
+            />
+          </li>
+        <% else %>
           <li :for={member <- @on_field}>
             <.defender_action_row
               player_id={member.user_id}
@@ -1296,11 +1286,11 @@ defmodule UltistatsWeb.GameLive.Show do
               unknown?={true}
             />
           </li>
-        </ul>
-      <% end %>
+        <% end %>
+      </ul>
 
       <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60 pt-1">
-        Actions from their team
+        Opponent actions
       </h3>
       <div class="grid grid-cols-2 gap-2">
         <button
@@ -2629,8 +2619,8 @@ defmodule UltistatsWeb.GameLive.Show do
   defp gender_glyph(:male_matching), do: "M"
   defp gender_glyph(_), do: ""
 
-  defp possession_label(:ours), do: "We have the disc"
-  defp possession_label(:theirs), do: "They have the disc"
+  defp possession_label(:ours), do: "On offense"
+  defp possession_label(:theirs), do: "On defense"
   defp possession_label(_), do: "Possession unknown"
 
   defp possession_banner_classes(:ours), do: "bg-success text-success-content"
@@ -2656,8 +2646,8 @@ defmodule UltistatsWeb.GameLive.Show do
   defp possession_banner_helper(:pre_pull, _), do: ""
   defp possession_banner_helper(_, _), do: ""
 
-  defp possession_banner_label(:ours), do: "Our possession"
-  defp possession_banner_label(:theirs), do: "Their possession"
+  defp possession_banner_label(:ours), do: "Offense"
+  defp possession_banner_label(:theirs), do: "Defense"
   defp possession_banner_label(:pulling), do: "Pulling"
   defp possession_banner_label(:pre_pull), do: "Line selection"
   defp possession_banner_label(_), do: "Possession unknown"

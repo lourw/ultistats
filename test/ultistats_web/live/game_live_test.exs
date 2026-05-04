@@ -353,7 +353,7 @@ defmodule UltistatsWeb.GameLiveTest do
       html = render(live)
       # The starting-possession label renders. game_fixture defaults
       # first_pull: :ours, so the receiving side is :theirs at point start.
-      assert html =~ "They have the disc"
+      assert html =~ "On defense"
 
       assert Repo.aggregate(Point, :count, :id) == 1
     end
