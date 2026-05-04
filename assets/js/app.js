@@ -75,13 +75,17 @@ const ScrollAwareNav = {
 // (LV stays inside <body>). The nav's transform is driven by the
 // `html.nav-hidden #app-nav` rule in app.css.
 //
-// Hidden by default, mirrors ScrollAwareNav for fixed-height screens:
-// scrolling up in any descendant scroll container reveals the nav,
-// scrolling down hides it. `scroll` doesn't bubble, so we capture.
+// Hidden by default. Reveal it via either:
+//  - scrolling up in any descendant scrollable area (scroll capture
+//    phase since `scroll` doesn't bubble), or
+//  - swiping down ≥60px anywhere on the tracker (covers the in-point
+//    view, which has no scrollable inner element).
+// Swipe up ≥60px or scroll down hides it again.
 const HideNav = {
   mounted() {
     this._setHidden(true)
     this._scrollPositions = new WeakMap()
+    this._touchStartY = null
 
     this._onScroll = (e) => {
       const t = e.target
@@ -93,11 +97,28 @@ const HideNav = {
       this._scrollPositions.set(t, cur)
     }
 
+    this._onTouchStart = (e) => {
+      this._touchStartY = e.touches[0]?.clientY ?? null
+    }
+
+    this._onTouchEnd = (e) => {
+      if (this._touchStartY === null) return
+      const endY = e.changedTouches[0]?.clientY ?? this._touchStartY
+      const dy = endY - this._touchStartY
+      this._touchStartY = null
+      if (dy > 60) this._setHidden(false)
+      else if (dy < -60) this._setHidden(true)
+    }
+
     this.el.addEventListener("scroll", this._onScroll, true)
+    this.el.addEventListener("touchstart", this._onTouchStart, {passive: true})
+    this.el.addEventListener("touchend", this._onTouchEnd, {passive: true})
   },
   destroyed() {
     this._setHidden(false)
     this.el.removeEventListener("scroll", this._onScroll, true)
+    this.el.removeEventListener("touchstart", this._onTouchStart)
+    this.el.removeEventListener("touchend", this._onTouchEnd)
   },
   _setHidden(hidden) {
     document.documentElement.style.setProperty(
