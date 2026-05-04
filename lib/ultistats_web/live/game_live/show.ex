@@ -244,7 +244,7 @@ defmodule UltistatsWeb.GameLive.Show do
         id="game-show-root"
         phx-hook="HideNav"
         class={[
-          "flex flex-col -mx-4 -mt-6 -mb-6 transition-[height] duration-200 motion-reduce:transition-none",
+          "flex flex-col -mx-[calc((100vw-100%)/2)] -mt-6 -mb-6 transition-[height] duration-200 motion-reduce:transition-none",
           surface_tint(banner_state(@current_point, @possession, @events))
         ]}
         style="height: calc(100dvh - var(--nav-offset, 0px) - env(safe-area-inset-bottom))"
@@ -352,117 +352,119 @@ defmodule UltistatsWeb.GameLive.Show do
       {possession_banner_label(@banner_state)}
     </div>
 
-    <div :if={@halftime?} class="px-4 pt-2">
-      <div
-        role="status"
-        class="flex items-center gap-2 rounded-md bg-warning text-warning-content px-2 py-1.5 text-xs"
-      >
-        <.icon name="hero-flag-solid" class="size-4 shrink-0" />
-        <span class="flex-1 font-semibold tabular-nums">
-          Halftime — {@score.ours}–{@score.theirs}
-        </span>
-        <button
-          type="button"
-          phx-click="dismiss_halftime"
-          aria-label="Dismiss halftime banner"
-          class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md active:bg-warning-content/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+    <div class="mx-auto w-full max-w-2xl">
+      <div :if={@halftime?} class="px-4 pt-2">
+        <div
+          role="status"
+          class="flex items-center gap-2 rounded-md bg-warning text-warning-content px-2 py-1.5 text-xs"
         >
-          <.icon name="hero-x-mark" class="size-4" />
-        </button>
-      </div>
-    </div>
-
-    <div class="flex items-center justify-between gap-2 px-4 py-2">
-      <div class="flex items-center gap-1 shrink-0">
-        <button
-          :if={@current_point}
-          type="button"
-          phx-click={
-            cond do
-              @transient_passer? -> "undo"
-              @undo_stack == [] -> "cancel_current_point"
-              true -> "undo"
-            end
-          }
-          aria-label={
-            cond do
-              @transient_passer? -> "Clear current passer"
-              @undo_stack == [] -> "Back to lineup (cancel point)"
-              true -> "Undo last event"
-            end
-          }
-          class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          <.icon name="hero-arrow-uturn-left" class="size-4" />
-        </button>
-        <button
-          :if={@current_point}
-          type="button"
-          phx-click="redo"
-          disabled={@redo_stack == []}
-          aria-label="Redo"
-          class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          <.icon name="hero-arrow-uturn-right" class="size-4" />
-        </button>
-        <button
-          :if={is_nil(@current_point) and not is_nil(@last_ended)}
-          type="button"
-          phx-click="undo_last_goal"
-          aria-label="Undo last goal"
-          class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          <.icon name="hero-arrow-uturn-left" class="size-4" />
-        </button>
+          <.icon name="hero-flag-solid" class="size-4 shrink-0" />
+          <span class="flex-1 font-semibold tabular-nums">
+            Halftime — {@score.ours}–{@score.theirs}
+          </span>
+          <button
+            type="button"
+            phx-click="dismiss_halftime"
+            aria-label="Dismiss halftime banner"
+            class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md active:bg-warning-content/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <.icon name="hero-x-mark" class="size-4" />
+          </button>
+        </div>
       </div>
 
-      <div class="flex items-baseline gap-1.5 min-w-0 flex-1">
-        <span
-          class="tabular-nums font-bold text-2xl leading-none"
-          aria-label={"Our score #{@score.ours}"}
-        >
-          {@score.ours}
-        </span>
-        <span class="text-base text-base-content/40 leading-none" aria-hidden="true">–</span>
-        <span
-          class="tabular-nums font-bold text-2xl leading-none"
-          aria-label={"Opponent score #{@score.theirs}"}
-        >
-          {@score.theirs}
-        </span>
-        <span class="text-xs text-base-content/60 truncate ml-1">vs {@game.opponent_name}</span>
-        <span class="ml-1 inline-flex items-center rounded-full bg-base-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-base-content/70 shrink-0">
-          {if @halftime_recorded?, do: "Half 2", else: "Half 1"}
-        </span>
-      </div>
+      <div class="flex items-center justify-between gap-2 px-4 py-2">
+        <div class="flex items-center gap-1 shrink-0">
+          <button
+            :if={@current_point}
+            type="button"
+            phx-click={
+              cond do
+                @transient_passer? -> "undo"
+                @undo_stack == [] -> "cancel_current_point"
+                true -> "undo"
+              end
+            }
+            aria-label={
+              cond do
+                @transient_passer? -> "Clear current passer"
+                @undo_stack == [] -> "Back to lineup (cancel point)"
+                true -> "Undo last event"
+              end
+            }
+            class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <.icon name="hero-arrow-uturn-left" class="size-4" />
+          </button>
+          <button
+            :if={@current_point}
+            type="button"
+            phx-click="redo"
+            disabled={@redo_stack == []}
+            aria-label="Redo"
+            class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <.icon name="hero-arrow-uturn-right" class="size-4" />
+          </button>
+          <button
+            :if={is_nil(@current_point) and not is_nil(@last_ended)}
+            type="button"
+            phx-click="undo_last_goal"
+            aria-label="Undo last goal"
+            class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <.icon name="hero-arrow-uturn-left" class="size-4" />
+          </button>
+        </div>
 
-      <span :if={@current_point} class="sr-only" aria-live="polite">
-        {possession_label(@possession)}
-      </span>
+        <div class="flex items-baseline gap-1.5 min-w-0 flex-1">
+          <span
+            class="tabular-nums font-bold text-2xl leading-none"
+            aria-label={"Our score #{@score.ours}"}
+          >
+            {@score.ours}
+          </span>
+          <span class="text-base text-base-content/40 leading-none" aria-hidden="true">–</span>
+          <span
+            class="tabular-nums font-bold text-2xl leading-none"
+            aria-label={"Opponent score #{@score.theirs}"}
+          >
+            {@score.theirs}
+          </span>
+          <span class="text-xs text-base-content/60 truncate ml-1">vs {@game.opponent_name}</span>
+          <span class="ml-1 inline-flex items-center rounded-full bg-base-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-base-content/70 shrink-0">
+            {if @halftime_recorded?, do: "Half 2", else: "Half 1"}
+          </span>
+        </div>
 
-      <div class="flex items-center gap-1 shrink-0">
-        <.link
-          navigate={~p"/games/#{@game.id}/summary"}
-          aria-label="Open game summary"
-          class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          <.icon name="hero-chart-bar" class="size-4" />
-        </.link>
-        <.link
-          navigate={~p"/games/#{@game.id}/timeline"}
-          aria-label="Open timeline"
-          class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          <.icon name="hero-list-bullet" class="size-4" />
-        </.link>
-        <.link
-          :if={@game.ruleset_id}
-          navigate={~p"/rulesets/#{@game.ruleset_id}"}
-          aria-label="View ruleset"
-          class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          <.icon name="hero-document-text" class="size-4" />
-        </.link>
+        <span :if={@current_point} class="sr-only" aria-live="polite">
+          {possession_label(@possession)}
+        </span>
+
+        <div class="flex items-center gap-1 shrink-0">
+          <.link
+            navigate={~p"/games/#{@game.id}/summary"}
+            aria-label="Open game summary"
+            class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <.icon name="hero-chart-bar" class="size-4" />
+          </.link>
+          <.link
+            navigate={~p"/games/#{@game.id}/timeline"}
+            aria-label="Open timeline"
+            class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <.icon name="hero-list-bullet" class="size-4" />
+          </.link>
+          <.link
+            :if={@game.ruleset_id}
+            navigate={~p"/rulesets/#{@game.ruleset_id}"}
+            aria-label="View ruleset"
+            class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <.icon name="hero-document-text" class="size-4" />
+          </.link>
+        </div>
       </div>
     </div>
     """
@@ -486,7 +488,7 @@ defmodule UltistatsWeb.GameLive.Show do
   defp between_points_view(assigns) do
     ~H"""
     <section
-      class="flex-1 min-h-0 flex flex-col gap-2 px-4 pb-3 overflow-hidden"
+      class="flex-1 min-h-0 mx-auto w-full max-w-2xl flex flex-col gap-2 px-4 pb-3 overflow-hidden"
       aria-label="Line picker"
     >
       <div
@@ -599,7 +601,7 @@ defmodule UltistatsWeb.GameLive.Show do
   defp timeout_overlay(assigns) do
     ~H"""
     <section
-      class="flex-1 min-h-0 flex flex-col items-center justify-center gap-6 px-4 py-6 bg-base-200"
+      class="flex-1 min-h-0 mx-auto w-full max-w-2xl flex flex-col items-center justify-center gap-6 px-4 py-6 bg-base-200"
       aria-label="Timeout in progress"
     >
       <div class="flex flex-col items-center gap-2 text-center">
@@ -629,7 +631,7 @@ defmodule UltistatsWeb.GameLive.Show do
   defp halftime_overlay(assigns) do
     ~H"""
     <section
-      class="flex-1 min-h-0 flex flex-col items-center justify-center gap-6 px-4 py-6 bg-base-200"
+      class="flex-1 min-h-0 mx-auto w-full max-w-2xl flex flex-col items-center justify-center gap-6 px-4 py-6 bg-base-200"
       aria-label="Halftime in progress"
     >
       <div class="flex flex-col items-center gap-2 text-center">
@@ -730,7 +732,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
     ~H"""
     <section
-      class="flex-1 min-h-0 px-4 py-2 space-y-2 overflow-y-auto overflow-x-hidden overscroll-contain"
+      class="flex-1 min-h-0 mx-auto w-full max-w-2xl px-4 py-2 space-y-2 overflow-y-auto overflow-x-hidden overscroll-contain"
       aria-label="Current point"
     >
       <%= if @possession == :ours do %>
@@ -1645,9 +1647,9 @@ defmodule UltistatsWeb.GameLive.Show do
     ~H"""
     <div
       :if={@game.status != :finished and is_nil(@current_point)}
-      class="sticky bottom-0 px-4 pb-safe bg-base-100/95 backdrop-blur border-t border-base-200"
+      class="sticky bottom-0 pb-safe bg-base-100/95 backdrop-blur border-t border-base-200"
     >
-      <div class="py-2 space-y-2">
+      <div class="mx-auto w-full max-w-2xl px-4 py-2 space-y-2">
         <button
           type="button"
           phx-click="start_point"
