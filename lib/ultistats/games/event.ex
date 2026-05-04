@@ -31,6 +31,7 @@ defmodule Ultistats.Games.Event do
     opponent_goal: :neither,
     pick: :neither,
     foul: :neither,
+    strip: :neither,
     timeout_ours: :neither,
     timeout_theirs: :neither,
     timeout_resume: :neither,

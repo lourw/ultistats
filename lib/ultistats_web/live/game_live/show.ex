@@ -1367,17 +1367,13 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :prompt, :map, required: true
 
   defp call_resolution_strip(assigns) do
-    actions = [
-      {"back_to_thrower", "Back to thrower"},
-      {"retract", "Retracted"},
-      {"resume", "Resume"},
-      {"turnover", "Turnover"}
-    ]
+    actions = call_resolution_actions(assigns.prompt.type)
 
     label =
       case assigns.prompt.type do
         :pick -> "Pick called — choose resolution"
         :foul -> "Foul called — choose resolution"
+        :strip -> "Strip called — choose resolution"
       end
 
     assigns = assign(assigns, actions: actions, label: label)
@@ -1428,6 +1424,33 @@ defmodule UltistatsWeb.GameLive.Show do
   defp call_action_classes(_),
     do: "border-base-300 bg-base-200 text-base-content/80 active:bg-base-300"
 
+  # Resolution menu options per call type. Pick / Foul reuse the
+  # general 4-option menu; strip is a foul subtype with only a
+  # contested/uncontested branch (USAU §17.I.4.d via §17.I.4.b.2):
+  #
+  #   * "Uncontested" → offense keeps the disc at the spot of the
+  #     foul. We map to "resume" — no game-state change beyond the
+  #     strip event already on the timeline.
+  #   * "Contested"   → disc reverts to the thrower; soft-delete the
+  #     last live :catch and revert possession (existing
+  #     "back_to_thrower" handler).
+  #   * "Retract"     → strip wasn't an actual foul; remove the
+  #     strip event entirely.
+  defp call_resolution_actions(:strip),
+    do: [
+      {"resume", "Uncontested"},
+      {"back_to_thrower", "Contested"},
+      {"retract", "Retract"}
+    ]
+
+  defp call_resolution_actions(_),
+    do: [
+      {"back_to_thrower", "Back to thrower"},
+      {"retract", "Retracted"},
+      {"resume", "Resume"},
+      {"turnover", "Turnover"}
+    ]
+
   attr :disconnected?, :boolean, required: true
   attr :call_prompt, :any, required: true
   attr :timeouts_remaining, :integer, required: true
@@ -1441,7 +1464,7 @@ defmodule UltistatsWeb.GameLive.Show do
         <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
           Calls
         </h3>
-        <div class="grid grid-cols-2 gap-2">
+        <div class="grid grid-cols-3 gap-2">
           <button
             type="button"
             phx-click="record_call"
@@ -1477,6 +1500,24 @@ defmodule UltistatsWeb.GameLive.Show do
           >
             <.icon name="hero-exclamation-triangle" class="size-4" />
             <span>Foul</span>
+          </button>
+          <button
+            type="button"
+            phx-click="record_call"
+            phx-value-type="strip"
+            disabled={@disconnected?}
+            aria-label="Record a strip call"
+            class={[
+              "min-h-9 px-2 py-1 rounded-md border border-base-300",
+              "inline-flex items-center justify-center gap-1.5",
+              "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
+              "transition-colors motion-reduce:transition-none",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              "disabled:opacity-50 disabled:cursor-not-allowed"
+            ]}
+          >
+            <.icon name="hero-hand-thumb-down" class="size-4" />
+            <span>Strip</span>
           </button>
         </div>
       </div>
@@ -1943,7 +1984,7 @@ defmodule UltistatsWeb.GameLive.Show do
   def handle_event("record_call", %{"type" => type_str}, socket) do
     type = String.to_existing_atom(type_str)
 
-    if type in [:pick, :foul] do
+    if type in [:pick, :foul, :strip] do
       point = socket.assigns.current_point
 
       case Games.record_throw(point, type, nil, nil, throw_opts(socket)) do
