@@ -23,7 +23,7 @@ defmodule UltistatsWeb.UserSettingsController do
       {:ok, _user} ->
         conn
         |> put_flash(:info, "Profile updated successfully.")
-        |> redirect(to: ~p"/users/settings")
+        |> redirect(to: ~p"/")
 
       {:error, changeset} ->
         render(conn, :edit, profile_changeset: changeset)
