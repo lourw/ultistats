@@ -69,6 +69,24 @@ const ScrollAwareNav = {
   },
 }
 
+// Closes a <details> popover when the user taps anywhere outside it.
+// Attach to the <details> element with phx-hook="CloseOnOutsideClick".
+// Native <details> only toggles via its <summary> click, which leaves
+// the popover open if the user taps elsewhere — annoying on mobile.
+const CloseOnOutsideClick = {
+  mounted() {
+    this._onDocPointerDown = (e) => {
+      if (!this.el.hasAttribute("open")) return
+      if (this.el.contains(e.target)) return
+      this.el.removeAttribute("open")
+    }
+    document.addEventListener("pointerdown", this._onDocPointerDown, true)
+  },
+  destroyed() {
+    document.removeEventListener("pointerdown", this._onDocPointerDown, true)
+  },
+}
+
 // Copy a team-join URL (read off `data-claim-url`) to the clipboard.
 // Used by the team-show header so an admin can grab the team's join
 // link in one tap. Falls back to a transient flash dispatch if the
@@ -119,12 +137,12 @@ const CopyJoinLink = {
   },
 }
 
-// Auto-dismiss flash banners after 2 seconds. The flash root already has
+// Auto-dismiss flash banners after 1.5 seconds. The flash root already has
 // `phx-click` wired to clear the flash and hide itself, so we just trigger a
 // click programmatically when the timer fires.
 const AutoCloseFlash = {
   mounted() {
-    this._t = setTimeout(() => this.el.click(), 2000)
+    this._t = setTimeout(() => this.el.click(), 1500)
   },
   destroyed() {
     clearTimeout(this._t)
@@ -135,7 +153,7 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, ScrollAwareNav, CopyJoinLink, AutoCloseFlash},
+  hooks: {...colocatedHooks, ScrollAwareNav, CloseOnOutsideClick, CopyJoinLink, AutoCloseFlash},
 })
 
 // Show progress bar on live navigation and form submits
