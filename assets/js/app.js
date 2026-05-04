@@ -115,8 +115,6 @@ const HideNav = {
       else if (e.deltaY > 4) this._setHidden(true)
     }
 
-    this.handleEvent("toggle-nav", () => this._setHidden(this._currentOffset() !== "0px"))
-
     this.el.addEventListener("scroll", this._onScroll, true)
     this.el.addEventListener("touchstart", this._onTouchStart, {passive: true})
     this.el.addEventListener("touchend", this._onTouchEnd, {passive: true})
@@ -128,9 +126,6 @@ const HideNav = {
     this.el.removeEventListener("touchstart", this._onTouchStart)
     this.el.removeEventListener("touchend", this._onTouchEnd)
     this.el.removeEventListener("wheel", this._onWheel)
-  },
-  _currentOffset() {
-    return document.documentElement.style.getPropertyValue("--nav-offset")
   },
   _setHidden(hidden) {
     document.documentElement.style.setProperty(
