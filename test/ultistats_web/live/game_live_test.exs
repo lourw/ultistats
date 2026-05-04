@@ -525,7 +525,7 @@ defmodule UltistatsWeb.GameLiveTest do
       assert render(live) =~ "They have the disc"
     end
 
-    test "Block records an event, switches to ours, sets blocker as new passer", %{
+    test "Block records an event, switches to ours, leaves passer unset", %{
       conn: conn,
       game: game,
       players: players,
@@ -551,8 +551,9 @@ defmodule UltistatsWeb.GameLiveTest do
 
       html = render(live)
       assert html =~ "We have the disc"
-      # Blocker is now the current passer.
-      assert html =~ "data-current-passer=\"#{blocker.user_id}\""
+      # Block knocks the disc loose — no auto-promotion of the blocker;
+      # the tracker still has to tap who picks the disc up.
+      refute html =~ "data-current-passer=\"#{blocker.user_id}\""
     end
 
     test "Catch (interception) records a :catch with passer=nil and the catcher as receiver",

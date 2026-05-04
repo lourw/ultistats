@@ -1877,12 +1877,22 @@ defmodule UltistatsWeb.GameLive.Show do
       {:ok, event} ->
         events = socket.assigns.events ++ [event]
 
+        # A block knocks the disc down — someone still has to pick it up,
+        # so we clear the passer and let the user tap who has the disc.
+        # An interception (catch) means the defender already has it, so
+        # they auto-become the passer.
+        next_passer =
+          case kind do
+            "catch" -> token
+            _ -> nil
+          end
+
         {:noreply,
          socket
          |> assign(:events, events)
          |> track_event_recorded(event)
          |> assign(:possession, derive_possession(socket.assigns.game, point, events))
-         |> assign(:current_passer_id, token)}
+         |> assign(:current_passer_id, next_passer)}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Could not record event.")}
@@ -2314,7 +2324,9 @@ defmodule UltistatsWeb.GameLive.Show do
     Enum.reduce(events, nil, fn ev, current ->
       case ev.type do
         :catch -> token_from_id(ev.receiver_user_id)
-        :block -> token_from_id(ev.passer_user_id)
+        # A block leaves the disc loose; the next passer is set by the
+        # tracker tapping who picks it up, not by the blocker's id.
+        :block -> nil
         :drop -> nil
         :throwaway -> nil
         :stall -> nil
