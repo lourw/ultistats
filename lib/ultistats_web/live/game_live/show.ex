@@ -242,7 +242,7 @@ defmodule UltistatsWeb.GameLive.Show do
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div
         class="flex flex-col -mx-4 -mt-6 -mb-6 transition-[height] duration-200 motion-reduce:transition-none"
-        style="height: calc(100dvh - var(--nav-offset, 3.5rem))"
+        style="height: calc(100dvh - var(--nav-offset, 3.5rem) - env(safe-area-inset-bottom))"
       >
         <div class={[
           "border-b transition-colors duration-200 motion-reduce:transition-none",
