@@ -21,7 +21,7 @@ defmodule UltistatsWeb.Layouts do
     <header
       id="app-nav"
       phx-hook="ScrollAwareNav"
-      class="sticky top-0 z-30 bg-base-100 border-b border-base-300 pt-safe transition-transform duration-200 motion-reduce:transition-none will-change-transform"
+      class="fixed inset-x-0 top-0 z-30 bg-base-100 border-b border-base-300 pt-safe transition-transform duration-200 motion-reduce:transition-none will-change-transform"
     >
       <nav class="mx-auto max-w-2xl px-4 h-14 flex items-center justify-between gap-4">
         <.link navigate={~p"/"} class="font-semibold text-base-content">
@@ -47,7 +47,10 @@ defmodule UltistatsWeb.Layouts do
       </nav>
     </header>
 
-    <main class="min-h-[100dvh] bg-base-100 text-base-content pb-safe">
+    <main
+      class="min-h-[100dvh] bg-base-100 text-base-content pb-safe"
+      style="padding-top: var(--nav-offset, 3.5rem)"
+    >
       <div class="mx-auto max-w-2xl px-4 py-6 space-y-4">
         {render_slot(@inner_block)}
       </div>
