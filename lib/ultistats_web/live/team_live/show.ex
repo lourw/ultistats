@@ -168,6 +168,7 @@ defmodule UltistatsWeb.TeamLive.Show do
               |> sort_members(@member_sort)
             }
             is_admin?={@is_admin?}
+            current_user_id={@current_scope.user.id}
             split_by_position?={@split_by_position?}
           />
         </div>
@@ -198,8 +199,8 @@ defmodule UltistatsWeb.TeamLive.Show do
                 Admin
               </span>
               <.link
-                :if={@is_admin?}
-                navigate={~p"/members/#{membership.id}/edit?return_to=team"}
+                :if={@is_admin? or membership.user_id == @current_scope.user.id}
+                navigate={member_edit_path(membership, @is_admin?, @current_scope.user.id)}
                 aria-label={"Edit #{User.display_name(membership.user)}"}
                 class="shrink-0 min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
@@ -364,6 +365,7 @@ defmodule UltistatsWeb.TeamLive.Show do
   attr :role, :atom, required: true, values: [:male_matching, :female_matching]
   attr :members, :list, required: true
   attr :is_admin?, :boolean, required: true
+  attr :current_user_id, :string, required: true
   attr :split_by_position?, :boolean, required: true
 
   defp roster_section(assigns) do
@@ -433,8 +435,8 @@ defmodule UltistatsWeb.TeamLive.Show do
               Admin
             </span>
             <.link
-              :if={@is_admin?}
-              navigate={~p"/members/#{membership.id}/edit?return_to=team"}
+              :if={@is_admin? or membership.user_id == @current_user_id}
+              navigate={member_edit_path(membership, @is_admin?, @current_user_id)}
               aria-label={"Edit #{User.display_name(membership.user)}"}
               class="shrink-0 min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
@@ -446,6 +448,16 @@ defmodule UltistatsWeb.TeamLive.Show do
     </section>
     """
   end
+
+  # Admins edit anyone via the membership form (per-team jersey/role/etc.).
+  # A non-admin can only edit themselves; for that we send them to the
+  # canonical user-settings page since the membership form refuses
+  # non-admin access.
+  defp member_edit_path(membership, true, _current_user_id),
+    do: ~p"/members/#{membership.id}/edit?return_to=team"
+
+  defp member_edit_path(_membership, false, _current_user_id),
+    do: ~p"/users/settings"
 
   defp position_groups(members) do
     grouped =
