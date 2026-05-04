@@ -80,6 +80,58 @@ defmodule UltistatsWeb.RulesetLiveTest do
       refute html =~ "Stranger ruleset"
     end
 
+    test "system rulesets are listed for any logged-in user", %{conn: conn} do
+      :ok = Ultistats.Release.seed_system_rulesets()
+
+      {:ok, _live, html} = live(conn, ~p"/rulesets")
+
+      assert html =~ "USAU Open"
+      # Women's rendered as `Women&#39;s` after HTML-encoding.
+      assert html =~ "USAU Women"
+      assert html =~ "USAU Mixed"
+      assert html =~ "System"
+    end
+
+    test "division filter narrows the list to one division", %{conn: conn} do
+      :ok = Ultistats.Release.seed_system_rulesets()
+
+      {:ok, live, _html} = live(conn, ~p"/rulesets")
+
+      html =
+        live
+        |> form("form", %{"division" => "mixed", "team" => ""})
+        |> render_change()
+
+      assert html =~ "USAU Mixed"
+      refute html =~ "USAU Open"
+      refute html =~ "USAU Women"
+    end
+
+    test "team=System filter narrows the list to system rulesets only", %{
+      conn: conn,
+      user: user
+    } do
+      :ok = Ultistats.Release.seed_system_rulesets()
+      team = team_fixture(%{name: "Owls"})
+      add_to_team(team, user)
+      _own = ruleset_fixture(%{team_id: team.id, name: "Owls Standard"})
+
+      {:ok, live, html} = live(conn, ~p"/rulesets")
+
+      # Both team and system rulesets show without filters.
+      assert html =~ "Owls Standard"
+      assert html =~ "USAU Mixed"
+
+      filtered =
+        live
+        |> form("form", %{"division" => "", "team" => "system"})
+        |> render_change()
+
+      assert filtered =~ "USAU Open"
+      assert filtered =~ "USAU Mixed"
+      refute filtered =~ "Owls Standard"
+    end
+
     test "Delete from the show page removes the ruleset when no games reference it", %{
       conn: conn,
       user: user

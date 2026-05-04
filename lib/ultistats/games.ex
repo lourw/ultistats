@@ -1232,16 +1232,19 @@ defmodule Ultistats.Games do
 
   @doc """
   Returns `:template` rulesets for the teams `user` is a member of —
-  not archived, ordered by name asc, with `:team` preloaded. Replaces
-  `list_rulesets_across_teams/0` in user-scoped contexts.
+  not archived, ordered by name asc, with `:team` preloaded. Includes
+  system rulesets (`team_id IS NULL`) regardless of team membership.
+  Replaces `list_rulesets_across_teams/0` in user-scoped contexts.
   """
   def list_rulesets_for_user(%User{id: user_id}), do: list_rulesets_for_user(user_id)
 
   def list_rulesets_for_user(user_id) when is_binary(user_id) do
     from(r in Ruleset,
-      join: m in TeamMembership,
-      on: m.team_id == r.team_id,
-      where: m.user_id == ^user_id and r.kind == :template and is_nil(r.archived_at),
+      left_join: m in TeamMembership,
+      on: m.team_id == r.team_id and m.user_id == ^user_id,
+      where:
+        r.kind == :template and is_nil(r.archived_at) and
+          (is_nil(r.team_id) or not is_nil(m.id)),
       order_by: [asc: r.name],
       distinct: true,
       preload: :team
