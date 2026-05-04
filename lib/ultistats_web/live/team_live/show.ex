@@ -8,16 +8,16 @@ defmodule UltistatsWeb.TeamLive.Show do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <.header>
-        <span class="inline-flex items-center gap-3">
+      <header class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 pb-4">
+        <h1 class="flex w-full items-center gap-2 text-lg font-semibold leading-8 text-base-content sm:w-auto sm:flex-1">
           <.link
             navigate={~p"/teams"}
             aria-label="Back to teams"
-            class="min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            class="shrink-0 min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <.icon name="hero-arrow-left" class="size-5" />
           </.link>
-          {@team.name}
+          <span>{@team.name}</span>
           <.link
             :if={@is_admin?}
             navigate={~p"/teams/#{@team}/edit?return_to=show"}
@@ -26,8 +26,8 @@ defmodule UltistatsWeb.TeamLive.Show do
           >
             <.icon name="hero-pencil-square" class="size-4" />
           </.link>
-        </span>
-        <:actions>
+        </h1>
+        <div class="flex flex-wrap items-center gap-2">
           <button
             :if={@is_admin?}
             type="button"
@@ -35,7 +35,7 @@ defmodule UltistatsWeb.TeamLive.Show do
             id={"team-#{@team.id}-copy-join-link"}
             data-claim-url={join_url(@team)}
             aria-label={"Copy join link for #{@team.name}"}
-            class="min-h-11 inline-flex items-center gap-2 px-3 rounded-md text-sm font-semibold border border-base-300 text-base-content/80 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            class="min-h-11 inline-flex items-center gap-1.5 px-2.5 rounded-md text-sm font-medium border border-base-300 text-base-content/80 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <.icon name="hero-link" class="size-4" /> Copy join link
           </button>
@@ -43,6 +43,7 @@ defmodule UltistatsWeb.TeamLive.Show do
             :if={@is_admin? and @active_tab == :roster}
             variant="primary"
             navigate={~p"/members/new?team_id=#{@team.id}&return_to=team"}
+            class="px-3 gap-1.5"
           >
             <.icon name="hero-plus" /> Add roster
           </.button>
@@ -50,11 +51,12 @@ defmodule UltistatsWeb.TeamLive.Show do
             :if={@is_admin? and @active_tab == :presets}
             variant="primary"
             navigate={~p"/line_presets/new?team_id=#{@team.id}&return_to=team"}
+            class="px-3 gap-1.5"
           >
             <.icon name="hero-plus" /> Add line
           </.button>
-        </:actions>
-      </.header>
+        </div>
+      </header>
 
       <div
         role="tablist"
