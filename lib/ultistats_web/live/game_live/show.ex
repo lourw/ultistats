@@ -1038,7 +1038,13 @@ defmodule UltistatsWeb.GameLive.Show do
 
   defp action_row_button_color(:catch), do: "bg-success/10 text-success active:bg-success/20"
   defp action_row_button_color(:drop), do: "bg-error/10 text-error active:bg-error/20"
-  defp action_row_button_color(:throwaway), do: "bg-warning/10 text-warning active:bg-warning/20"
+
+  # Turnover is rendered solid (not /10 alpha) so when the passer is set
+  # and the C/D/G buttons fall back to the disabled-30%-opacity state,
+  # T still reads clearly as enabled and tappable.
+  defp action_row_button_color(:throwaway),
+    do: "bg-warning text-warning-content active:bg-warning/90"
+
   defp action_row_button_color(:goal), do: "bg-primary/10 text-primary active:bg-primary/20"
 
   attr :current_passer_id, :any, required: true
