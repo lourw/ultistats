@@ -24,6 +24,7 @@ defmodule UltistatsWeb.GameLive.Show do
   """
   use UltistatsWeb, :live_view
 
+  alias Phoenix.LiveView.JS
   alias Ultistats.{Games, Repo, Teams}
   alias Ultistats.Accounts.User
   alias Ultistats.Games.{Event, Point}
@@ -244,11 +245,23 @@ defmodule UltistatsWeb.GameLive.Show do
         id="game-show-root"
         phx-hook="HideNav"
         class={[
-          "flex flex-col -mx-4 -mt-6 -mb-6 transition-[height] duration-200 motion-reduce:transition-none",
+          "relative flex flex-col -mx-4 -mt-6 -mb-6 transition-[height] duration-200 motion-reduce:transition-none",
           surface_tint(@current_point, banner_state(@possession, @events))
         ]}
         style="height: calc(100dvh - var(--nav-offset, 0px) - env(safe-area-inset-bottom))"
       >
+        <%!-- Always-on reveal handle: a thin tap zone at the very top
+              (covers the safe-area inset on iOS notched devices) that
+              dispatches `toggle-nav`, intercepted by the HideNav hook
+              to flip the navbar in/out of view. --%>
+        <button
+          type="button"
+          phx-click={JS.dispatch("toggle-nav", to: "#game-show-root")}
+          aria-label="Toggle navigation bar"
+          class="absolute inset-x-0 top-0 h-3 z-20 flex items-start justify-center pt-1 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <span class="block h-1 w-10 rounded-full bg-base-content/20"></span>
+        </button>
         <div class={[
           "border-b transition-colors duration-200 motion-reduce:transition-none",
           top_bar_classes(@current_point, banner_state(@possession, @events))
