@@ -85,6 +85,9 @@ defmodule UltistatsWeb.GameLive.Show do
        |> assign(:line_picker_sort, :jersey)
        |> assign(:split_by_position?, false)
        |> assign(:timeout_active?, false)
+       |> assign(:halftime_active?, false)
+       |> assign(:halftime_recorded?, Games.halftime_recorded?(game))
+       |> assign(:timeouts_remaining, Games.timeouts_remaining(game))
        |> assign(:call_prompt, nil)
        |> assign_line_picker_state()}
     end
@@ -160,7 +163,7 @@ defmodule UltistatsWeb.GameLive.Show do
             current_point={@current_point}
             possession={@possession}
             banner_state={banner_state(@possession, @events)}
-            halftime?={Games.halftime?(@game) and not @halftime_dismissed?}
+            halftime?={Games.halftime?(@game) and not @halftime_dismissed? and not @halftime_active?}
             undo_stack={@undo_stack}
             redo_stack={@redo_stack}
             last_ended={@last_ended}
@@ -170,6 +173,8 @@ defmodule UltistatsWeb.GameLive.Show do
         <%= cond do %>
           <% @timeout_active? -> %>
             <.timeout_overlay />
+          <% @halftime_active? -> %>
+            <.halftime_overlay score={@score} />
           <% @current_point -> %>
             <.in_point_view
               current_point={@current_point}
@@ -180,6 +185,7 @@ defmodule UltistatsWeb.GameLive.Show do
               throwaway_prompt={@throwaway_prompt}
               disconnected?={@disconnected?}
               call_prompt={@call_prompt}
+              timeouts_remaining={@timeouts_remaining}
             />
           <% true -> %>
             <.between_points_view
@@ -195,11 +201,13 @@ defmodule UltistatsWeb.GameLive.Show do
               sort={@line_picker_sort}
               split_by_position?={@split_by_position?}
               line_size_violation={@line_size_violation}
+              halftime_recorded?={@halftime_recorded?}
+              timeouts_remaining={@timeouts_remaining}
             />
         <% end %>
 
         <.bottom_action_bar
-          :if={not @timeout_active?}
+          :if={not @timeout_active? and not @halftime_active?}
           game={@game}
           current_point={@current_point}
           selected_user_ids={@selected_user_ids}
@@ -361,6 +369,8 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :sort, :atom, required: true
   attr :split_by_position?, :boolean, required: true
   attr :line_size_violation, :any, required: true
+  attr :halftime_recorded?, :boolean, required: true
+  attr :timeouts_remaining, :integer, required: true
 
   defp between_points_view(assigns) do
     ~H"""
@@ -473,7 +483,13 @@ defmodule UltistatsWeb.GameLive.Show do
         </div>
       <% end %>
 
-      <.stoppages_bar disconnected?={false} show_halftime?={true} show_finish_game?={true} />
+      <.stoppages_bar
+        disconnected?={false}
+        show_halftime?={true}
+        show_finish_game?={true}
+        halftime_recorded?={@halftime_recorded?}
+        timeouts_remaining={@timeouts_remaining}
+      />
     </section>
     """
   end
@@ -488,6 +504,39 @@ defmodule UltistatsWeb.GameLive.Show do
         <.icon name="hero-pause-circle-solid" class="size-16 text-base-content/40" />
         <h2 class="text-xl font-semibold">Timeout</h2>
         <p class="text-sm text-base-content/70">Tap resume when play continues.</p>
+      </div>
+      <button
+        type="button"
+        phx-click="resume_game"
+        class={[
+          "min-h-12 px-6 rounded-xl bg-primary text-primary-content",
+          "inline-flex items-center justify-center gap-2 text-base font-semibold",
+          "active:scale-[0.99] motion-reduce:active:scale-100",
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        ]}
+      >
+        <.icon name="hero-play" class="size-5" />
+        <span>Resume game</span>
+      </button>
+    </section>
+    """
+  end
+
+  attr :score, :map, required: true
+
+  defp halftime_overlay(assigns) do
+    ~H"""
+    <section
+      class="flex-1 min-h-0 flex flex-col items-center justify-center gap-6 px-4 py-6 bg-base-200"
+      aria-label="Halftime in progress"
+    >
+      <div class="flex flex-col items-center gap-2 text-center">
+        <.icon name="hero-flag-solid" class="size-16 text-warning" />
+        <h2 class="text-xl font-semibold">Halftime</h2>
+        <p class="tabular-nums text-base-content/70">
+          {@score.ours}–{@score.theirs}
+        </p>
+        <p class="text-sm text-base-content/70">Tap resume when the second half starts.</p>
       </div>
       <button
         type="button"
@@ -565,6 +614,7 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :disconnected?, :boolean, required: true
   attr :throwaway_prompt, :any, required: true
   attr :call_prompt, :any, required: true
+  attr :timeouts_remaining, :integer, required: true
 
   defp in_point_view(assigns) do
     line_user_ids = line_user_ids(assigns.current_point)
@@ -597,7 +647,11 @@ defmodule UltistatsWeb.GameLive.Show do
         />
       <% end %>
 
-      <.calls_bar disconnected?={@disconnected?} call_prompt={@call_prompt} />
+      <.calls_bar
+        disconnected?={@disconnected?}
+        call_prompt={@call_prompt}
+        timeouts_remaining={@timeouts_remaining}
+      />
     </section>
     """
   end
@@ -1272,6 +1326,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
   attr :disconnected?, :boolean, required: true
   attr :call_prompt, :any, required: true
+  attr :timeouts_remaining, :integer, required: true
 
   defp calls_bar(assigns) do
     ~H"""
@@ -1322,7 +1377,11 @@ defmodule UltistatsWeb.GameLive.Show do
         </div>
       </div>
 
-      <.stoppages_bar disconnected?={@disconnected?} show_halftime?={false} />
+      <.stoppages_bar
+        disconnected?={@disconnected?}
+        show_halftime?={false}
+        timeouts_remaining={@timeouts_remaining}
+      />
     </div>
     """
   end
@@ -1330,16 +1389,23 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :disconnected?, :boolean, required: true
   attr :show_halftime?, :boolean, required: true
   attr :show_finish_game?, :boolean, default: false
+  attr :halftime_recorded?, :boolean, default: false
+  attr :timeouts_remaining, :integer, required: true
 
   defp stoppages_bar(assigns) do
+    show_halftime_button? = assigns.show_halftime? and not assigns.halftime_recorded?
+
     cols =
       cond do
-        assigns.show_halftime? and assigns.show_finish_game? -> "grid-cols-3"
-        assigns.show_halftime? or assigns.show_finish_game? -> "grid-cols-2"
+        show_halftime_button? and assigns.show_finish_game? -> "grid-cols-3"
+        show_halftime_button? or assigns.show_finish_game? -> "grid-cols-2"
         true -> "grid-cols-1"
       end
 
-    assigns = assign(assigns, :cols, cols)
+    assigns =
+      assigns
+      |> assign(:cols, cols)
+      |> assign(:show_halftime_button?, show_halftime_button?)
 
     ~H"""
     <div class="space-y-1" aria-label="Stoppages">
@@ -1350,8 +1416,8 @@ defmodule UltistatsWeb.GameLive.Show do
         <button
           type="button"
           phx-click="record_timeout"
-          disabled={@disconnected?}
-          aria-label="Take a timeout"
+          disabled={@disconnected? or @timeouts_remaining <= 0}
+          aria-label={"Take a timeout (#{@timeouts_remaining} left this half)"}
           class={[
             "min-h-9 px-2 py-1 rounded-md border border-base-300",
             "inline-flex items-center justify-center gap-1.5",
@@ -1363,9 +1429,12 @@ defmodule UltistatsWeb.GameLive.Show do
         >
           <.icon name="hero-pause" class="size-4" />
           <span>Timeout</span>
+          <span class="tabular-nums text-[11px] text-base-content/60">
+            ({@timeouts_remaining})
+          </span>
         </button>
         <button
-          :if={@show_halftime?}
+          :if={@show_halftime_button?}
           type="button"
           phx-click="record_halftime"
           disabled={@disconnected?}
@@ -1795,11 +1864,60 @@ defmodule UltistatsWeb.GameLive.Show do
   end
 
   def handle_event("resume_game", _params, socket) do
-    {:noreply, assign(socket, :timeout_active?, false)}
+    resume_type =
+      cond do
+        socket.assigns.timeout_active? -> :timeout_resume
+        socket.assigns.halftime_active? -> :halftime_resume
+        true -> nil
+      end
+
+    socket =
+      if resume_type do
+        case Games.record_game_event(socket.assigns.game, resume_type) do
+          {:ok, event} ->
+            socket = track_event_recorded(socket, event)
+
+            events =
+              case socket.assigns.current_point do
+                %Point{} = point -> Games.events_for_point(point)
+                _ -> socket.assigns.events
+              end
+
+            assign(socket, :events, events)
+
+          {:error, _} ->
+            put_flash(socket, :error, "Could not record resume.")
+        end
+      else
+        socket
+      end
+
+    {:noreply,
+     socket
+     |> assign(:timeout_active?, false)
+     |> assign(:halftime_active?, false)}
   end
 
   def handle_event("record_halftime", _params, socket) do
-    record_game_event(socket, :halftime, "Halftime recorded.", "Could not record halftime.")
+    case Games.record_game_event(socket.assigns.game, :halftime) do
+      {:ok, event} ->
+        socket = track_event_recorded(socket, event)
+
+        events =
+          case socket.assigns.current_point do
+            %Point{} = point -> Games.events_for_point(point)
+            _ -> socket.assigns.events
+          end
+
+        {:noreply,
+         socket
+         |> assign(:events, events)
+         |> assign(:halftime_active?, true)
+         |> put_flash(:info, "Halftime recorded.")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not record halftime.")}
+    end
   end
 
   def handle_event("dismiss_halftime", _params, socket) do
@@ -1879,11 +1997,22 @@ defmodule UltistatsWeb.GameLive.Show do
   ## ---------------------------------------------------------------------
 
   # Push the just-recorded event onto the undo stack and clear the redo
-  # stack (a fresh action invalidates any prior redos).
+  # stack (a fresh action invalidates any prior redos). Refreshes the
+  # halftime/timeout-counter assigns so stoppages_bar reflects the new
+  # event state.
   defp track_event_recorded(socket, %Event{id: event_id}) do
     socket
     |> assign(:undo_stack, [event_id | socket.assigns.undo_stack])
     |> assign(:redo_stack, [])
+    |> assign_stoppage_state()
+  end
+
+  defp assign_stoppage_state(socket) do
+    game = socket.assigns.game
+
+    socket
+    |> assign(:halftime_recorded?, Games.halftime_recorded?(game))
+    |> assign(:timeouts_remaining, Games.timeouts_remaining(game))
   end
 
   defp apply_call_resolution(socket, _prompt, "resume") do
@@ -1984,27 +2113,6 @@ defmodule UltistatsWeb.GameLive.Show do
     |> Enum.find(&(&1.type == :catch and is_nil(&1.deleted_at)))
   end
 
-  defp record_game_event(socket, type, success_message, error_message) do
-    case Games.record_game_event(socket.assigns.game, type) do
-      {:ok, event} ->
-        socket = track_event_recorded(socket, event)
-
-        events =
-          case socket.assigns.current_point do
-            %Ultistats.Games.Point{} = point -> Games.events_for_point(point)
-            _ -> socket.assigns.events
-          end
-
-        {:noreply,
-         socket
-         |> assign(:events, events)
-         |> put_flash(:info, success_message)}
-
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, error_message)}
-    end
-  end
-
   # Re-syncs everything that derives from the events list after an undo
   # or redo: events, possession, current passer. Selection state
   # (receiver / defender pickers) is cleared so the user starts the
@@ -2020,6 +2128,7 @@ defmodule UltistatsWeb.GameLive.Show do
     |> assign(:possession, derive_possession(socket.assigns.game, point, events))
     |> assign(:current_passer_id, derive_current_passer(events))
     |> assign(:throwaway_prompt, nil)
+    |> assign_stoppage_state()
   end
 
   # Walks the (live) events for a point and returns the current passer

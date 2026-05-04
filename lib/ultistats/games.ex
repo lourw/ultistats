@@ -353,7 +353,13 @@ defmodule Ultistats.Games do
   sequence falls back to a per-game counter.
   """
   def record_game_event(%Game{} = game, type)
-      when type in [:timeout_ours, :timeout_theirs, :halftime] do
+      when type in [
+             :timeout_ours,
+             :timeout_theirs,
+             :timeout_resume,
+             :halftime,
+             :halftime_resume
+           ] do
     point = current_point(game)
 
     {point_id, sequence} =
@@ -437,6 +443,20 @@ defmodule Ultistats.Games do
   end
 
   @doc """
+  Returns game-level events (those recorded between points, with
+  `point_id IS NULL`) for `game`, filtered to live (non-deleted) rows
+  and ordered by `occurred_at`. These are the stoppages
+  (timeout/halftime/resume) that the timeline buckets between point
+  sections.
+  """
+  def list_game_level_events(%Game{id: game_id}) do
+    Event
+    |> where([e], e.game_id == ^game_id and is_nil(e.point_id) and is_nil(e.deleted_at))
+    |> order_by([e], asc: e.occurred_at)
+    |> Repo.all()
+  end
+
+  @doc """
   The next `sequence` value for a new event on `point`. Counts only
   live (non-deleted) events; soft-deleted events do not bump sequence.
   Returns `1` when the point has no events yet.
@@ -501,6 +521,55 @@ defmodule Ultistats.Games do
       |> Repo.aggregate(:count, :id)
 
     %{ours: ours, theirs: theirs}
+  end
+
+  @doc """
+  True when a `:halftime` event has already been recorded for this game.
+  Used to gate the halftime button (one halftime per game) and to switch
+  the timeout counter from first-half to second-half allotment.
+  """
+  def halftime_recorded?(%Game{id: game_id}) do
+    Event
+    |> where(
+      [e],
+      e.game_id == ^game_id and e.type == :halftime and is_nil(e.deleted_at)
+    )
+    |> Repo.exists?()
+  end
+
+  @doc """
+  Number of `:timeout_ours` events still available in the current half.
+  Reads `timeouts_per_half` from the resolved ruleset; if halftime has
+  been recorded, only timeouts that occurred after the halftime event
+  count against the second-half allotment. Never goes below zero.
+  """
+  def timeouts_remaining(%Game{id: game_id} = game) do
+    per_half = fetch_ruleset_field(game, :timeouts_per_half) || 0
+
+    halftime_at =
+      Event
+      |> where(
+        [e],
+        e.game_id == ^game_id and e.type == :halftime and is_nil(e.deleted_at)
+      )
+      |> select([e], e.occurred_at)
+      |> Repo.one()
+
+    used_query =
+      Event
+      |> where(
+        [e],
+        e.game_id == ^game_id and e.type == :timeout_ours and is_nil(e.deleted_at)
+      )
+
+    used_query =
+      case halftime_at do
+        nil -> used_query
+        ts -> where(used_query, [e], e.occurred_at > ^ts)
+      end
+
+    used = Repo.aggregate(used_query, :count, :id)
+    max(per_half - used, 0)
   end
 
   @doc """

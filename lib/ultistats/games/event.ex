@@ -33,7 +33,9 @@ defmodule Ultistats.Games.Event do
     foul: :neither,
     timeout_ours: :neither,
     timeout_theirs: :neither,
-    halftime: :neither
+    timeout_resume: :neither,
+    halftime: :neither,
+    halftime_resume: :neither
   }
 
   @types Map.keys(@shapes)

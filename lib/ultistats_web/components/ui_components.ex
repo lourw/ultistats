@@ -602,6 +602,41 @@ defmodule UltistatsWeb.UIComponents do
       color_classes: "bg-base-300 text-base-content"
     }
 
+  defp timeline_meta(:timeout_ours),
+    do: %{
+      label: "Timeout (us)",
+      icon: "hero-pause",
+      color_classes: "bg-warning text-warning-content"
+    }
+
+  defp timeline_meta(:timeout_theirs),
+    do: %{
+      label: "Timeout (them)",
+      icon: "hero-pause",
+      color_classes: "bg-warning text-warning-content"
+    }
+
+  defp timeline_meta(:timeout_resume),
+    do: %{
+      label: "Resume",
+      icon: "hero-play",
+      color_classes: "bg-base-300 text-base-content"
+    }
+
+  defp timeline_meta(:halftime),
+    do: %{
+      label: "Halftime",
+      icon: "hero-flag",
+      color_classes: "bg-warning text-warning-content"
+    }
+
+  defp timeline_meta(:halftime_resume),
+    do: %{
+      label: "Resume",
+      icon: "hero-play",
+      color_classes: "bg-base-300 text-base-content"
+    }
+
   defp timeline_meta(_),
     do: %{
       label: "Event",

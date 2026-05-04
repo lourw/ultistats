@@ -68,12 +68,17 @@ defmodule UltistatsWeb.GameLive.Timeline do
         <% else %>
           <ol class="space-y-6" aria-label="Game timeline">
             <li :for={section <- @timeline}>
-              <.point_section
-                section={section}
-                players_by_id={@players_by_id}
-                editing_event_id={@editing_event_id}
-                confirming_delete_id={@confirming_delete_id}
-              />
+              <%= case section.kind do %>
+                <% :point -> %>
+                  <.point_section
+                    section={section}
+                    players_by_id={@players_by_id}
+                    editing_event_id={@editing_event_id}
+                    confirming_delete_id={@confirming_delete_id}
+                  />
+                <% :between -> %>
+                  <.between_section section={section} players_by_id={@players_by_id} />
+              <% end %>
             </li>
           </ol>
         <% end %>
@@ -170,6 +175,30 @@ defmodule UltistatsWeb.GameLive.Timeline do
         </.link>
       </div>
     </div>
+    """
+  end
+
+  attr :section, :map, required: true
+  attr :players_by_id, :map, required: true
+
+  defp between_section(assigns) do
+    ~H"""
+    <section aria-label={@section.label}>
+      <header class="flex items-baseline justify-between gap-3 mb-2">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
+          {@section.label}
+        </h2>
+      </header>
+
+      <ul class="-mx-4 border-y border-base-200 divide-y divide-base-200">
+        <li :for={event <- @section.events}>
+          <.timeline_event
+            event={event_view(event, @players_by_id, nil)}
+            editable?={false}
+          />
+        </li>
+      </ul>
+    </section>
     """
   end
 
@@ -511,11 +540,11 @@ defmodule UltistatsWeb.GameLive.Timeline do
   # after every mutation.
   defp reload_timeline(socket) do
     game = Games.get_game_with_points!(socket.assigns.game.id)
+    stoppages = Games.list_game_level_events(game)
+    points = Enum.sort_by(game.points, & &1.sequence)
 
     timeline =
-      Enum.map(game.points, fn point ->
-        %{point: point, events: Games.events_for_point(point)}
-      end)
+      build_timeline(points, stoppages)
       |> sort_timeline(socket.assigns.sort_order)
 
     socket
@@ -524,7 +553,93 @@ defmodule UltistatsWeb.GameLive.Timeline do
     |> assign(:score, Games.score(game))
   end
 
-  # `:newest_first` flips both the point order and each point's event
+  # Interleave point sections with between-point stoppage sections,
+  # bucketing each `point_id IS NULL` event into the gap whose boundary
+  # contains its `occurred_at`.
+  defp build_timeline([], stoppages) do
+    case stoppages do
+      [] -> []
+      list -> [between_section_data(:pre_game, nil, nil, list)]
+    end
+  end
+
+  defp build_timeline(points, stoppages) do
+    buckets = bucket_stoppages(stoppages, points)
+    last_idx = length(points)
+
+    leading =
+      case Map.get(buckets, 0, []) do
+        [] -> []
+        evs -> [between_section_data(:pre_game, nil, hd(points), evs)]
+      end
+
+    interleaved =
+      points
+      |> Enum.with_index(1)
+      |> Enum.flat_map(fn {point, idx} ->
+        point_section = %{
+          kind: :point,
+          point: point,
+          events: Games.events_for_point(point)
+        }
+
+        case Map.get(buckets, idx, []) do
+          [] when idx == last_idx ->
+            [point_section]
+
+          [] ->
+            [point_section]
+
+          evs when idx == last_idx ->
+            [point_section, between_section_data(:post_game, point, nil, evs)]
+
+          evs ->
+            next_point = Enum.at(points, idx)
+            [point_section, between_section_data(:between, point, next_point, evs)]
+        end
+      end)
+
+    leading ++ interleaved
+  end
+
+  defp bucket_stoppages(stoppages, points) do
+    Enum.reduce(stoppages, %{}, fn ev, acc ->
+      idx = gap_index_for(ev.occurred_at, points)
+      Map.update(acc, idx, [ev], &(&1 ++ [ev]))
+    end)
+  end
+
+  # Returns the gap index `ev_at` falls into:
+  #   0                — before the first point
+  #   N (1..n-1)       — between point N and point N+1
+  #   length(points)   — after the last point
+  # Points whose `started_at` is nil are skipped (we keep walking).
+  defp gap_index_for(ev_at, points) do
+    points
+    |> Enum.with_index()
+    |> Enum.reduce_while(length(points), fn {point, idx}, _acc ->
+      cond do
+        is_nil(point.started_at) -> {:cont, length(points)}
+        DateTime.compare(ev_at, point.started_at) in [:lt, :eq] -> {:halt, idx}
+        true -> {:cont, length(points)}
+      end
+    end)
+  end
+
+  defp between_section_data(:pre_game, _prev, _next, events),
+    do: %{kind: :between, label: "Before game", events: events}
+
+  defp between_section_data(:post_game, prev, _next, events),
+    do: %{kind: :between, label: "After P#{prev.sequence}", events: events}
+
+  defp between_section_data(:between, prev, next, events),
+    do: %{
+      kind: :between,
+      label: "Between P#{prev.sequence} and P#{next.sequence}",
+      events: events
+    }
+
+  # `:newest_first` flips both the section order and each section's event
   # order so the most recent activity surfaces at the top. `:oldest_first`
   # is the natural sequence order from the DB.
   defp sort_timeline(timeline, :oldest_first), do: timeline
@@ -542,9 +657,12 @@ defmodule UltistatsWeb.GameLive.Timeline do
       type: event.type,
       player_label: event_player_label(event, players_by_id),
       timestamp: format_time(event.occurred_at),
-      point_label: "P#{point.sequence}"
+      point_label: point_label_for(point)
     }
   end
+
+  defp point_label_for(nil), do: nil
+  defp point_label_for(%{sequence: seq}), do: "P#{seq}"
 
   # Display label for an event row. Catches/goals/drops show passer →
   # receiver; passer-only events show passer; calls/opponent events show
