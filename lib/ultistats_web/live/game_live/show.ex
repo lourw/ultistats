@@ -1438,7 +1438,7 @@ defmodule UltistatsWeb.GameLive.Show do
   #     strip event entirely.
   defp call_resolution_actions(:strip),
     do: [
-      {"resume", "Uncontested"},
+      {"uncontested_strip", "Uncontested"},
       {"back_to_thrower", "Contested"},
       {"retract", "Retract"}
     ]
@@ -2254,6 +2254,18 @@ defmodule UltistatsWeb.GameLive.Show do
 
   defp apply_call_resolution(socket, _prompt, "resume") do
     {:noreply, assign(socket, :call_prompt, nil)}
+  end
+
+  # Uncontested strip — offense keeps the disc at the spot of the foul
+  # (USAU §17.I.4.b.2). We don't know which offensive player ends up
+  # with it (the stripped receiver, a teammate who picked it up off
+  # the ground, etc.), so clear the passer and let the tracker tap
+  # who has the disc next via the standard set_passer flow.
+  defp apply_call_resolution(socket, _prompt, "uncontested_strip") do
+    {:noreply,
+     socket
+     |> assign(:call_prompt, nil)
+     |> assign(:current_passer_id, nil)}
   end
 
   defp apply_call_resolution(socket, prompt, "cancel") do
