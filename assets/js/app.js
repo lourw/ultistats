@@ -86,10 +86,12 @@ const HideNav = {
     this._setHidden(true)
     this._scrollPositions = new WeakMap()
     this._touchStartY = null
+    this._scrolledDuringTouch = false
 
     this._onScroll = (e) => {
       const t = e.target
       if (!(t instanceof Element)) return
+      if (this._touchStartY !== null) this._scrolledDuringTouch = true
       const cur = t.scrollTop || 0
       const last = this._scrollPositions.get(t) ?? cur
       if (cur < last - 4) this._setHidden(false)
@@ -99,13 +101,21 @@ const HideNav = {
 
     this._onTouchStart = (e) => {
       this._touchStartY = e.touches[0]?.clientY ?? null
+      this._scrolledDuringTouch = false
     }
 
     this._onTouchEnd = (e) => {
       if (this._touchStartY === null) return
       const endY = e.changedTouches[0]?.clientY ?? this._touchStartY
       const dy = endY - this._touchStartY
+      const scrolled = this._scrolledDuringTouch
       this._touchStartY = null
+      this._scrolledDuringTouch = false
+      // If the touch produced an actual scroll, the scroll handler
+      // already managed nav state — don't fight it with the swipe
+      // gesture. The swipe is reserved for non-scrolling areas where
+      // the user can't otherwise reveal/hide the nav.
+      if (scrolled) return
       if (dy > 60) this._setHidden(false)
       else if (dy < -60) this._setHidden(true)
     }

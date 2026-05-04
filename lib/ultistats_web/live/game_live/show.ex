@@ -730,7 +730,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
     ~H"""
     <section
-      class="flex-1 min-h-0 px-4 py-2 space-y-2 overflow-y-auto overflow-x-hidden"
+      class="flex-1 min-h-0 px-4 py-2 space-y-2 overflow-y-auto overflow-x-hidden overscroll-contain"
       aria-label="Current point"
     >
       <%= if @possession == :ours do %>

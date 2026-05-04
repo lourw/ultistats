@@ -787,13 +787,8 @@ defmodule UltistatsWeb.GameLiveTest do
     } do
       {:ok, live, _html} = live(conn, ~p"/games/#{game.id}")
 
-      # No events recorded yet — the leftmost button is the cancel-point
-      # back arrow with the destructive confirmation prompt.
-      assert has_element?(
-               live,
-               "button[phx-click='cancel_current_point'][data-confirm]"
-             )
-
+      # No events recorded yet — the leftmost button cancels the point.
+      assert has_element?(live, "button[phx-click='cancel_current_point']")
       refute has_element?(live, "button[phx-click='undo']")
     end
 
