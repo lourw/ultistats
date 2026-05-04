@@ -283,12 +283,12 @@ defmodule UltistatsWeb.TeamLive.Show do
                         user <-
                           preset.users
                           |> Enum.filter(&(&1.gender_role == role))
-                          |> Enum.sort_by(&user_jersey_sort_key/1)
+                          |> Enum.sort_by(&user_jersey_sort_key(&1, @members_by_user_id))
                       }
                       class="min-h-9 flex items-center gap-2"
                     >
                       <span class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0">
-                        {user.jersey_number || "—"}
+                        {display_jersey(user, @members_by_user_id) || "—"}
                       </span>
                       <span class="font-medium text-sm truncate leading-tight">
                         {User.display_name(user)}
@@ -324,6 +324,7 @@ defmodule UltistatsWeb.TeamLive.Show do
     if Teams.user_member_of?(user, team) do
       members = Teams.list_team_members_for_team(team)
       {players, non_players} = Enum.split_with(members, & &1.is_player)
+      members_by_user_id = Map.new(members, &{&1.user_id, &1})
 
       {:ok,
        socket
@@ -335,6 +336,7 @@ defmodule UltistatsWeb.TeamLive.Show do
        |> assign(:split_by_position?, false)
        |> assign(:players, players)
        |> assign(:non_players, non_players)
+       |> assign(:members_by_user_id, members_by_user_id)
        |> assign(:line_presets, Teams.list_line_presets_for_team(team))}
     else
       {:ok,
@@ -526,12 +528,23 @@ defmodule UltistatsWeb.TeamLive.Show do
     end
   end
 
-  defp user_jersey_sort_key(%User{jersey_number: nil}), do: {1, ""}
+  defp display_jersey(%User{} = user, members_by_user_id) do
+    case Map.get(members_by_user_id, user.id) do
+      nil -> user.jersey_number
+      member -> Teams.resolved_jersey_number(member)
+    end
+  end
 
-  defp user_jersey_sort_key(%User{jersey_number: j}) do
-    case Integer.parse(j) do
-      {n, ""} -> {0, n}
-      _ -> {1, j}
+  defp user_jersey_sort_key(%User{} = user, members_by_user_id) do
+    case display_jersey(user, members_by_user_id) do
+      nil ->
+        {1, ""}
+
+      j when is_binary(j) ->
+        case Integer.parse(j) do
+          {n, ""} -> {0, n}
+          _ -> {1, j}
+        end
     end
   end
 
