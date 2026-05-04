@@ -267,6 +267,7 @@ defmodule UltistatsWeb.GameLive.Show do
             undo_stack={@undo_stack}
             redo_stack={@redo_stack}
             last_ended={@last_ended}
+            transient_passer?={transient_passer?(@current_passer_id, @events)}
           />
         </div>
 
@@ -337,6 +338,7 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :undo_stack, :list, required: true
   attr :redo_stack, :list, required: true
   attr :last_ended, :any, required: true
+  attr :transient_passer?, :boolean, required: true
 
   defp compact_header(assigns) do
     ~H"""
@@ -375,14 +377,24 @@ defmodule UltistatsWeb.GameLive.Show do
         <button
           :if={@current_point}
           type="button"
-          phx-click={if @undo_stack == [], do: "cancel_current_point", else: "undo"}
+          phx-click={
+            cond do
+              @transient_passer? -> "undo"
+              @undo_stack == [] -> "cancel_current_point"
+              true -> "undo"
+            end
+          }
           data-confirm={
-            if @undo_stack == [],
+            if not @transient_passer? and @undo_stack == [],
               do: "You will lose all progress for this point if you go back.",
               else: nil
           }
           aria-label={
-            if @undo_stack == [], do: "Back to lineup (cancel point)", else: "Undo last event"
+            cond do
+              @transient_passer? -> "Clear current passer"
+              @undo_stack == [] -> "Back to lineup (cancel point)"
+              true -> "Undo last event"
+            end
           }
           class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
@@ -2107,26 +2119,20 @@ defmodule UltistatsWeb.GameLive.Show do
   end
 
   def handle_event("undo", _params, socket) do
-    case socket.assigns.undo_stack do
-      [] ->
+    cond do
+      transient_passer?(socket.assigns.current_passer_id, socket.assigns.events) ->
+        prior = socket.assigns.current_passer_id
+
+        {:noreply,
+         socket
+         |> assign(:current_passer_id, nil)
+         |> assign(:redo_stack, [{:passer, prior} | socket.assigns.redo_stack])}
+
+      socket.assigns.undo_stack == [] ->
         {:noreply, socket}
 
-      [event_id | rest_undo] ->
-        with %Event{} = event <- Enum.find(socket.assigns.events, &(&1.id == event_id)),
-             {:ok, _} <- Games.soft_delete_event(event) do
-          events = Enum.reject(socket.assigns.events, &(&1.id == event_id))
-
-          {:noreply,
-           after_history_change(
-             socket,
-             rest_undo,
-             [event_id | socket.assigns.redo_stack],
-             events,
-             event.type
-           )}
-        else
-          _ -> {:noreply, put_flash(socket, :error, "Could not undo.")}
-        end
+      true ->
+        do_undo_event(socket)
     end
   end
 
@@ -2171,7 +2177,13 @@ defmodule UltistatsWeb.GameLive.Show do
       [] ->
         {:noreply, socket}
 
-      [event_id | rest_redo] ->
+      [{:passer, token} | rest_redo] ->
+        {:noreply,
+         socket
+         |> assign(:current_passer_id, token)
+         |> assign(:redo_stack, rest_redo)}
+
+      [{:event, event_id} | rest_redo] ->
         with %Event{} = event <- Repo.get(Event, event_id),
              {:ok, restored} <- Games.restore_event(event) do
           events =
@@ -2195,6 +2207,37 @@ defmodule UltistatsWeb.GameLive.Show do
   ## ---------------------------------------------------------------------
   ## helpers — undo / redo bookkeeping
   ## ---------------------------------------------------------------------
+
+  defp do_undo_event(socket) do
+    [event_id | rest_undo] = socket.assigns.undo_stack
+
+    with %Event{} = event <- Enum.find(socket.assigns.events, &(&1.id == event_id)),
+         {:ok, _} <- Games.soft_delete_event(event) do
+      events = Enum.reject(socket.assigns.events, &(&1.id == event_id))
+
+      {:noreply,
+       after_history_change(
+         socket,
+         rest_undo,
+         [{:event, event_id} | socket.assigns.redo_stack],
+         events,
+         event.type
+       )}
+    else
+      _ -> {:noreply, put_flash(socket, :error, "Could not undo.")}
+    end
+  end
+
+  # True when there's a passer in memory that wasn't promoted by a
+  # recorded `:catch` event — i.e. the user manually tapped a player
+  # via `set_passer` after a possession-flip (turnover, block, pull
+  # received). Undo should clear this transient selection rather than
+  # popping past the previous possession event.
+  defp transient_passer?(nil, _events), do: false
+
+  defp transient_passer?(_current_passer_id, events) do
+    derive_current_passer(events) == nil
+  end
 
   # Push the just-recorded event onto the undo stack and clear the redo
   # stack (a fresh action invalidates any prior redos). Refreshes the
