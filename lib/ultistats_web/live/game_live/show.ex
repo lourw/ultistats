@@ -865,10 +865,13 @@ defmodule UltistatsWeb.GameLive.Show do
   defp action_player_row(assigns) do
     ~H"""
     <div class={[
-      "min-h-9 flex items-center gap-2 px-4 py-1",
+      "relative min-h-9 flex items-center gap-2 px-4 py-1",
       @unknown? && "italic",
       @is_current_passer? && "bg-success/15"
     ]}>
+      <%!-- Full-row tap target for set_passer. Sits behind the
+           jersey/name/action buttons so taps on those still hit the
+           intended controls; bare row area falls through here. --%>
       <button
         type="button"
         phx-click="set_passer"
@@ -876,29 +879,32 @@ defmodule UltistatsWeb.GameLive.Show do
         disabled={@disconnected? or @passer_set?}
         aria-label={"Set #{@name} as current passer"}
         class={[
-          "flex items-center gap-2 flex-1 min-w-0 text-left rounded-md",
-          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+          "absolute inset-0 rounded-md",
+          "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary",
           "disabled:cursor-default"
         ]}
       >
-        <span
-          :if={@jersey}
-          class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0"
-          aria-hidden="true"
-        >
-          {@jersey}
-        </span>
-        <span
-          :if={@unknown?}
-          class="inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-xs shrink-0"
-          aria-hidden="true"
-        >
-          ?
-        </span>
-        <span class="font-medium text-sm truncate flex-1 leading-tight">{@name}</span>
       </button>
 
-      <div class="flex items-center gap-1 shrink-0">
+      <span
+        :if={@jersey}
+        class="relative tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0 pointer-events-none"
+        aria-hidden="true"
+      >
+        {@jersey}
+      </span>
+      <span
+        :if={@unknown?}
+        class="relative inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-xs shrink-0 pointer-events-none"
+        aria-hidden="true"
+      >
+        ?
+      </span>
+      <span class="relative font-medium text-sm truncate flex-1 leading-tight pointer-events-none">
+        {@name}
+      </span>
+
+      <div class="relative flex items-center gap-1 shrink-0">
         <button
           type="button"
           phx-click="record_throw_for_player"
