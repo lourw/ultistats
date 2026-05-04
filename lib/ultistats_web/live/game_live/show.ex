@@ -863,7 +863,8 @@ defmodule UltistatsWeb.GameLive.Show do
     ~H"""
     <div class={[
       "min-h-9 flex items-center gap-2 px-4 py-1",
-      @unknown? && "italic"
+      @unknown? && "italic",
+      @is_current_passer? && "bg-success/15"
     ]}>
       <button
         type="button"
@@ -872,10 +873,9 @@ defmodule UltistatsWeb.GameLive.Show do
         disabled={@disconnected? or @passer_set?}
         aria-label={"Set #{@name} as current passer"}
         class={[
-          "flex items-center gap-2 flex-1 min-w-0 text-left rounded-md py-1 -my-1",
+          "flex items-center gap-2 flex-1 min-w-0 text-left rounded-md",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-          "disabled:cursor-default",
-          @is_current_passer? && "bg-success/15 pl-2 pr-3 -ml-2 mr-1"
+          "disabled:cursor-default"
         ]}
       >
         <span
@@ -895,7 +895,7 @@ defmodule UltistatsWeb.GameLive.Show do
         <span class="font-medium text-sm truncate flex-1 leading-tight">{@name}</span>
       </button>
 
-      <div class="flex items-center gap-0.5 shrink-0">
+      <div class="flex items-center gap-1 shrink-0">
         <button
           type="button"
           phx-click="record_throw_for_player"
@@ -1325,7 +1325,7 @@ defmodule UltistatsWeb.GameLive.Show do
         ?
       </span>
       <span class="font-medium text-sm truncate flex-1 leading-tight">{@name}</span>
-      <div class="flex items-center gap-0.5 shrink-0">
+      <div class="flex items-center gap-1 shrink-0">
         <button
           type="button"
           phx-click="record_defense_for_player"
