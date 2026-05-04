@@ -219,7 +219,10 @@ defmodule UltistatsWeb.GameLive.Show do
             current_point={@current_point}
             possession={@possession}
             banner_state={banner_state(@possession, @events)}
-            halftime?={Games.halftime?(@game) and not @halftime_dismissed? and not @halftime_active?}
+            halftime?={
+              Games.halftime?(@game) and not @halftime_recorded? and
+                not @halftime_dismissed? and not @halftime_active?
+            }
             halftime_recorded?={@halftime_recorded?}
             undo_stack={@undo_stack}
             redo_stack={@redo_stack}
