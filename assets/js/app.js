@@ -75,14 +75,41 @@ const ScrollAwareNav = {
 // state lives on <html> so LiveView's DOM patches never reset it
 // (LV stays inside <body>). The nav's transform is driven by the
 // `html.nav-hidden #app-nav` rule in app.css.
+//
+// A touch gesture toggles visibility: swipe down to reveal, swipe up
+// to re-hide. Gives the user a way to summon nav links on a
+// fixed-height screen that doesn't have window scroll.
 const HideNav = {
   mounted() {
-    document.documentElement.classList.add("nav-hidden")
-    document.documentElement.style.setProperty("--nav-offset", "0px")
+    this._setHidden(true)
+    this._touchStartY = null
+
+    this._onTouchStart = (e) => {
+      this._touchStartY = e.touches[0]?.clientY ?? null
+    }
+    this._onTouchEnd = (e) => {
+      if (this._touchStartY === null) return
+      const endY = e.changedTouches[0]?.clientY ?? this._touchStartY
+      const dy = endY - this._touchStartY
+      this._touchStartY = null
+      if (dy > 60) this._setHidden(false)
+      else if (dy < -60) this._setHidden(true)
+    }
+
+    this.el.addEventListener("touchstart", this._onTouchStart, {passive: true})
+    this.el.addEventListener("touchend", this._onTouchEnd, {passive: true})
   },
   destroyed() {
-    document.documentElement.classList.remove("nav-hidden")
-    document.documentElement.style.setProperty("--nav-offset", NAV_HEIGHT)
+    this._setHidden(false)
+    this.el.removeEventListener("touchstart", this._onTouchStart)
+    this.el.removeEventListener("touchend", this._onTouchEnd)
+  },
+  _setHidden(hidden) {
+    document.documentElement.classList.toggle("nav-hidden", hidden)
+    document.documentElement.style.setProperty(
+      "--nav-offset",
+      hidden ? "0px" : NAV_HEIGHT,
+    )
   },
 }
 
