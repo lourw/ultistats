@@ -62,7 +62,6 @@ const ScrollAwareNav = {
   _setHidden(hidden) {
     if (this._hidden === hidden) return
     this._hidden = hidden
-    this.el.classList.toggle("-translate-y-full", hidden)
     document.documentElement.style.setProperty(
       "--nav-offset",
       hidden ? "0px" : NAV_HEIGHT,
@@ -101,7 +100,6 @@ const HideNav = {
     this.el.removeEventListener("scroll", this._onScroll, true)
   },
   _setHidden(hidden) {
-    document.documentElement.classList.toggle("nav-hidden", hidden)
     document.documentElement.style.setProperty(
       "--nav-offset",
       hidden ? "0px" : NAV_HEIGHT,

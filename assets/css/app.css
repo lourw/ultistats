@@ -54,10 +54,12 @@ button[phx-submit]:active, [type="submit"]:active {
   transform: scale(0.96);
 }
 
-/* Driven by the HideNav hook so LiveView DOM patches don't reset the
-   navbar's transform when something else on the page re-renders. */
-html.nav-hidden #app-nav {
-  transform: translateY(-100%);
+/* Nav visibility is driven entirely off the --nav-offset variable
+   (set by ScrollAwareNav + HideNav). When offset == nav height, nav
+   sits at top: 0; when offset == 0, it slides up by its own height.
+   Avoids race conditions with LiveView DOM patches stomping a class. */
+#app-nav {
+  transform: translate3d(0, calc(var(--nav-offset, 3.5rem) - 3.5rem), 0);
 }
 
 /* iOS safe-area utilities (UI_DESIGN.md §Layout). Tailwind v4 doesn't
