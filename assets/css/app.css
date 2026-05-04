@@ -32,6 +32,28 @@
 /* LiveView wrapper divs are layout-transparent */
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
+/* Global tap feedback: every phx-click control gets an instant press
+   (active:) and a "processing" state (phx-click-loading) so taps in
+   the in-game tracker never feel abrupt or unacknowledged on mobile.
+   Per-button class overrides still win — these are baseline. */
+button[phx-click], [role="button"][phx-click], a[phx-click],
+button[phx-submit], [type="submit"] {
+  transition: transform 80ms ease-out, opacity 120ms ease-out, background-color 120ms ease-out;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+button[phx-click]:active, [role="button"][phx-click]:active, a[phx-click]:active,
+button[phx-submit]:active, [type="submit"]:active {
+  transform: scale(0.97);
+}
+
+.phx-click-loading,
+.phx-submit-loading {
+  opacity: 0.65;
+  transform: scale(0.97);
+}
+
 /* iOS safe-area utilities (UI_DESIGN.md §Layout). Tailwind v4 doesn't
    ship these. */
 @utility pt-safe { padding-top: env(safe-area-inset-top); }
