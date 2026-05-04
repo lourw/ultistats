@@ -125,7 +125,7 @@ defmodule UltistatsWeb.GameLive.Start do
             field={@form[:ruleset_id]}
             type="select"
             label="Ruleset"
-            prompt="USAU standard (no template)"
+            prompt="Custom (no template)"
             options={ruleset_options(@team_rulesets)}
           />
 

@@ -37,7 +37,7 @@ defmodule UltistatsWeb.GameLiveTest do
       assert html =~ "Start a game"
       assert has_element?(live, "#game-form")
       assert html =~ ~r/<option[^>]*selected[^>]*value="ours">We pull \(start on defense\)</
-      assert html =~ "USAU standard (no template)"
+      assert html =~ "Custom (no template)"
     end
 
     test "pre-selects the team when ?team_id=... is provided", %{conn: conn, user: user} do
