@@ -1956,10 +1956,10 @@ defmodule UltistatsWeb.GameLive.Show do
   end
 
   def handle_event("record_timeout", _params, socket) do
-    {type, label} =
+    type =
       case socket.assigns.possession do
-        :theirs -> {:timeout_theirs, "Timeout (them) recorded."}
-        _ -> {:timeout_ours, "Timeout (us) recorded."}
+        :theirs -> :timeout_theirs
+        _ -> :timeout_ours
       end
 
     case Games.record_game_event(socket.assigns.game, type) do
@@ -1976,8 +1976,7 @@ defmodule UltistatsWeb.GameLive.Show do
         {:noreply,
          socket
          |> assign(:events, events)
-         |> assign(:timeout_active?, true)
-         |> put_flash(:info, label)}
+         |> assign(:timeout_active?, true)}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Could not record timeout.")}
