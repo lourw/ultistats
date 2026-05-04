@@ -94,7 +94,6 @@ defmodule UltistatsWeb.GameLive.Show do
         |> assign(:undo_stack, [])
         |> assign(:redo_stack, [])
         |> assign(:last_ended, nil)
-        |> assign(:throwaway_prompt, nil)
         |> assign(:halftime_dismissed?, false)
         # Disconnect-driven button-disable is wired via JS hook in a later
         # task; assigns stays at false until the hook lands. The flash
@@ -276,7 +275,6 @@ defmodule UltistatsWeb.GameLive.Show do
               events={@events}
               possession={@possession}
               current_passer_id={@current_passer_id}
-              throwaway_prompt={@throwaway_prompt}
               disconnected?={@disconnected?}
               call_prompt={@call_prompt}
               timeouts_remaining={@timeouts_remaining}
@@ -767,7 +765,6 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :possession, :atom, required: true
   attr :current_passer_id, :any, required: true
   attr :disconnected?, :boolean, required: true
-  attr :throwaway_prompt, :any, required: true
   attr :call_prompt, :any, required: true
   attr :timeouts_remaining, :integer, required: true
 
@@ -792,7 +789,6 @@ defmodule UltistatsWeb.GameLive.Show do
           player_lookup={@player_lookup}
           current_passer_id={@current_passer_id}
           transient_passer?={transient_passer?(@current_passer_id, @events)}
-          throwaway_prompt={@throwaway_prompt}
           disconnected?={@disconnected?}
         />
       <% else %>
@@ -816,7 +812,6 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :player_lookup, :map, required: true
   attr :current_passer_id, :any, required: true
   attr :transient_passer?, :boolean, required: true
-  attr :throwaway_prompt, :any, required: true
   attr :disconnected?, :boolean, required: true
 
   defp our_possession_view(assigns) do
@@ -832,15 +827,7 @@ defmodule UltistatsWeb.GameLive.Show do
       <.current_passer_card
         current_passer_id={@current_passer_id}
         player_lookup={@player_lookup}
-        pending_throwaway?={not is_nil(@throwaway_prompt)}
         transient?={@transient_passer?}
-      />
-
-      <.throwaway_prompt_strip
-        :if={@throwaway_prompt}
-        prompt={@throwaway_prompt}
-        current_passer_id={@current_passer_id}
-        player_lookup={@player_lookup}
       />
 
       <.action_legend variant={:ours} />
@@ -852,26 +839,46 @@ defmodule UltistatsWeb.GameLive.Show do
         disconnected?={@disconnected?}
       />
 
-      <button
-        type="button"
-        phx-click="record_throw_outcome"
-        phx-value-type="stall"
-        disabled={@disconnected? or not @passer_set?}
-        aria-label="Record a stall"
-        class={[
-          "min-h-9 px-3 py-1 rounded-md border border-base-300",
-          "inline-flex items-center justify-center gap-1.5",
-          "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
-          "transition-colors motion-reduce:transition-none",
-          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-          "disabled:opacity-50 disabled:cursor-not-allowed"
-        ]}
-      >
-        <.icon name="hero-clock" class="size-4" />
-        <span>Stall</span>
-      </button>
+      <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60 pt-1">
+        Turnover
+      </h3>
+      <div class="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          phx-click="record_throw_for_player"
+          phx-value-type="throwaway"
+          disabled={@disconnected? or not @passer_set?}
+          aria-label="Record a throwaway by the current passer"
+          class={passer_outcome_classes()}
+        >
+          <.icon name="hero-arrow-path-rounded-square" class="size-4" />
+          <span>Throwaway</span>
+        </button>
+        <button
+          type="button"
+          phx-click="record_throw_outcome"
+          phx-value-type="stall"
+          disabled={@disconnected? or not @passer_set?}
+          aria-label="Record a stall"
+          class={passer_outcome_classes()}
+        >
+          <.icon name="hero-clock" class="size-4" />
+          <span>Stall</span>
+        </button>
+      </div>
     </div>
     """
+  end
+
+  defp passer_outcome_classes do
+    [
+      "min-h-9 px-3 py-1 rounded-md border border-error/30",
+      "inline-flex items-center justify-center gap-1.5",
+      "text-sm font-semibold bg-error/10 text-error active:bg-error/20",
+      "transition-colors motion-reduce:transition-none",
+      "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+      "disabled:opacity-50 disabled:cursor-not-allowed"
+    ]
   end
 
   attr :on_field, :list, required: true
@@ -1003,17 +1010,6 @@ defmodule UltistatsWeb.GameLive.Show do
         </button>
         <button
           type="button"
-          phx-click="prompt_throwaway"
-          phx-value-player-id={action_row_phx_value(@player_id)}
-          disabled={@disconnected? or not @passer_set?}
-          aria-label={"Disambiguate turnover involving #{@name}"}
-          class={action_row_button_classes(:throwaway)}
-        >
-          <.icon name="hero-arrow-path-rounded-square" class="size-3.5" />
-          <span class="text-[10px] font-bold leading-none">T</span>
-        </button>
-        <button
-          type="button"
           phx-click="record_throw_for_player"
           phx-value-player-id={action_row_phx_value(@player_id)}
           phx-value-type="goal"
@@ -1030,62 +1026,6 @@ defmodule UltistatsWeb.GameLive.Show do
       </div>
     </div>
     """
-  end
-
-  attr :prompt, :map, required: true
-  attr :current_passer_id, :any, required: true
-  attr :player_lookup, :map, required: true
-
-  defp throwaway_prompt_strip(assigns) do
-    ~H"""
-    <div class="space-y-1.5" role="dialog" aria-label="Disambiguate turnover">
-      <div class="flex items-center gap-2 text-xs font-medium text-base-content/70">
-        <span class="flex-1">What happened?</span>
-        <button
-          type="button"
-          phx-click="cancel_throwaway"
-          aria-label="Cancel"
-          class="min-h-7 min-w-7 inline-flex items-center justify-center rounded-md text-base-content/60 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          <.icon name="hero-x-mark" class="size-4" />
-        </button>
-      </div>
-      <div class="grid grid-cols-3 gap-1.5">
-        <button
-          type="button"
-          phx-click="record_throw_for_player"
-          phx-value-type="throwaway"
-          class={turnover_action_classes()}
-        >
-          Throwaway
-        </button>
-        <button
-          type="button"
-          phx-click="record_throw_for_player"
-          phx-value-type="throwaway"
-          class={turnover_action_classes()}
-        >
-          Blocked
-        </button>
-        <button
-          type="button"
-          phx-click="record_throw_for_player"
-          phx-value-type="throwaway"
-          class={turnover_action_classes()}
-        >
-          Intercepted
-        </button>
-      </div>
-    </div>
-    """
-  end
-
-  defp turnover_action_classes do
-    [
-      "min-h-9 px-2 inline-flex items-center justify-center rounded-md text-xs font-semibold",
-      "border border-error/60 bg-error text-error-content active:bg-error/80",
-      "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-    ]
   end
 
   attr :variant, :atom, required: true, values: [:ours, :theirs]
@@ -1114,12 +1054,6 @@ defmodule UltistatsWeb.GameLive.Show do
     [
       %{kind: :catch, icon: "hero-check", letter: "C", label: "Catch"},
       %{kind: :drop, icon: "hero-arrow-down-tray", letter: "D", label: "Drop"},
-      %{
-        kind: :throwaway,
-        icon: "hero-arrow-path-rounded-square",
-        letter: "T",
-        label: "Turnover"
-      },
       %{kind: :goal, icon: "hero-trophy", letter: "G", label: "Goal"}
     ]
   end
@@ -1143,21 +1077,13 @@ defmodule UltistatsWeb.GameLive.Show do
     ]
   end
 
-  defp action_row_button_color(:catch), do: "bg-success/10 text-success active:bg-success/20"
+  defp action_row_button_color(:catch), do: "bg-warning/10 text-warning active:bg-warning/20"
   defp action_row_button_color(:drop), do: "bg-error/10 text-error active:bg-error/20"
-
-  # Turnover sits between the /10 alpha of its peers and the solid fill
-  # tested earlier — bright enough to read as clearly enabled when the
-  # C/D/G siblings fade to disabled-30%, but not so dark that it reads
-  # as the dominant action on the row.
-  defp action_row_button_color(:throwaway),
-    do: "bg-warning/30 text-warning active:bg-warning/40"
-
-  defp action_row_button_color(:goal), do: "bg-primary/10 text-primary active:bg-primary/20"
+  defp action_row_button_color(:throwaway), do: "bg-error/10 text-error active:bg-error/20"
+  defp action_row_button_color(:goal), do: "bg-success/10 text-success active:bg-success/20"
 
   attr :current_passer_id, :any, required: true
   attr :player_lookup, :map, required: true
-  attr :pending_throwaway?, :boolean, default: false
   attr :transient?, :boolean, default: false
 
   defp current_passer_card(assigns) do
@@ -1175,36 +1101,18 @@ defmodule UltistatsWeb.GameLive.Show do
 
     <div
       :if={not is_nil(@current_passer_id)}
-      class={[
-        "rounded-md border px-3 py-1.5 flex items-center gap-2",
-        if(@pending_throwaway?,
-          do: "border-warning/40 bg-warning/5",
-          else: "border-success/40 bg-success/5"
-        )
-      ]}
+      class="rounded-md border border-success/40 bg-success/5 px-3 py-1.5 flex items-center gap-2"
       aria-label={"Current passer: #{@label}"}
       data-current-passer={passer_data_id(@current_passer_id)}
     >
       <span
-        class={[
-          "tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full text-[11px] shrink-0",
-          if(@pending_throwaway?,
-            do: "bg-warning text-warning-content",
-            else: "bg-success text-success-content"
-          )
-        ]}
+        class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-success text-success-content text-[11px] shrink-0"
         aria-hidden="true"
       >
         {passer_card_number(@current_passer_id, @player_lookup)}
       </span>
       <span class="font-medium text-sm truncate flex-1 leading-tight">{@label}</span>
-      <span class="text-[11px] text-base-content/60 leading-tight shrink-0">
-        <%= if @pending_throwaway? do %>
-          threw it away
-        <% else %>
-          has the disc
-        <% end %>
-      </span>
+      <span class="text-[11px] text-base-content/60 leading-tight shrink-0">has the disc</span>
       <button
         :if={@transient?}
         type="button"
@@ -1803,7 +1711,6 @@ defmodule UltistatsWeb.GameLive.Show do
          |> assign(:events, [])
          |> assign(:possession, Games.starting_possession(socket.assigns.game, point))
          |> assign(:current_passer_id, nil)
-         |> assign(:throwaway_prompt, nil)
          |> assign(:undo_stack, [])
          |> assign(:redo_stack, [])
          |> assign(:last_ended, nil)
@@ -1854,7 +1761,6 @@ defmodule UltistatsWeb.GameLive.Show do
          |> assign(:possession, nil)
          |> assign(:selected_user_ids, previous_user_ids)
          |> assign(:current_passer_id, nil)
-         |> assign(:throwaway_prompt, nil)
          |> assign(:undo_stack, [])
          |> assign(:redo_stack, [])
          |> assign(:last_ended, nil)
@@ -1897,7 +1803,6 @@ defmodule UltistatsWeb.GameLive.Show do
           socket
           |> assign(:events, events)
           |> track_event_recorded(event)
-          |> assign(:throwaway_prompt, nil)
 
         apply_outcome_transition(socket, type, point, events)
 
@@ -1946,16 +1851,6 @@ defmodule UltistatsWeb.GameLive.Show do
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Could not record stall.")}
     end
-  end
-
-  # Open the throwaway disambiguation strip for `player-id` (the row
-  # whose Throwaway icon was tapped).
-  def handle_event("prompt_throwaway", %{"player-id" => raw}, socket) do
-    {:noreply, assign(socket, :throwaway_prompt, %{player_id: parse_player_token(raw)})}
-  end
-
-  def handle_event("cancel_throwaway", _params, socket) do
-    {:noreply, assign(socket, :throwaway_prompt, nil)}
   end
 
   # Inline defender-row capture. `kind` is `"block"` (defender = passer)
@@ -2448,7 +2343,6 @@ defmodule UltistatsWeb.GameLive.Show do
     |> assign(:events, events)
     |> assign(:possession, derive_possession(socket.assigns.game, point, events))
     |> assign(:current_passer_id, derive_current_passer(events))
-    |> assign(:throwaway_prompt, nil)
     |> maybe_assign_stoppage_state(event_type)
   end
 
@@ -2526,7 +2420,6 @@ defmodule UltistatsWeb.GameLive.Show do
       |> assign(:events, [])
       |> assign(:possession, nil)
       |> assign(:current_passer_id, nil)
-      |> assign(:throwaway_prompt, nil)
       |> assign(:undo_stack, [])
       |> assign(:redo_stack, [])
       |> assign(:selected_user_ids, MapSet.new())
