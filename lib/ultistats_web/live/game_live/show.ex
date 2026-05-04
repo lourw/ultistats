@@ -1039,11 +1039,12 @@ defmodule UltistatsWeb.GameLive.Show do
   defp action_row_button_color(:catch), do: "bg-success/10 text-success active:bg-success/20"
   defp action_row_button_color(:drop), do: "bg-error/10 text-error active:bg-error/20"
 
-  # Turnover is rendered solid (not /10 alpha) so when the passer is set
-  # and the C/D/G buttons fall back to the disabled-30%-opacity state,
-  # T still reads clearly as enabled and tappable.
+  # Turnover sits between the /10 alpha of its peers and the solid fill
+  # tested earlier — bright enough to read as clearly enabled when the
+  # C/D/G siblings fade to disabled-30%, but not so dark that it reads
+  # as the dominant action on the row.
   defp action_row_button_color(:throwaway),
-    do: "bg-warning text-warning-content active:bg-warning/90"
+    do: "bg-warning/30 text-warning active:bg-warning/40"
 
   defp action_row_button_color(:goal), do: "bg-primary/10 text-primary active:bg-primary/20"
 
