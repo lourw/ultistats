@@ -9,27 +9,36 @@ defmodule UltistatsWeb.RulesetLive.Show do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <.header>
-        Ruleset {humanized_name(@ruleset)}
+        <span class="inline-flex items-center gap-3">
+          <.link
+            navigate={~p"/games"}
+            aria-label="Back to games"
+            class="min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <.icon name="hero-arrow-left" class="size-5" />
+          </.link>
+          <span class="truncate">{humanized_name(@ruleset)}</span>
+          <.link
+            :if={@is_admin?}
+            navigate={~p"/rulesets/#{@ruleset}/edit?return_to=show"}
+            aria-label="Edit ruleset"
+            class="shrink-0 min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <.icon name="hero-pencil-square" class="size-4" />
+          </.link>
+        </span>
         <:subtitle>{kind_subtitle(@ruleset)}</:subtitle>
         <:actions>
-          <.button navigate={~p"/games"} aria-label="Back to games">
-            <.icon name="hero-arrow-left" />
-          </.button>
-          <.button
+          <button
             :if={@is_admin?}
-            variant="primary"
-            navigate={~p"/rulesets/#{@ruleset}/edit?return_to=show"}
-          >
-            <.icon name="hero-pencil-square" /> Edit ruleset
-          </.button>
-          <.button
-            :if={@is_admin?}
+            type="button"
             phx-click={JS.push("delete_or_archive")}
             data-confirm={"Delete the \"#{humanized_name(@ruleset)}\" ruleset?"}
-            class="btn-error"
+            aria-label="Delete ruleset"
+            class="shrink-0 min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-error hover:bg-error/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-error"
           >
-            <.icon name="hero-trash" /> Delete
-          </.button>
+            <.icon name="hero-trash" class="size-5" />
+          </button>
         </:actions>
       </.header>
 
@@ -99,7 +108,7 @@ defmodule UltistatsWeb.RulesetLive.Show do
     end
   end
 
-  defp humanized_name(%Ruleset{name: nil, kind: :game_instance}), do: "(per-game instance)"
+  defp humanized_name(%Ruleset{name: nil, kind: :game_instance}), do: "Game ruleset"
   defp humanized_name(%Ruleset{name: name}) when is_binary(name), do: name
   defp humanized_name(_), do: "Ruleset"
 

@@ -144,7 +144,7 @@ defmodule UltistatsWeb.RulesetLiveTest do
 
       assert {:ok, _games_live, _html} =
                live
-               |> element("button", "Delete")
+               |> element("button[aria-label='Delete ruleset']")
                |> render_click()
                |> follow_redirect(conn, ~p"/games")
 
@@ -164,7 +164,7 @@ defmodule UltistatsWeb.RulesetLiveTest do
 
       assert {:ok, _games_live, html} =
                live
-               |> element("button", "Delete")
+               |> element("button[aria-label='Delete ruleset']")
                |> render_click()
                |> follow_redirect(conn, ~p"/games")
 
