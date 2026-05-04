@@ -3,9 +3,7 @@
     <.header>
       Confirm your details
       <:subtitle>
-        Joining <span class="font-semibold">{@team.name}</span>
-        as <span class="font-semibold">{User.display_name(@membership.user)}</span>.
-        Update anything below before claiming.
+        Joining <span class="font-semibold">{@team.name}</span>. Update anything below before claiming this player.
       </:subtitle>
     </.header>
 
@@ -15,6 +13,20 @@
       method="post"
       class="flex flex-col gap-3"
     >
+      <div class="rounded-lg border-2 border-base-300 bg-base-100 px-4 py-3">
+        <p class="text-xs uppercase tracking-wide text-base-content/60">Claiming</p>
+        <p class="text-base font-semibold text-base-content">
+          {User.display_name(@membership.user)}
+        </p>
+        <p class="mt-1 text-sm text-base-content/70 tabular-nums">
+          for {@team.name}
+          <span class="text-base-content/40">·</span>
+          {@team_stats.total_players} {pluralize_players(@team_stats.total_players)}
+          <span class="text-base-content/40">·</span>
+          {@team_stats.male_matching}M / {@team_stats.female_matching}F
+        </p>
+      </div>
+
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div class="space-y-1">
           <label for="member_first_name" class="block text-sm font-medium text-base-content">
@@ -68,9 +80,7 @@
         <.button type="submit" variant="primary" phx-disable-with="Claiming...">
           Confirm and join
         </.button>
-        <.link href={~p"/join/#{@token}"} class="text-sm text-base-content/70 underline">
-          Cancel — back to picker
-        </.link>
+        <.button href={~p"/join/#{@token}"}>Cancel</.button>
       </footer>
     </.form>
   </div>

@@ -29,7 +29,7 @@ defmodule UltistatsWeb.TeamJoinController do
 
         case current_user(conn) do
           nil ->
-            render(conn, :show, team: team, token: token)
+            render(conn, :show, team: team, token: token, team_stats: Teams.team_stats(team))
 
           %User{} = current_user ->
             if Teams.user_member_of?(current_user, team) do
@@ -161,7 +161,8 @@ defmodule UltistatsWeb.TeamJoinController do
             token: token,
             current_user: current_user,
             membership: membership,
-            form: form
+            form: form,
+            team_stats: Teams.team_stats(team)
           )
 
         {:error, {:membership, %Ecto.Changeset{} = changeset}} ->
@@ -172,7 +173,8 @@ defmodule UltistatsWeb.TeamJoinController do
             token: token,
             current_user: current_user,
             membership: membership,
-            form: form
+            form: form,
+            team_stats: Teams.team_stats(team)
           )
 
         {:error, :same_user} ->
@@ -211,6 +213,7 @@ defmodule UltistatsWeb.TeamJoinController do
          %TeamMembership{} = membership,
          member_params
        ) do
+    team_stats = Teams.team_stats(team)
     # Prefill the verify form from the stub's profile + the
     # membership's per-team overrides — the user clicked "That's me",
     # so the stub's data is the best starting point. Fall back to
@@ -239,7 +242,8 @@ defmodule UltistatsWeb.TeamJoinController do
       token: token,
       current_user: current_user,
       membership: membership,
-      form: form
+      form: form,
+      team_stats: team_stats
     )
   end
 
@@ -305,7 +309,8 @@ defmodule UltistatsWeb.TeamJoinController do
       token: token,
       current_user: current_user,
       stubs: stubs,
-      form: form
+      form: form,
+      team_stats: Teams.team_stats(team)
     )
   end
 

@@ -1,26 +1,21 @@
 <Layouts.app flash={@flash} current_scope={@current_scope}>
-  <div class="mx-auto max-w-sm space-y-6">
+  <div class="mx-auto max-w-md space-y-8">
     <.header>
       Join {@team.name}
       <:subtitle>
-        You've been invited to join <span class="font-semibold">{@team.name}</span>.
         Log in or register to continue — you'll come back here automatically.
       </:subtitle>
     </.header>
 
-    <div class="grid gap-3">
-      <.link
-        href={~p"/users/log-in"}
-        class="btn btn-primary w-full"
-      >
+    <.joining_card team={@team} team_stats={@team_stats} />
+
+    <div class="grid grid-cols-2 gap-3">
+      <.button href={~p"/users/log-in"} variant="primary">
         Log in
-      </.link>
-      <.link
-        href={~p"/users/register"}
-        class="btn btn-primary btn-soft w-full"
-      >
+      </.button>
+      <.button href={~p"/users/register"}>
         Register
-      </.link>
+      </.button>
     </div>
   </div>
 </Layouts.app>
