@@ -428,7 +428,7 @@ defmodule UltistatsWeb.GameLive.Show do
                 do: "Back to lineup (cancel point)",
                 else: "Undo last event"
             }
-            class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 transition-opacity motion-reduce:transition-none phx-click-loading:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <.icon name="hero-arrow-uturn-left" class="size-4" />
           </button>
@@ -870,12 +870,25 @@ defmodule UltistatsWeb.GameLive.Show do
     """
   end
 
+  defp opponent_action_classes do
+    [
+      "min-h-9 px-2 py-1 rounded-md border border-base-300",
+      "inline-flex items-center justify-center gap-1.5",
+      "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
+      "transition-[colors,opacity] motion-reduce:transition-none",
+      "phx-click-loading:opacity-50",
+      "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+      "disabled:opacity-50 disabled:cursor-not-allowed"
+    ]
+  end
+
   defp passer_outcome_classes do
     [
       "min-h-9 px-3 py-1 rounded-md border border-error/30",
       "inline-flex items-center justify-center gap-1.5",
       "text-sm font-semibold bg-error/10 text-error active:bg-error/20",
-      "transition-colors motion-reduce:transition-none",
+      "transition-[colors,opacity] motion-reduce:transition-none",
+      "phx-click-loading:opacity-50",
       "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
       "disabled:opacity-50 disabled:cursor-not-allowed"
     ]
@@ -1072,6 +1085,8 @@ defmodule UltistatsWeb.GameLive.Show do
     [
       "min-h-9 min-w-9 px-1.5 inline-flex items-center justify-center gap-0.5 rounded-md",
       action_row_button_color(kind),
+      "transition-opacity motion-reduce:transition-none",
+      "phx-click-loading:opacity-50",
       "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
       "disabled:opacity-30 disabled:cursor-not-allowed"
     ]
@@ -1200,14 +1215,7 @@ defmodule UltistatsWeb.GameLive.Show do
           phx-click="record_opponent_turnover"
           disabled={@disconnected?}
           aria-label="Record that the opponent turned the disc over"
-          class={[
-            "min-h-9 px-2 py-1 rounded-md border border-base-300",
-            "inline-flex items-center justify-center gap-1.5",
-            "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
-            "transition-colors motion-reduce:transition-none",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            "disabled:opacity-50 disabled:cursor-not-allowed"
-          ]}
+          class={opponent_action_classes()}
         >
           <.icon name="hero-arrow-uturn-right" class="size-4" />
           <span>Turnover</span>
@@ -1217,14 +1225,7 @@ defmodule UltistatsWeb.GameLive.Show do
           phx-click="record_opponent_goal"
           disabled={@disconnected?}
           aria-label="Record that the opponent scored"
-          class={[
-            "min-h-9 px-2 py-1 rounded-md border border-base-300",
-            "inline-flex items-center justify-center gap-1.5",
-            "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
-            "transition-colors motion-reduce:transition-none",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            "disabled:opacity-50 disabled:cursor-not-allowed"
-          ]}
+          class={opponent_action_classes()}
         >
           <.icon name="hero-flag" class="size-4" />
           <span>Score</span>
@@ -1250,7 +1251,8 @@ defmodule UltistatsWeb.GameLive.Show do
       aria-label={"Record pull by #{@name}"}
       class={[
         "w-full min-h-9 px-3 py-0.5 flex items-center gap-2 text-left",
-        "transition-colors motion-reduce:transition-none active:bg-base-200",
+        "transition-[colors,opacity] motion-reduce:transition-none active:bg-base-200",
+        "phx-click-loading:opacity-50",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
         "disabled:opacity-50 disabled:cursor-not-allowed",
         @unknown? && "italic"
@@ -1608,7 +1610,8 @@ defmodule UltistatsWeb.GameLive.Show do
             "w-full min-h-9 rounded-md px-2 py-1",
             "inline-flex items-center justify-center gap-2",
             "text-sm font-semibold bg-primary text-primary-content",
-            "transition-colors motion-reduce:transition-none active:bg-primary/80",
+            "transition-[colors,opacity] motion-reduce:transition-none active:bg-primary/80",
+            "phx-click-loading:opacity-50",
             "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
             "disabled:opacity-50 disabled:cursor-not-allowed"
           ]}
@@ -1778,6 +1781,30 @@ defmodule UltistatsWeb.GameLive.Show do
   # `"catch" | "drop" | "goal" | "throwaway"`. For passer-only types
   # (`throwaway`) the row's player-id is ignored; for receiver-attributed
   # types it becomes the receiver_id (or nil for "unknown").
+  def handle_event("record_throw_for_player", %{"type" => "goal"} = params, socket) do
+    point = socket.assigns.current_point
+    passer_id = id_or_nil(socket.assigns.current_passer_id)
+    receiver_id = params |> Map.get("player-id") |> parse_player_token() |> id_or_nil()
+
+    case Games.score_goal(point, :ours, passer_id, receiver_id, throw_opts(socket)) do
+      {:ok, %{event: event, point: ended}} ->
+        events = socket.assigns.events ++ [event]
+
+        socket =
+          socket
+          |> assign(:events, events)
+          |> track_event_recorded(event)
+
+        last_event_id = List.first(socket.assigns.undo_stack)
+        socket = assign(socket, :last_ended, %{point_id: ended.id, event_id: last_event_id})
+
+        {:noreply, after_point_end(socket, ended, :ours)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not record goal.")}
+    end
+  end
+
   def handle_event("record_throw_for_player", %{"type" => type_str} = params, socket) do
     type = String.to_existing_atom(type_str)
     point = socket.assigns.current_point
@@ -2383,23 +2410,6 @@ defmodule UltistatsWeb.GameLive.Show do
      |> assign(:current_passer_id, derive_current_passer(events))}
   end
 
-  defp apply_outcome_transition(socket, :goal, point, _events) do
-    case Games.end_point(point, :ours) do
-      {:ok, _ended} ->
-        # The goal event we just recorded sits at the head of the undo
-        # stack. Stash it so the line picker can offer "Undo last goal".
-        last_event_id = List.first(socket.assigns.undo_stack)
-
-        socket =
-          assign(socket, :last_ended, %{point_id: point.id, event_id: last_event_id})
-
-        {:noreply, after_point_end(socket, point, :ours)}
-
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Could not end point.")}
-    end
-  end
-
   # Refresh score, line picker state, and check for hard-cap. Score
   # increments and `points_played_by_user` updates are derived from the
   # just-ended point's snapshot so we avoid 4 DB round-trips per goal
@@ -2626,7 +2636,7 @@ defmodule UltistatsWeb.GameLive.Show do
               phx-value-id={member.user_id}
               aria-pressed={to_string(MapSet.member?(@selected_ids, member.user_id))}
               class={[
-                "w-full min-h-9 px-3 py-0.5 flex items-center gap-2 text-left",
+                "w-full min-h-10 px-3 py-0.5 flex items-center gap-2 text-left",
                 "transition-colors motion-reduce:transition-none active:bg-base-200",
                 "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                 "phx-click-loading:bg-primary/10",

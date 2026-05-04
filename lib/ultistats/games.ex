@@ -368,6 +368,24 @@ defmodule Ultistats.Games do
     end
   end
 
+  @doc """
+  Records a `:goal` event and ends the point in a single transaction.
+  Saves a round trip vs. calling `record_throw/5` and `end_point/2`
+  separately, and guarantees the two writes succeed or fail together.
+  Returns `{:ok, %{event: event, point: ended_point}}` on success.
+  """
+  def score_goal(%Point{} = point, scoring_team, passer_user_id, receiver_user_id, opts \\ [])
+      when scoring_team in [:ours, :theirs] do
+    Repo.transaction(fn ->
+      with {:ok, event} <- record_throw(point, :goal, passer_user_id, receiver_user_id, opts),
+           {:ok, ended} <- end_point(point, scoring_team) do
+        %{event: event, point: ended}
+      else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
   # In-process validation when the caller has already loaded the team
   # roster (LiveView mount). Falls back to the DB-backed check if no
   # cached MapSet is provided.
