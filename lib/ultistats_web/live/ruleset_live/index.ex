@@ -13,15 +13,48 @@ defmodule UltistatsWeb.RulesetLive.Index do
         <:subtitle>Reusable rule templates: caps, halftime, timeouts, gender ratio.</:subtitle>
       </.header>
 
+      <div :if={length(@rows) > 1} class="flex flex-col gap-1 mt-4 mb-3">
+        <span
+          id="rulesets-division-filter-label"
+          class="text-[11px] uppercase tracking-wide text-base-content/60"
+        >
+          Division
+        </span>
+        <div
+          role="radiogroup"
+          aria-labelledby="rulesets-division-filter-label"
+          class="flex flex-wrap items-center gap-1.5"
+        >
+          <button
+            :for={{label, value} <- division_filter_options()}
+            type="button"
+            phx-click="set_division_filter"
+            phx-value-division={value}
+            role="radio"
+            aria-checked={to_string(value == @division_filter)}
+            class={[
+              "min-h-7 px-2.5 py-0.5 rounded-full border text-[11px] font-medium",
+              "active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              if(value == @division_filter,
+                do: "border-primary bg-primary/10 text-primary",
+                else: "border-base-300 bg-base-100 text-base-content/70"
+              )
+            ]}
+          >
+            {label}
+          </button>
+        </div>
+      </div>
+
       <ul
         :if={@rows != []}
         id="rulesets-list"
-        class="-mx-4 mt-4 pb-24 border-y border-base-200 divide-y divide-base-200"
+        class="mt-4 pb-24 rounded-md border border-base-200 divide-y divide-base-200 overflow-hidden"
       >
         <li
-          :for={%{ruleset: r, team: team} <- @rows}
+          :for={%{ruleset: r} <- visible_rows(@rows, @division_filter)}
           id={"ruleset-#{r.id}"}
-          class="min-h-9 flex items-center gap-2 px-4 py-0.5"
+          class="min-h-10 flex items-center gap-2 px-3 py-0.5"
         >
           <span class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0">
             {score_cap_badge(r.score_cap)}
@@ -29,7 +62,7 @@ defmodule UltistatsWeb.RulesetLive.Index do
           <div class="flex-1 min-w-0">
             <div class="font-medium text-sm truncate leading-tight">{r.name}</div>
             <div class="text-[11px] text-base-content/60 truncate leading-tight">
-              {team.name} · {summary_line(r)}
+              {summary_line(r)}
             </div>
           </div>
           <.link
@@ -58,7 +91,7 @@ defmodule UltistatsWeb.RulesetLive.Index do
       user
       |> Games.list_rulesets_for_user()
       |> Enum.map(fn r -> %{ruleset: r, team: r.team} end)
-      |> Enum.sort_by(fn %{team: t, ruleset: r} -> {t.name, r.name} end)
+      |> Enum.sort_by(fn %{ruleset: r} -> {r.name} end)
 
     admin_team_ids =
       user
@@ -70,7 +103,25 @@ defmodule UltistatsWeb.RulesetLive.Index do
      socket
      |> assign(:page_title, "Rulesets")
      |> assign(:rows, rows)
+     |> assign(:division_filter, "all")
      |> assign(:admin_team_ids, admin_team_ids)}
+  end
+
+  @impl true
+  def handle_event("set_division_filter", %{"division" => division}, socket)
+      when division in ["all", "open", "mixed", "womens"] do
+    {:noreply, assign(socket, :division_filter, division)}
+  end
+
+  defp division_filter_options do
+    [{"All divisions", "all"}, {"Open", "open"}, {"Women's", "womens"}, {"Mixed", "mixed"}]
+  end
+
+  defp visible_rows(rows, "all"), do: rows
+
+  defp visible_rows(rows, division) when division in ["open", "womens", "mixed"] do
+    atom = String.to_existing_atom(division)
+    Enum.filter(rows, fn %{ruleset: r} -> r.division == atom end)
   end
 
   defp summary_line(%Ruleset{} = r) do

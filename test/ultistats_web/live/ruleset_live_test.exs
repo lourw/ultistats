@@ -32,17 +32,6 @@ defmodule UltistatsWeb.RulesetLiveTest do
       refute html =~ "(per-game instance)"
     end
 
-    test "shows the team name on each row", %{conn: conn, user: user} do
-      team = team_fixture(%{name: "Aardvarks"})
-      add_to_team(team, user)
-      _r = ruleset_fixture(%{team_id: team.id, name: "Hat League"})
-
-      {:ok, _live, html} = live(conn, ~p"/rulesets")
-
-      assert html =~ "Aardvarks"
-      assert html =~ "Hat League"
-    end
-
     test "Edit link routes to the form for admins", %{conn: conn, user: user} do
       team = team_fixture()
       add_to_team(team, user)
