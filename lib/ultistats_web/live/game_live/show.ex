@@ -68,10 +68,12 @@ defmodule UltistatsWeb.GameLive.Show do
       events = if current_point, do: Games.events_for_point(current_point), else: []
       possession = if current_point, do: derive_possession(game, current_point, events), else: nil
 
-      halftime_recorded? = if fresh?, do: false, else: Games.halftime_recorded?(game)
-
-      timeouts_remaining =
-        if fresh?, do: Games.timeouts_per_half(game), else: Games.timeouts_remaining(game)
+      %{halftime_recorded?: halftime_recorded?, timeouts_remaining: timeouts_remaining} =
+        if fresh? do
+          %{halftime_recorded?: false, timeouts_remaining: Games.timeouts_per_half(game)}
+        else
+          Games.stoppage_state(game)
+        end
 
       socket =
         socket
@@ -1648,6 +1650,9 @@ defmodule UltistatsWeb.GameLive.Show do
 
     case Games.start_point(socket.assigns.game, user_ids) do
       {:ok, point} ->
+        # No assign_line_picker_state here — the picker isn't visible
+        # in-point. Its assigns get refreshed in after_point_end when the
+        # picker comes back. Skipping saves 2 DB round-trips per start.
         {:noreply,
          socket
          |> assign(:current_point, point)
@@ -1660,8 +1665,7 @@ defmodule UltistatsWeb.GameLive.Show do
          |> assign(:redo_stack, [])
          |> assign(:last_ended, nil)
          |> assign(:selected_user_ids, MapSet.new())
-         |> assign(:selected_preset_id, nil)
-         |> assign_line_picker_state()}
+         |> assign(:selected_preset_id, nil)}
 
       {:error, :wrong_line_size} ->
         required = Games.line_size_for(socket.assigns.game)
@@ -2119,11 +2123,12 @@ defmodule UltistatsWeb.GameLive.Show do
   defp maybe_assign_stoppage_state(socket, _), do: socket
 
   defp assign_stoppage_state(socket) do
-    game = socket.assigns.game
+    %{halftime_recorded?: hr?, timeouts_remaining: tr} =
+      Games.stoppage_state(socket.assigns.game)
 
     socket
-    |> assign(:halftime_recorded?, Games.halftime_recorded?(game))
-    |> assign(:timeouts_remaining, Games.timeouts_remaining(game))
+    |> assign(:halftime_recorded?, hr?)
+    |> assign(:timeouts_remaining, tr)
   end
 
   defp apply_call_resolution(socket, _prompt, "resume") do
@@ -2313,7 +2318,7 @@ defmodule UltistatsWeb.GameLive.Show do
       |> assign(:selected_preset_id, nil)
       |> assign_line_picker_state()
 
-    if Games.hard_cap_reached?(game) do
+    if Games.hard_cap_reached?(game, score) do
       case Games.end_game(game) do
         {:ok, finished} ->
           socket

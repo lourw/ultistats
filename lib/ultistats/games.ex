@@ -562,33 +562,53 @@ defmodule Ultistats.Games do
   been recorded, only timeouts that occurred after the halftime event
   count against the second-half allotment. Never goes below zero.
   """
-  def timeouts_remaining(%Game{id: game_id} = game) do
-    per_half = fetch_ruleset_field(game, :timeouts_per_half) || 0
+  def timeouts_remaining(%Game{} = game) do
+    stoppage_state(game).timeouts_remaining
+  end
+
+  @doc """
+  Combined `halftime_recorded?` + `timeouts_remaining` in a single
+  query. Mount and post-stoppage handlers used to fire both queries
+  separately; on a sideline tracker the round-trips compound, so this
+  consolidates them into one pass over `events`.
+
+  Shape: `%{halftime_recorded?: boolean, timeouts_remaining: integer}`.
+  """
+  def stoppage_state(%Game{id: game_id} = game) do
+    per_half = timeouts_per_half(game)
+
+    rows =
+      Event
+      |> where(
+        [e],
+        e.game_id == ^game_id and is_nil(e.deleted_at) and
+          e.type in [:halftime, :timeout_ours]
+      )
+      |> select([e], {e.type, e.occurred_at})
+      |> Repo.all()
 
     halftime_at =
-      Event
-      |> where(
-        [e],
-        e.game_id == ^game_id and e.type == :halftime and is_nil(e.deleted_at)
-      )
-      |> select([e], e.occurred_at)
-      |> Repo.one()
+      Enum.find_value(rows, fn
+        {:halftime, ts} -> ts
+        _ -> nil
+      end)
 
-    used_query =
-      Event
-      |> where(
-        [e],
-        e.game_id == ^game_id and e.type == :timeout_ours and is_nil(e.deleted_at)
-      )
+    used =
+      Enum.count(rows, fn
+        {:timeout_ours, ts} ->
+          case halftime_at do
+            nil -> true
+            ht -> DateTime.compare(ts, ht) == :gt
+          end
 
-    used_query =
-      case halftime_at do
-        nil -> used_query
-        ts -> where(used_query, [e], e.occurred_at > ^ts)
-      end
+        _ ->
+          false
+      end)
 
-    used = Repo.aggregate(used_query, :count, :id)
-    max(per_half - used, 0)
+    %{
+      halftime_recorded?: not is_nil(halftime_at),
+      timeouts_remaining: max(per_half - used, 0)
+    }
   end
 
   @doc """
@@ -612,14 +632,17 @@ defmodule Ultistats.Games do
   team. Returns `false` when the resolved `score_cap` is nil (no
   score-based end condition; only `hard_cap_minutes` can end the game).
   """
-  def hard_cap_reached?(%Game{} = game) do
-    case hard_cap_threshold(game) do
-      nil ->
-        false
+  def hard_cap_reached?(%Game{} = game), do: hard_cap_reached?(game, score(game))
 
-      cap when is_integer(cap) ->
-        s = score(game)
-        max(s.ours, s.theirs) >= cap
+  @doc """
+  Same as `hard_cap_reached?/1` but uses a precomputed score map. Use
+  this in hot paths where the caller already has `%{ours:, theirs:}`
+  in hand to avoid a second `score(game)` round-trip.
+  """
+  def hard_cap_reached?(%Game{} = game, %{ours: ours, theirs: theirs}) do
+    case hard_cap_threshold(game) do
+      nil -> false
+      cap when is_integer(cap) -> max(ours, theirs) >= cap
     end
   end
 
