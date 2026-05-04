@@ -75,6 +75,40 @@ defmodule UltistatsWeb.LinePresetLive.Form do
           </div>
         </section>
 
+        <div
+          :if={@team_members != []}
+          class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs"
+          aria-label="Selected players by position"
+        >
+          <span class="text-base-content/60">Selected</span>
+          <span class="tabular-nums font-semibold text-base-content">
+            {MapSet.size(@selected_user_ids)}
+          </span>
+          <span class="text-base-content/30" aria-hidden="true">·</span>
+          <span
+            :for={pos <- [:handler, :cutter, :hybrid, :unspecified]}
+            :if={
+              selected_position_counts(@team_members, @selected_user_ids)[pos] not in [nil, 0] or
+                pos != :unspecified
+            }
+            class="inline-flex items-center gap-1"
+          >
+            <span
+              class={[
+                "inline-flex items-center justify-center size-5 rounded-full text-[10px] font-semibold tabular-nums",
+                position_pill_classes(pos)
+              ]}
+              aria-label={humanize_position(pos) || "Unspecified"}
+              title={humanize_position(pos) || "Unspecified"}
+            >
+              {position_letter(pos)}
+            </span>
+            <span class="tabular-nums text-base-content/80">
+              {selected_position_counts(@team_members, @selected_user_ids)[pos] || 0}
+            </span>
+          </span>
+        </div>
+
         <footer class="mt-3 flex gap-2">
           <.button phx-disable-with="Saving..." variant="primary">Save</.button>
           <.button navigate={return_path(@return_to, @line_preset)}>Cancel</.button>
@@ -310,7 +344,7 @@ defmodule UltistatsWeb.LinePresetLive.Form do
             phx-value-id={member.user_id}
             aria-pressed={to_string(MapSet.member?(@selected_ids, member.user_id))}
             class={[
-              "w-full min-h-9 px-4 py-0.5 flex items-center gap-2 text-left",
+              "w-full min-h-9 pl-10 pr-4 py-0.5 flex items-center gap-2 text-left",
               "transition-colors motion-reduce:transition-none active:bg-base-200",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
               if(MapSet.member?(@selected_ids, member.user_id), do: "bg-primary/10", else: "")
@@ -328,8 +362,22 @@ defmodule UltistatsWeb.LinePresetLive.Form do
             >
               {Teams.resolved_jersey_number(member)}
             </span>
-            <span class="font-medium text-sm truncate flex-1 leading-tight">
-              {User.display_name(member.user)}
+            <span class="flex items-center gap-1.5 flex-1 min-w-0">
+              <span class="font-medium text-sm truncate leading-tight">
+                {User.display_name(member.user)}
+              </span>
+              <span
+                :if={pos = Teams.resolved_position(member)}
+                class={[
+                  "inline-flex items-center justify-center size-5 rounded-full shrink-0",
+                  "text-[10px] font-semibold tabular-nums",
+                  position_pill_classes(pos)
+                ]}
+                aria-label={humanize_position(pos)}
+                title={humanize_position(pos)}
+              >
+                {position_letter(pos)}
+              </span>
             </span>
             <.icon
               :if={MapSet.member?(@selected_ids, member.user_id)}
@@ -349,6 +397,28 @@ defmodule UltistatsWeb.LinePresetLive.Form do
   defp gender_glyph(:female_matching), do: "♀"
   defp gender_glyph(:male_matching), do: "♂"
   defp gender_glyph(_), do: ""
+
+  defp selected_position_counts(team_members, selected_ids) do
+    team_members
+    |> Enum.filter(&MapSet.member?(selected_ids, &1.user_id))
+    |> Enum.group_by(fn m -> Teams.resolved_position(m) || :unspecified end)
+    |> Map.new(fn {k, v} -> {k, length(v)} end)
+  end
+
+  defp position_letter(:handler), do: "H"
+  defp position_letter(:cutter), do: "C"
+  defp position_letter(:hybrid), do: "X"
+  defp position_letter(_), do: "?"
+
+  defp position_pill_classes(:handler), do: "bg-success/15 text-success"
+  defp position_pill_classes(:cutter), do: "bg-warning/15 text-warning"
+  defp position_pill_classes(:hybrid), do: "bg-info/15 text-info"
+  defp position_pill_classes(_), do: "bg-base-200 text-base-content/70"
+
+  defp humanize_position(:handler), do: "Handler"
+  defp humanize_position(:cutter), do: "Cutter"
+  defp humanize_position(:hybrid), do: "Hybrid"
+  defp humanize_position(_), do: nil
 
   # Numeric ordering on jersey_number when parseable (so "9" < "10");
   # non-numeric jerseys fall back to a lexicographic compare against
@@ -379,11 +449,11 @@ defmodule UltistatsWeb.LinePresetLive.Form do
 
   defp sort_button_classes(true),
     do:
-      "min-h-11 px-3 text-sm font-medium bg-primary text-primary-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      "min-h-9 px-3 py-1 text-xs font-semibold bg-primary text-primary-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 
   defp sort_button_classes(false),
     do:
-      "min-h-11 px-3 text-sm font-medium text-base-content/70 hover:text-base-content hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      "min-h-9 px-3 py-1 text-xs font-semibold text-base-content/70 hover:text-base-content hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 
   defp return_path("index", _line_preset), do: ~p"/line_presets"
   defp return_path("show", line_preset), do: ~p"/line_presets/#{line_preset}"

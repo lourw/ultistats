@@ -18,6 +18,14 @@ defmodule UltistatsWeb.TeamLive.Show do
             <.icon name="hero-arrow-left" class="size-5" />
           </.link>
           {@team.name}
+          <.link
+            :if={@is_admin?}
+            navigate={~p"/teams/#{@team}/edit?return_to=show"}
+            aria-label="Edit team"
+            class="shrink-0 min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 hover:text-base-content active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <.icon name="hero-pencil-square" class="size-4" />
+          </.link>
         </span>
         <:actions>
           <button
@@ -32,11 +40,18 @@ defmodule UltistatsWeb.TeamLive.Show do
             <.icon name="hero-link" class="size-4" /> Copy join link
           </button>
           <.button
-            :if={@is_admin?}
+            :if={@is_admin? and @active_tab == :roster}
             variant="primary"
-            navigate={~p"/teams/#{@team}/edit?return_to=show"}
+            navigate={~p"/members/new?team_id=#{@team.id}&return_to=team"}
           >
-            <.icon name="hero-pencil-square" /> Edit team
+            <.icon name="hero-plus" /> Add roster
+          </.button>
+          <.button
+            :if={@is_admin? and @active_tab == :presets}
+            variant="primary"
+            navigate={~p"/line_presets/new?team_id=#{@team.id}&return_to=team"}
+          >
+            <.icon name="hero-plus" /> Add line
           </.button>
         </:actions>
       </.header>
@@ -88,10 +103,10 @@ defmodule UltistatsWeb.TeamLive.Show do
         </button>
       </div>
 
-      <section :if={@active_tab == :roster} class="mt-4 pb-24" aria-labelledby="tab-roster">
+      <section :if={@active_tab == :roster} class="mt-4 pb-6" aria-labelledby="tab-roster">
         <div
           :if={@players != [] or @non_players != []}
-          class="flex items-center gap-2 flex-wrap mb-2"
+          class="flex items-center gap-2 flex-wrap mb-6"
         >
           <div class="flex items-center gap-1" role="radiogroup" aria-label="Sort members">
             <span class="text-[11px] uppercase tracking-wide text-base-content/60 mr-1">
@@ -185,7 +200,7 @@ defmodule UltistatsWeb.TeamLive.Show do
         </p>
       </section>
 
-      <section :if={@active_tab == :presets} class="mt-4 pb-24" aria-labelledby="tab-presets">
+      <section :if={@active_tab == :presets} class="mt-4 pb-6" aria-labelledby="tab-presets">
         <ul
           :if={@line_presets != []}
           id="team-line-presets"
@@ -222,21 +237,45 @@ defmodule UltistatsWeb.TeamLive.Show do
                 </.link>
               </summary>
 
-              <ul
+              <div
                 :if={preset.users != []}
-                class="px-4 pb-2 pl-12 space-y-0.5"
+                class="px-4 pb-3 pl-12 space-y-3"
                 aria-label={"Players on #{preset.name}"}
               >
-                <li
-                  :for={user <- preset.users}
-                  class="min-h-7 flex items-center gap-2 text-xs text-base-content/80"
+                <section
+                  :for={role <- [:male_matching, :female_matching]}
+                  :if={Enum.any?(preset.users, &(&1.gender_role == role))}
+                  class="space-y-1"
                 >
-                  <span aria-hidden="true" class="text-base-content/40">
-                    {gender_glyph(user.gender_role)}
-                  </span>
-                  <span class="truncate">{User.display_name(user)}</span>
-                </li>
-              </ul>
+                  <h3 class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
+                    <span class="text-sm leading-none" aria-hidden="true">
+                      {gender_glyph(role)}
+                    </span>
+                    <span>{humanize_gender_role(role)}</span>
+                    <span class="tabular-nums text-base-content/50">
+                      {role_count(preset, role)}
+                    </span>
+                  </h3>
+                  <ul class="space-y-0.5">
+                    <li
+                      :for={
+                        user <-
+                          preset.users
+                          |> Enum.filter(&(&1.gender_role == role))
+                          |> Enum.sort_by(&user_jersey_sort_key/1)
+                      }
+                      class="min-h-9 flex items-center gap-2"
+                    >
+                      <span class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0">
+                        {user.jersey_number || "—"}
+                      </span>
+                      <span class="font-medium text-sm truncate leading-tight">
+                        {User.display_name(user)}
+                      </span>
+                    </li>
+                  </ul>
+                </section>
+              </div>
 
               <p
                 :if={preset.users == []}
@@ -252,24 +291,6 @@ defmodule UltistatsWeb.TeamLive.Show do
           No line presets yet. Create your first to set lines quickly mid-game.
         </p>
       </section>
-
-      <.link
-        :if={@is_admin? and @active_tab == :roster}
-        navigate={~p"/members/new?team_id=#{@team.id}&return_to=team"}
-        aria-label="Add member"
-        class="fixed bottom-6 right-6 z-40 size-14 rounded-full bg-primary text-primary-content shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:active:scale-100"
-      >
-        <.icon name="hero-plus" class="size-6" />
-      </.link>
-
-      <.link
-        :if={@is_admin? and @active_tab == :presets}
-        navigate={~p"/line_presets/new?team_id=#{@team.id}&return_to=team"}
-        aria-label="Add line"
-        class="fixed bottom-6 right-6 z-40 size-14 rounded-full bg-primary text-primary-content shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:active:scale-100"
-      >
-        <.icon name="hero-plus" class="size-6" />
-      </.link>
     </Layouts.app>
     """
   end
@@ -470,6 +491,15 @@ defmodule UltistatsWeb.TeamLive.Show do
           {n, ""} -> {0, n}
           _ -> {1, j}
         end
+    end
+  end
+
+  defp user_jersey_sort_key(%User{jersey_number: nil}), do: {1, ""}
+
+  defp user_jersey_sort_key(%User{jersey_number: j}) do
+    case Integer.parse(j) do
+      {n, ""} -> {0, n}
+      _ -> {1, j}
     end
   end
 
