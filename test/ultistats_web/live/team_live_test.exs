@@ -72,8 +72,8 @@ defmodule UltistatsWeb.TeamLiveTest do
       assert html =~ team.name
       # The signed-in user is also a male-matching player on this team
       # (per the fixture defaults), so the male count includes them.
-      assert html =~ "♂ 2"
-      assert html =~ "♀ 1"
+      assert html =~ "M</span> 2"
+      assert html =~ "F</span> 1"
     end
 
     test "navigates to the new-team form", %{conn: conn} do

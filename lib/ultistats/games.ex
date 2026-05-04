@@ -346,13 +346,16 @@ defmodule Ultistats.Games do
   user holding a membership on the game's team or the call returns
   `{:error, :user_not_on_team}`.
   """
-  def record_throw(%Point{} = point, type, passer_user_id, receiver_user_id \\ nil) do
-    with :ok <- validate_user_on_team(point, passer_user_id),
-         :ok <- validate_user_on_team(point, receiver_user_id) do
+  def record_throw(%Point{} = point, type, passer_user_id, receiver_user_id, opts \\ []) do
+    valid_ids = Keyword.get(opts, :valid_user_ids)
+    sequence = Keyword.get(opts, :sequence)
+
+    with :ok <- check_user(point, passer_user_id, valid_ids),
+         :ok <- check_user(point, receiver_user_id, valid_ids) do
       attrs = %{
         game_id: point.game_id,
         point_id: point.id,
-        sequence: next_event_sequence(point),
+        sequence: sequence || next_event_sequence(point),
         type: type,
         passer_user_id: passer_user_id,
         receiver_user_id: receiver_user_id,
@@ -364,6 +367,17 @@ defmodule Ultistats.Games do
       |> Repo.insert()
     end
   end
+
+  # In-process validation when the caller has already loaded the team
+  # roster (LiveView mount). Falls back to the DB-backed check if no
+  # cached MapSet is provided.
+  defp check_user(_point, nil, _valid), do: :ok
+
+  defp check_user(_point, user_id, %MapSet{} = valid_ids) when is_binary(user_id) do
+    if MapSet.member?(valid_ids, user_id), do: :ok, else: {:error, :user_not_on_team}
+  end
+
+  defp check_user(point, user_id, _no_cache), do: validate_user_on_team(point, user_id)
 
   @doc """
   Records a game-level annotation event (timeout / halftime). When the

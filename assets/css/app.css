@@ -50,8 +50,8 @@ button[phx-submit]:active, [type="submit"]:active {
 
 .phx-click-loading,
 .phx-submit-loading {
-  opacity: 0.65;
-  transform: scale(0.97);
+  opacity: 0.4;
+  transform: scale(0.96);
 }
 
 /* iOS safe-area utilities (UI_DESIGN.md §Layout). Tailwind v4 doesn't

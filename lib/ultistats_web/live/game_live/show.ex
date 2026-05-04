@@ -57,6 +57,7 @@ defmodule UltistatsWeb.GameLive.Show do
       line_presets = Teams.list_line_presets_for_team(game.team_id)
       current_point = Games.current_point(game)
       points_count = Games.points_count(game)
+      valid_user_ids = team_players |> Enum.map(& &1.user_id) |> MapSet.new()
 
       # Fresh-game fast path: with zero points and no in-progress point,
       # every score/stoppage/points-played query is guaranteed empty. Skip
@@ -80,6 +81,7 @@ defmodule UltistatsWeb.GameLive.Show do
         |> assign(:page_title, "Game vs #{game.opponent_name}")
         |> assign(:game, game)
         |> assign(:team_players, team_players)
+        |> assign(:valid_user_ids, valid_user_ids)
         |> assign(:line_presets, line_presets)
         |> assign(:current_point, current_point)
         |> assign(:points_count, points_count)
@@ -144,6 +146,39 @@ defmodule UltistatsWeb.GameLive.Show do
       else
         {Games.starting_possession_for_next_point(game), Games.points_played_by_user(game)}
       end
+
+    socket
+    |> assign(:next_point_sequence, next_seq)
+    |> assign(:required_ratio, required)
+    |> assign(:starting_possession_preview, starting)
+    |> assign(:required_line_size, required_line_size)
+    |> assign(:points_played_by_user, points_played)
+  end
+
+  # In-process refresh of the picker assigns immediately after a point
+  # ends. `points_played_by_user` is bumped from the ended point's
+  # snapshot, and `starting_possession_preview` is the opposite of
+  # whoever just scored — both pure computations, zero DB queries.
+  defp assign_line_picker_game_state_after_point(socket, %Point{} = ended_point, scoring_team) do
+    game = socket.assigns.game
+    next_seq = (socket.assigns[:points_count] || 0) + 1
+    required = Games.required_ratio_for_point(game, next_seq)
+    required_line_size = Games.line_size_for(game)
+
+    starting =
+      case scoring_team do
+        :ours -> :theirs
+        :theirs -> :ours
+      end
+
+    user_ids = ended_point.our_line_snapshot |> Map.get("user_ids", [])
+
+    points_played =
+      Enum.reduce(
+        user_ids,
+        socket.assigns[:points_played_by_user] || %{},
+        fn uid, acc -> Map.update(acc, uid, 1, &(&1 + 1)) end
+      )
 
     socket
     |> assign(:next_point_sequence, next_seq)
@@ -1753,7 +1788,7 @@ defmodule UltistatsWeb.GameLive.Show do
           |> id_or_nil()
       end
 
-    case Games.record_throw(point, type, passer_id, receiver_id) do
+    case Games.record_throw(point, type, passer_id, receiver_id, throw_opts(socket)) do
       {:ok, event} ->
         events = socket.assigns.events ++ [event]
 
@@ -1776,7 +1811,7 @@ defmodule UltistatsWeb.GameLive.Show do
     point = socket.assigns.current_point
     puller_id = raw |> parse_player_token() |> id_or_nil()
 
-    case Games.record_throw(point, :pull, puller_id, nil) do
+    case Games.record_throw(point, :pull, puller_id, nil, throw_opts(socket)) do
       {:ok, event} ->
         events = socket.assigns.events ++ [event]
 
@@ -1796,7 +1831,7 @@ defmodule UltistatsWeb.GameLive.Show do
     point = socket.assigns.current_point
     passer_id = id_or_nil(socket.assigns.current_passer_id)
 
-    case Games.record_throw(point, :stall, passer_id, nil) do
+    case Games.record_throw(point, :stall, passer_id, nil, throw_opts(socket)) do
       {:ok, event} ->
         events = socket.assigns.events ++ [event]
 
@@ -1836,7 +1871,7 @@ defmodule UltistatsWeb.GameLive.Show do
         "catch" -> {:catch, nil, id}
       end
 
-    case Games.record_throw(point, type, passer_id, receiver_id) do
+    case Games.record_throw(point, type, passer_id, receiver_id, throw_opts(socket)) do
       {:ok, event} ->
         events = socket.assigns.events ++ [event]
 
@@ -1855,7 +1890,7 @@ defmodule UltistatsWeb.GameLive.Show do
   def handle_event("record_opponent_turnover", _params, socket) do
     point = socket.assigns.current_point
 
-    case Games.record_throw(point, :opponent_turnover, nil, nil) do
+    case Games.record_throw(point, :opponent_turnover, nil, nil, throw_opts(socket)) do
       {:ok, event} ->
         events = socket.assigns.events ++ [event]
 
@@ -1874,10 +1909,10 @@ defmodule UltistatsWeb.GameLive.Show do
   def handle_event("record_opponent_goal", _params, socket) do
     point = socket.assigns.current_point
 
-    with {:ok, event} <- Games.record_throw(point, :opponent_goal, nil, nil),
+    with {:ok, event} <- Games.record_throw(point, :opponent_goal, nil, nil, throw_opts(socket)),
          {:ok, _ended} <- Games.end_point(point, :theirs) do
       socket = assign(socket, :last_ended, %{point_id: point.id, event_id: event.id})
-      {:noreply, after_point_end(socket)}
+      {:noreply, after_point_end(socket, point, :theirs)}
     else
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Could not record opponent goal.")}
@@ -1890,7 +1925,7 @@ defmodule UltistatsWeb.GameLive.Show do
     if type in [:pick, :foul] do
       point = socket.assigns.current_point
 
-      case Games.record_throw(point, type, nil, nil) do
+      case Games.record_throw(point, type, nil, nil, throw_opts(socket)) do
         {:ok, event} ->
           events = socket.assigns.events ++ [event]
 
@@ -2116,6 +2151,25 @@ defmodule UltistatsWeb.GameLive.Show do
     :timeout_resume
   ]
 
+  # Builds the opts that turn `Games.record_throw` from 3 DB queries
+  # (validate passer + validate receiver + sequence lookup) into 1
+  # (just the INSERT). Both checks are derived from already-loaded
+  # socket state so they happen in-process.
+  defp throw_opts(socket) do
+    [
+      sequence: next_event_sequence_from_assigns(socket.assigns.events),
+      valid_user_ids: socket.assigns.valid_user_ids
+    ]
+  end
+
+  defp next_event_sequence_from_assigns([]), do: 1
+
+  defp next_event_sequence_from_assigns(events) do
+    events
+    |> Enum.reduce(0, fn e, acc -> max(acc, e.sequence) end)
+    |> Kernel.+(1)
+  end
+
   defp track_event_recorded(socket, %Event{id: event_id, type: type}) do
     socket
     |> assign(:undo_stack, [event_id | socket.assigns.undo_stack])
@@ -2208,7 +2262,7 @@ defmodule UltistatsWeb.GameLive.Show do
         _ -> {:throwaway, id_or_nil(socket.assigns.current_passer_id), nil}
       end
 
-    case Games.record_throw(point, type, passer_id, receiver_id) do
+    case Games.record_throw(point, type, passer_id, receiver_id, throw_opts(socket)) do
       {:ok, event} ->
         events = socket.assigns.events ++ [event]
 
@@ -2298,17 +2352,25 @@ defmodule UltistatsWeb.GameLive.Show do
         socket =
           assign(socket, :last_ended, %{point_id: point.id, event_id: last_event_id})
 
-        {:noreply, after_point_end(socket)}
+        {:noreply, after_point_end(socket, point, :ours)}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Could not end point.")}
     end
   end
 
-  # Re-load score, current_point, and check for hard-cap auto-end.
-  defp after_point_end(socket) do
-    game = socket.assigns.game
-    score = Games.score(game)
+  # Refresh score, line picker state, and check for hard-cap. Score
+  # increments and `points_played_by_user` updates are derived from the
+  # just-ended point's snapshot so we avoid 4 DB round-trips per goal
+  # (Games.score x2 aggregates, points_played_by_user, starting_possession).
+  defp after_point_end(socket, %Point{} = ended_point, scoring_team) do
+    prior_score = socket.assigns.score
+
+    score =
+      case scoring_team do
+        :ours -> %{prior_score | ours: prior_score.ours + 1}
+        :theirs -> %{prior_score | theirs: prior_score.theirs + 1}
+      end
 
     socket =
       socket
@@ -2322,7 +2384,10 @@ defmodule UltistatsWeb.GameLive.Show do
       |> assign(:redo_stack, [])
       |> assign(:selected_user_ids, MapSet.new())
       |> assign(:selected_preset_id, nil)
-      |> assign_line_picker_state()
+      |> assign_line_picker_game_state_after_point(ended_point, scoring_team)
+      |> assign_line_picker_selection_state()
+
+    game = socket.assigns.game
 
     if Games.hard_cap_reached?(game, score) do
       case Games.end_game(game) do
