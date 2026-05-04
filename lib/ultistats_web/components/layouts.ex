@@ -14,11 +14,20 @@ defmodule UltistatsWeb.Layouts do
     default: nil,
     doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
 
+  attr :chrome, :atom,
+    default: :default,
+    values: [:default, :tracker],
+    doc:
+      "controls page chrome. `:tracker` skips the global #app-nav and the centered " <>
+        "max-w-2xl/py-6 inner wrapper — the tracker provides its own sticky header and " <>
+        "manages full-bleed layout itself."
+
   slot :inner_block, required: true
 
   def app(assigns) do
     ~H"""
     <header
+      :if={@chrome == :default}
       id="app-nav"
       phx-hook="ScrollAwareNav"
       class="fixed inset-x-0 top-0 z-30 bg-base-100 border-b border-base-300 pt-safe transition-transform duration-200 motion-reduce:transition-none will-change-transform"
@@ -49,11 +58,19 @@ defmodule UltistatsWeb.Layouts do
 
     <main
       class="min-h-[100dvh] bg-base-100 text-base-content pb-safe"
-      style="padding-top: var(--nav-offset, 3.5rem)"
+      style={
+        if @chrome == :tracker,
+          do: "padding-top: 0",
+          else: "padding-top: var(--nav-offset, 3.5rem)"
+      }
     >
-      <div class="mx-auto max-w-2xl px-4 py-6 space-y-4">
+      <%= if @chrome == :tracker do %>
         {render_slot(@inner_block)}
-      </div>
+      <% else %>
+        <div class="mx-auto max-w-2xl px-4 py-6 space-y-4">
+          {render_slot(@inner_block)}
+        </div>
+      <% end %>
     </main>
 
     <.flash_group flash={@flash} />

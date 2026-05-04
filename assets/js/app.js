@@ -69,82 +69,6 @@ const ScrollAwareNav = {
   },
 }
 
-// Hide the global app nav while a LiveView is mounted (e.g. the live
-// game tracker, where every pixel of vertical space matters). The
-// state lives on <html> so LiveView's DOM patches never reset it
-// (LV stays inside <body>). The nav's transform is driven by the
-// `html.nav-hidden #app-nav` rule in app.css.
-//
-// Hidden by default. Reveal it via either:
-//  - scrolling up in any descendant scrollable area (scroll capture
-//    phase since `scroll` doesn't bubble), or
-//  - swiping down ≥60px anywhere on the tracker (covers the in-point
-//    view, which has no scrollable inner element).
-// Swipe up ≥60px or scroll down hides it again.
-const HideNav = {
-  mounted() {
-    this._setHidden(true)
-    this._scrollPositions = new WeakMap()
-    this._touchStartY = null
-    this._scrolledDuringTouch = false
-
-    this._onScroll = (e) => {
-      const t = e.target
-      if (!(t instanceof Element)) return
-      if (this._touchStartY !== null) this._scrolledDuringTouch = true
-      const cur = t.scrollTop || 0
-      const last = this._scrollPositions.get(t) ?? cur
-      if (cur < last - 4) this._setHidden(false)
-      else if (cur > last + 4) this._setHidden(true)
-      this._scrollPositions.set(t, cur)
-    }
-
-    this._onTouchStart = (e) => {
-      this._touchStartY = e.touches[0]?.clientY ?? null
-      this._scrolledDuringTouch = false
-    }
-
-    this._onTouchEnd = (e) => {
-      if (this._touchStartY === null) return
-      const endY = e.changedTouches[0]?.clientY ?? this._touchStartY
-      const dy = endY - this._touchStartY
-      const scrolled = this._scrolledDuringTouch
-      this._touchStartY = null
-      this._scrolledDuringTouch = false
-      // If the touch produced an actual scroll, the scroll handler
-      // already managed nav state — don't fight it with the swipe
-      // gesture. The swipe is reserved for non-scrolling areas where
-      // the user can't otherwise reveal/hide the nav.
-      if (scrolled) return
-      if (dy > 60) this._setHidden(false)
-      else if (dy < -60) this._setHidden(true)
-    }
-
-    this._onWheel = (e) => {
-      if (e.deltaY < -4) this._setHidden(false)
-      else if (e.deltaY > 4) this._setHidden(true)
-    }
-
-    this.el.addEventListener("scroll", this._onScroll, true)
-    this.el.addEventListener("touchstart", this._onTouchStart, {passive: true})
-    this.el.addEventListener("touchend", this._onTouchEnd, {passive: true})
-    this.el.addEventListener("wheel", this._onWheel, {passive: true})
-  },
-  destroyed() {
-    this._setHidden(false)
-    this.el.removeEventListener("scroll", this._onScroll, true)
-    this.el.removeEventListener("touchstart", this._onTouchStart)
-    this.el.removeEventListener("touchend", this._onTouchEnd)
-    this.el.removeEventListener("wheel", this._onWheel)
-  },
-  _setHidden(hidden) {
-    document.documentElement.style.setProperty(
-      "--nav-offset",
-      hidden ? "0px" : NAV_HEIGHT,
-    )
-  },
-}
-
 // Copy a team-join URL (read off `data-claim-url`) to the clipboard.
 // Used by the team-show header so an admin can grab the team's join
 // link in one tap. Falls back to a transient flash dispatch if the
@@ -211,7 +135,7 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, ScrollAwareNav, HideNav, CopyJoinLink, AutoCloseFlash},
+  hooks: {...colocatedHooks, ScrollAwareNav, CopyJoinLink, AutoCloseFlash},
 })
 
 // Show progress bar on live navigation and form submits

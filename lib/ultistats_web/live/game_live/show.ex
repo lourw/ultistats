@@ -239,26 +239,20 @@ defmodule UltistatsWeb.GameLive.Show do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} chrome={:tracker}>
       <div
         id="game-show-root"
-        phx-hook="HideNav"
-        class={[
-          "flex flex-col -mx-[calc((100vw-100%)/2)] -mt-6 -mb-6 transition-[height] duration-200 motion-reduce:transition-none",
-          surface_tint(banner_state(@current_point, @possession, @events))
-        ]}
-        style="height: calc(100dvh - var(--nav-offset, 0px) - env(safe-area-inset-bottom))"
+        class="flex flex-col"
+        style="height: calc(100dvh - env(safe-area-inset-bottom))"
       >
-        <div class={[
-          "border-b transition-colors duration-200 motion-reduce:transition-none",
-          top_bar_classes(banner_state(@current_point, @possession, @events))
-        ]}>
+        <div class="border-b border-base-200 bg-base-100/95">
           <.compact_header
             game={@game}
             score={@score}
             current_point={@current_point}
             possession={@possession}
             banner_state={banner_state(@current_point, @possession, @events)}
+            starting_possession_preview={@starting_possession_preview}
             halftime?={
               Games.halftime?(@game) and not @halftime_recorded? and
                 not @halftime_dismissed? and not @halftime_active?
@@ -333,6 +327,7 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :current_point, :any, required: true
   attr :possession, :any, required: true
   attr :banner_state, :any, required: true
+  attr :starting_possession_preview, :atom, required: true
   attr :halftime?, :boolean, required: true
   attr :halftime_recorded?, :boolean, required: true
   attr :undo_stack, :list, required: true
@@ -344,12 +339,64 @@ defmodule UltistatsWeb.GameLive.Show do
     ~H"""
     <div
       :if={@banner_state}
-      class={[
-        "py-1 text-center text-xs font-semibold uppercase tracking-wide",
-        possession_banner_classes(@banner_state)
-      ]}
+      class={["w-full", possession_banner_classes(@banner_state)]}
+      role="status"
     >
-      {possession_banner_label(@banner_state)}
+      <div class="mx-auto w-full max-w-2xl flex items-center gap-2.5 px-4 py-2">
+        <.icon name={possession_banner_icon(@banner_state)} class="size-5 shrink-0" />
+        <div class="flex flex-col leading-tight flex-1 min-w-0">
+          <span class="text-sm font-semibold">{possession_banner_label(@banner_state)}</span>
+          <span
+            :if={possession_banner_helper(@banner_state, @starting_possession_preview) != ""}
+            class="text-xs opacity-80"
+          >
+            {possession_banner_helper(@banner_state, @starting_possession_preview)}
+          </span>
+        </div>
+        <details class="relative shrink-0">
+          <summary
+            aria-label="Open menu"
+            class="list-none cursor-pointer min-h-9 min-w-9 inline-flex items-center justify-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <.icon name="hero-ellipsis-vertical" class="size-5" />
+          </summary>
+          <ul class="absolute right-0 mt-1 w-44 rounded-md border border-base-300 bg-base-100 text-base-content shadow-lg z-30 overflow-hidden">
+            <li>
+              <.link
+                navigate={~p"/teams"}
+                class="block min-h-11 px-3 py-2 text-sm active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                Teams
+              </.link>
+            </li>
+            <li>
+              <.link
+                navigate={~p"/games"}
+                class="block min-h-11 px-3 py-2 text-sm active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                Games
+              </.link>
+            </li>
+            <li>
+              <.link
+                href={~p"/users/settings"}
+                class="block min-h-11 px-3 py-2 text-sm active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                Profile
+              </.link>
+            </li>
+            <li class="border-t border-base-200">
+              <.link
+                href={~p"/users/log-out"}
+                method="delete"
+                class="block min-h-11 px-3 py-2 text-sm text-error active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                Log out
+              </.link>
+            </li>
+          </ul>
+        </details>
+      </div>
     </div>
 
     <div class="mx-auto w-full max-w-2xl">
@@ -491,17 +538,6 @@ defmodule UltistatsWeb.GameLive.Show do
       class="flex-1 min-h-0 mx-auto w-full max-w-2xl flex flex-col gap-2 px-4 pb-3 overflow-hidden"
       aria-label="Line picker"
     >
-      <div
-        class={[
-          "-mx-4 flex items-center gap-2 px-4 py-1.5 text-xs font-semibold",
-          starting_possession_banner_classes(@starting_possession_preview)
-        ]}
-        role="status"
-      >
-        <.icon name={starting_possession_icon(@starting_possession_preview)} class="size-4 shrink-0" />
-        <span>{starting_possession_label(@starting_possession_preview)}</span>
-      </div>
-
       <details :if={@line_presets != []} class="group">
         <summary class={[
           "min-h-9 list-none cursor-pointer inline-flex w-full items-center gap-2 px-2.5 py-1",
@@ -2580,30 +2616,33 @@ defmodule UltistatsWeb.GameLive.Show do
   defp possession_label(:theirs), do: "They have the disc"
   defp possession_label(_), do: "Possession unknown"
 
-  # Tints the entire sticky top area by banner state.
-  defp top_bar_classes(:ours), do: "bg-success/10 border-success/30"
-  defp top_bar_classes(:theirs), do: "bg-error/10 border-error/30"
-  defp top_bar_classes(:pulling), do: "bg-info/10 border-info/30"
-  defp top_bar_classes(:pre_pull), do: "bg-info/10 border-info/30"
-  defp top_bar_classes(_), do: "bg-base-100/95 border-base-200"
-
-  # Whole-surface tint matching the top bar.
-  defp surface_tint(:ours), do: "bg-success/5"
-  defp surface_tint(:theirs), do: "bg-error/5"
-  defp surface_tint(:pulling), do: "bg-info/5"
-  defp surface_tint(:pre_pull), do: "bg-info/5"
-  defp surface_tint(_), do: ""
-
-  defp possession_banner_classes(:ours), do: "bg-success/20 text-success"
-  defp possession_banner_classes(:theirs), do: "bg-error/20 text-error"
-  defp possession_banner_classes(:pulling), do: "bg-info/20 text-info"
-  defp possession_banner_classes(:pre_pull), do: "bg-info/20 text-info"
+  defp possession_banner_classes(:ours), do: "bg-success text-success-content"
+  defp possession_banner_classes(:theirs), do: "bg-error text-error-content"
+  defp possession_banner_classes(:pulling), do: "bg-info text-info-content"
+  defp possession_banner_classes(:pre_pull), do: "bg-base-300 text-base-content"
   defp possession_banner_classes(_), do: "bg-base-200 text-base-content/70"
+
+  defp possession_banner_icon(:ours), do: "hero-arrow-right-circle-solid"
+  defp possession_banner_icon(:theirs), do: "hero-shield-exclamation-solid"
+  defp possession_banner_icon(:pulling), do: "hero-paper-airplane-solid"
+  defp possession_banner_icon(:pre_pull), do: "hero-users-solid"
+  defp possession_banner_icon(_), do: "hero-question-mark-circle"
+
+  # `:pre_pull` shows starting-possession context ("On offense" / "On
+  # defense") since the line picker no longer carries its own preview
+  # banner. Other states ignore the second arg.
+  defp possession_banner_helper(:ours, _), do: "We have the disc"
+  defp possession_banner_helper(:theirs, _), do: "They have the disc"
+  defp possession_banner_helper(:pulling, _), do: "Pull then set up D"
+  defp possession_banner_helper(:pre_pull, :ours), do: "On offense"
+  defp possession_banner_helper(:pre_pull, :theirs), do: "On defense"
+  defp possession_banner_helper(:pre_pull, _), do: ""
+  defp possession_banner_helper(_, _), do: ""
 
   defp possession_banner_label(:ours), do: "Our possession"
   defp possession_banner_label(:theirs), do: "Their possession"
   defp possession_banner_label(:pulling), do: "Pulling"
-  defp possession_banner_label(:pre_pull), do: "Pre-pull"
+  defp possession_banner_label(:pre_pull), do: "Line selection"
   defp possession_banner_label(_), do: "Possession unknown"
 
   # The banner state collapses current_point + possession + pull-pending
@@ -2613,21 +2652,6 @@ defmodule UltistatsWeb.GameLive.Show do
   defp banner_state(nil, _possession, _events), do: :pre_pull
   defp banner_state(_point, :theirs, []), do: :pulling
   defp banner_state(_point, possession, _events), do: possession
-
-  # Line-picker pull pill: "We pull" means we kick the disc to them, so
-  # we start the point on defense. The receiving side (:ours == we have
-  # the disc next) is offense.
-  defp starting_possession_label(:ours), do: "They pull → start on offense"
-  defp starting_possession_label(:theirs), do: "We pull → start on defense"
-  defp starting_possession_label(_), do: "Possession unknown"
-
-  defp starting_possession_banner_classes(:ours), do: "bg-success/15 text-success"
-  defp starting_possession_banner_classes(:theirs), do: "bg-error/10 text-error"
-  defp starting_possession_banner_classes(_), do: "bg-base-200 text-base-content/70"
-
-  defp starting_possession_icon(:ours), do: "hero-arrow-right-circle"
-  defp starting_possession_icon(:theirs), do: "hero-shield-check"
-  defp starting_possession_icon(_), do: "hero-question-mark-circle"
 
   # Possession at the start of the point comes from the pull/receive rules
   # (`Games.starting_possession/2`); per-throw events flip per the table
