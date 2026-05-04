@@ -44,6 +44,7 @@ defmodule UltistatsWeb.CoreComponents do
     <div
       :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
       id={@id}
+      phx-mounted={show("##{@id}")}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
       class="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[min(calc(100vw-2rem),28rem)]"
