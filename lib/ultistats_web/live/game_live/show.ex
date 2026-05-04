@@ -878,6 +878,9 @@ defmodule UltistatsWeb.GameLive.Show do
     ~H"""
     <div class={[
       "relative min-h-9 flex items-center gap-2 px-4 py-1",
+      "transition-[transform,opacity] motion-reduce:transition-none",
+      "has-[[data-set-passer]:active]:scale-[0.97]",
+      "has-[[data-set-passer].phx-click-loading]:opacity-40 has-[[data-set-passer].phx-click-loading]:scale-[0.96]",
       @unknown? && "italic",
       @is_current_passer? && "bg-success/15"
     ]}>
@@ -890,6 +893,7 @@ defmodule UltistatsWeb.GameLive.Show do
         phx-value-id={action_row_phx_value(@player_id)}
         disabled={@disconnected? or @passer_set?}
         aria-label={"Set #{@name} as current passer"}
+        data-set-passer
         class={[
           "absolute inset-0 rounded-md",
           "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary",
