@@ -943,14 +943,14 @@ defmodule UltistatsWeb.GameLive.Show do
           <.icon name="hero-x-mark" class="size-4" />
         </button>
       </div>
-      <div class="grid grid-cols-1 gap-1.5">
+      <div class="grid grid-cols-3 gap-1.5">
         <button
           type="button"
           phx-click="record_throw_for_player"
           phx-value-type="throwaway"
           class={turnover_action_classes()}
         >
-          {@passer_label} throwaway
+          Throwaway
         </button>
         <button
           type="button"
@@ -958,7 +958,7 @@ defmodule UltistatsWeb.GameLive.Show do
           phx-value-type="throwaway"
           class={turnover_action_classes()}
         >
-          Other team block
+          Blocked
         </button>
         <button
           type="button"
@@ -966,7 +966,7 @@ defmodule UltistatsWeb.GameLive.Show do
           phx-value-type="throwaway"
           class={turnover_action_classes()}
         >
-          Other team intercept
+          Intercepted
         </button>
       </div>
     </div>
