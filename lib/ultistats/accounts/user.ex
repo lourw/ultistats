@@ -102,6 +102,7 @@ defmodule Ultistats.Accounts.User do
     changeset =
       changeset
       |> validate_required([:email])
+      |> update_change(:email, &normalize_email/1)
       |> validate_format(:email, ~r/^[^@,;\s]+@[^@,;\s]+$/,
         message: "must have the @ sign and no spaces"
       )
@@ -116,6 +117,9 @@ defmodule Ultistats.Accounts.User do
       changeset
     end
   end
+
+  defp normalize_email(nil), do: nil
+  defp normalize_email(email) when is_binary(email), do: String.downcase(email)
 
   defp validate_email_changed(changeset) do
     if get_field(changeset, :email) && get_change(changeset, :email) == nil do
