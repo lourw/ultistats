@@ -243,7 +243,10 @@ defmodule UltistatsWeb.GameLive.Show do
       <div
         id="game-show-root"
         phx-hook="HideNav"
-        class="flex flex-col -mx-4 -mt-6 -mb-6 transition-[height] duration-200 motion-reduce:transition-none"
+        class={[
+          "flex flex-col -mx-4 -mt-6 -mb-6 transition-[height] duration-200 motion-reduce:transition-none",
+          surface_tint(@current_point, banner_state(@possession, @events))
+        ]}
         style="height: calc(100dvh - var(--nav-offset, 0px) - env(safe-area-inset-bottom))"
       >
         <div class={[
@@ -2482,6 +2485,14 @@ defmodule UltistatsWeb.GameLive.Show do
   defp top_bar_classes(_point, :theirs), do: "bg-error/10 border-error/30"
   defp top_bar_classes(_point, :pulling), do: "bg-info/10 border-info/30"
   defp top_bar_classes(_point, _), do: "bg-base-100/95 border-base-200"
+
+  # Whole-surface tint matching the top bar — only during an active
+  # point so the line picker keeps a neutral background.
+  defp surface_tint(nil, _), do: ""
+  defp surface_tint(_point, :ours), do: "bg-success/5"
+  defp surface_tint(_point, :theirs), do: "bg-error/5"
+  defp surface_tint(_point, :pulling), do: "bg-info/5"
+  defp surface_tint(_point, _), do: ""
 
   defp possession_banner_classes(:ours), do: "bg-success/20 text-success"
   defp possession_banner_classes(:theirs), do: "bg-error/20 text-error"
