@@ -882,7 +882,7 @@ defmodule UltistatsWeb.GameLive.Show do
   defp action_player_grid(assigns) do
     ~H"""
     <ul
-      class="-mx-4 border-y border-base-200 divide-y divide-base-200"
+      class="rounded-md border border-base-200 divide-y divide-base-200 overflow-hidden"
       role="list"
       aria-label="On-field players"
     >
@@ -924,7 +924,7 @@ defmodule UltistatsWeb.GameLive.Show do
   defp action_player_row(assigns) do
     ~H"""
     <div class={[
-      "relative min-h-9 flex items-center gap-2 px-4 py-1",
+      "relative min-h-9 flex items-center gap-2 px-3 py-0.5",
       "transition-[transform,opacity] motion-reduce:transition-none",
       "has-[[data-set-passer]:active]:scale-[0.97]",
       "has-[[data-set-passer].phx-click-loading]:opacity-40 has-[[data-set-passer].phx-click-loading]:scale-[0.96]",
@@ -1248,7 +1248,7 @@ defmodule UltistatsWeb.GameLive.Show do
       <.action_legend :if={not @pull_pending?} variant={:theirs} />
 
       <ul
-        class="-mx-4 border-y border-base-200 divide-y divide-base-200"
+        class="rounded-md border border-base-200 divide-y divide-base-200 overflow-hidden"
         role="list"
         aria-label={if @pull_pending?, do: "On-field pullers", else: "On-field defenders"}
       >
@@ -1349,7 +1349,7 @@ defmodule UltistatsWeb.GameLive.Show do
       disabled={@disconnected?}
       aria-label={"Record pull by #{@name}"}
       class={[
-        "w-full min-h-9 px-4 py-1 flex items-center gap-2 text-left",
+        "w-full min-h-9 px-3 py-0.5 flex items-center gap-2 text-left",
         "transition-colors motion-reduce:transition-none active:bg-base-200",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
         "disabled:opacity-50 disabled:cursor-not-allowed",
@@ -1384,7 +1384,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
   defp defender_action_row(assigns) do
     ~H"""
-    <div class={["min-h-9 flex items-center gap-2 px-4 py-1", @unknown? && "italic"]}>
+    <div class={["min-h-9 flex items-center gap-2 px-3 py-0.5", @unknown? && "italic"]}>
       <span
         :if={@jersey}
         class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0"
