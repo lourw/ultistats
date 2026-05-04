@@ -873,7 +873,7 @@ defmodule UltistatsWeb.GameLive.Show do
           "flex items-center gap-2 flex-1 min-w-0 text-left rounded-md py-1 -my-1",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
           "disabled:cursor-default",
-          @is_current_passer? && "bg-success/15 px-2 -mx-2"
+          @is_current_passer? && "bg-success/15 pl-2 pr-3 -ml-2 mr-1"
         ]}
       >
         <span
