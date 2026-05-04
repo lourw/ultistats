@@ -384,11 +384,6 @@ defmodule UltistatsWeb.GameLive.Show do
               true -> "undo"
             end
           }
-          data-confirm={
-            if not @transient_passer? and @undo_stack == [],
-              do: "You will lose all progress for this point if you go back.",
-              else: nil
-          }
           aria-label={
             cond do
               @transient_passer? -> "Clear current passer"
@@ -735,7 +730,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
     ~H"""
     <section
-      class="flex-1 min-h-0 px-4 py-2 space-y-2 overflow-hidden"
+      class="flex-1 min-h-0 px-4 py-2 space-y-2 overflow-y-auto overflow-x-hidden"
       aria-label="Current point"
     >
       <%= if @possession == :ours do %>
@@ -1824,8 +1819,7 @@ defmodule UltistatsWeb.GameLive.Show do
          |> assign(:undo_stack, [])
          |> assign(:redo_stack, [])
          |> assign(:last_ended, nil)
-         |> assign_line_picker_state()
-         |> put_flash(:info, "Point cancelled")}
+         |> assign_line_picker_state()}
     end
   end
 
