@@ -484,7 +484,10 @@ defmodule Ultistats.TeamsTest do
       assert Repo.get(User, stub_id)
       refute Teams.user_member_of?(claimer, team)
       reloaded = Accounts.get_user!(claimer.id)
-      assert is_nil(reloaded.first_name)
+      assert reloaded.first_name == claimer.first_name
+      assert reloaded.last_name == claimer.last_name
+      assert reloaded.gender_role == claimer.gender_role
+      assert reloaded.position == claimer.position
     end
   end
 
@@ -545,8 +548,10 @@ defmodule Ultistats.TeamsTest do
                Teams.join_team_as_new_player(team, user, attrs)
 
       reloaded = Ultistats.Accounts.get_user!(user.id)
-      assert is_nil(reloaded.first_name)
-      assert is_nil(reloaded.last_name)
+      assert reloaded.first_name == user.first_name
+      assert reloaded.last_name == user.last_name
+      assert reloaded.gender_role == user.gender_role
+      assert reloaded.position == user.position
     end
 
     test "returns a user changeset error when profile validation fails" do

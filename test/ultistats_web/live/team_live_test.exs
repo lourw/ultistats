@@ -70,9 +70,9 @@ defmodule UltistatsWeb.TeamLiveTest do
       {:ok, _index_live, html} = live(conn, ~p"/teams")
 
       assert html =~ team.name
-      # The signed-in user is also a member but has no profile, so
-      # gender counts only include the two stub players.
-      assert html =~ "♂ 1"
+      # The signed-in user is also a male-matching player on this team
+      # (per the fixture defaults), so the male count includes them.
+      assert html =~ "♂ 2"
       assert html =~ "♀ 1"
     end
 

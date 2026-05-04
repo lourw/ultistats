@@ -34,12 +34,44 @@ defmodule Ultistats.AccountsFixtures do
   end
 
   @doc """
-  Inserts a confirmed, password-having user. The default for tests that
-  just need "some authenticated user".
+  Inserts a confirmed, password-having user with a fully-populated
+  profile (first/last name, gender role, position). The default for
+  tests that just need "some authenticated user" — having the profile
+  filled means they pass the post-registration onboarding gate without
+  having to fill the form in every test.
+
+  Pass `attrs` to override any defaults; pass profile fields as either
+  atom or string keys to override the profile-completion defaults.
   """
   def user_fixture(attrs \\ %{}) do
     user = unconfirmed_user_fixture(attrs)
-    Accounts.confirm_user!(user)
+    user = Accounts.confirm_user!(user)
+
+    profile_defaults = %{
+      first_name: "Test",
+      last_name: "User",
+      gender_role: :male_matching,
+      position: :cutter
+    }
+
+    profile_attrs =
+      profile_defaults
+      |> Map.merge(profile_overrides(attrs))
+
+    {:ok, user} = Accounts.update_user_profile(user, profile_attrs)
+    user
+  end
+
+  defp profile_overrides(attrs) do
+    profile_keys = [:first_name, :last_name, :gender_role, :position, :jersey_number]
+
+    Enum.reduce(profile_keys, %{}, fn key, acc ->
+      cond do
+        Map.has_key?(attrs, key) -> Map.put(acc, key, Map.get(attrs, key))
+        Map.has_key?(attrs, to_string(key)) -> Map.put(acc, key, Map.get(attrs, to_string(key)))
+        true -> acc
+      end
+    end)
   end
 
   def user_scope_fixture do

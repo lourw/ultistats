@@ -32,8 +32,18 @@ defmodule UltistatsWeb.Router do
 
   ## App routes — require an authenticated user
 
+  # Onboarding is authed-only but intentionally NOT gated by
+  # `require_complete_profile` — this is where the user fills the
+  # profile out, so gating it would loop on itself.
   scope "/", UltistatsWeb do
     pipe_through [:browser, :require_authenticated_user]
+
+    get "/onboarding/profile", OnboardingController, :edit
+    put "/onboarding/profile", OnboardingController, :update
+  end
+
+  scope "/", UltistatsWeb do
+    pipe_through [:browser, :require_authenticated_user, :require_complete_profile]
 
     live_session :authenticated,
       on_mount: [{UltistatsWeb.UserAuth, :ensure_authenticated}] do

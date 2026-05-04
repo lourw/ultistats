@@ -211,6 +211,24 @@ defmodule UltistatsWeb.UserAuth do
     end
   end
 
+  @doc """
+  Plug that forces a logged-in user with an incomplete profile (missing
+  first/last name, gender role, or position) to complete onboarding
+  before any other authed route renders. Must run after
+  `require_authenticated_user`.
+  """
+  def require_complete_profile(conn, _opts) do
+    user = conn.assigns.current_scope && conn.assigns.current_scope.user
+
+    if user && not Ultistats.Accounts.User.profile_complete?(user) do
+      conn
+      |> redirect(to: ~p"/onboarding/profile")
+      |> halt()
+    else
+      conn
+    end
+  end
+
   defp maybe_store_return_to(%{method: "GET"} = conn) do
     put_session(conn, :user_return_to, current_path(conn))
   end
@@ -258,15 +276,20 @@ defmodule UltistatsWeb.UserAuth do
   def on_mount(:ensure_authenticated, _params, session, socket) do
     socket = mount_current_scope(socket, session)
 
-    if socket.assigns.current_scope && socket.assigns.current_scope.user do
-      {:cont, socket}
-    else
-      socket =
-        socket
-        |> Phoenix.LiveView.put_flash(:error, "You must log in to access this page.")
-        |> Phoenix.LiveView.redirect(to: ~p"/users/log-in")
+    cond do
+      is_nil(socket.assigns.current_scope) or is_nil(socket.assigns.current_scope.user) ->
+        socket =
+          socket
+          |> Phoenix.LiveView.put_flash(:error, "You must log in to access this page.")
+          |> Phoenix.LiveView.redirect(to: ~p"/users/log-in")
 
-      {:halt, socket}
+        {:halt, socket}
+
+      not Ultistats.Accounts.User.profile_complete?(socket.assigns.current_scope.user) ->
+        {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/onboarding/profile")}
+
+      true ->
+        {:cont, socket}
     end
   end
 

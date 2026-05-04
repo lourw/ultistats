@@ -50,6 +50,25 @@ defmodule Ultistats.Accounts.User do
   end
 
   @doc """
+  True when the user has filled in every required profile field
+  (first_name, last_name, gender_role, position). Drives the
+  post-registration onboarding gate.
+  """
+  def profile_complete?(%__MODULE__{
+        first_name: first,
+        last_name: last,
+        gender_role: gender_role,
+        position: position
+      }) do
+    is_binary(first) and first != "" and
+      is_binary(last) and last != "" and
+      gender_role != nil and
+      position != nil
+  end
+
+  def profile_complete?(_), do: false
+
+  @doc """
   A user changeset for registration with email and password. Used by the
   signup form — validates both fields, hashes the password, and (combined
   with the controller setting `confirmed_at`) yields an immediately
