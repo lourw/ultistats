@@ -689,7 +689,9 @@ defmodule Ultistats.TeamsTest do
       # No orphan join rows.
       orphan_count =
         Ultistats.Repo.aggregate(
-          from(j in "line_preset_users", where: j.line_preset_id == ^line_preset.id),
+          from(j in "line_preset_users",
+            where: j.line_preset_id == type(^line_preset.id, :binary_id)
+          ),
           :count
         )
 

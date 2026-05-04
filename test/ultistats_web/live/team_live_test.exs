@@ -155,7 +155,7 @@ defmodule UltistatsWeb.TeamLiveTest do
 
       assert {:ok, form_live, _} =
                show_live
-               |> element("a", "Edit team")
+               |> element(~s|a[aria-label="Edit team"]|)
                |> render_click()
                |> follow_redirect(conn, ~p"/teams/#{team}/edit?return_to=show")
 
