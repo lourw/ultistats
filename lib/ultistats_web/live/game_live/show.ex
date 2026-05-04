@@ -927,18 +927,14 @@ defmodule UltistatsWeb.GameLive.Show do
     assigns = assign(assigns, :passer_label, passer_label)
 
     ~H"""
-    <div
-      class="-mx-4 px-4 py-2 bg-warning/10 text-warning space-y-1.5"
-      role="dialog"
-      aria-label="Disambiguate turnover"
-    >
-      <div class="flex items-center gap-2 text-xs font-medium">
+    <div class="space-y-1.5" role="dialog" aria-label="Disambiguate turnover">
+      <div class="flex items-center gap-2 text-xs font-medium text-base-content/70">
         <span class="flex-1">What happened?</span>
         <button
           type="button"
           phx-click="cancel_throwaway"
           aria-label="Cancel"
-          class="min-h-7 min-w-7 inline-flex items-center justify-center rounded-md text-warning active:bg-warning/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          class="min-h-7 min-w-7 inline-flex items-center justify-center rounded-md text-base-content/60 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           <.icon name="hero-x-mark" class="size-4" />
         </button>
