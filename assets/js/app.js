@@ -70,6 +70,23 @@ const ScrollAwareNav = {
   },
 }
 
+// Hide the global app nav while a LiveView is mounted (e.g. the live
+// game tracker, where every pixel of vertical space matters). Slides
+// the navbar offscreen and zeroes `--nav-offset` so dependent height
+// calcs reclaim the ~56px. Restores on navigation away.
+const HideNav = {
+  mounted() {
+    const nav = document.getElementById("app-nav")
+    if (nav) nav.classList.add("-translate-y-full")
+    document.documentElement.style.setProperty("--nav-offset", "0px")
+  },
+  destroyed() {
+    const nav = document.getElementById("app-nav")
+    if (nav) nav.classList.remove("-translate-y-full")
+    document.documentElement.style.setProperty("--nav-offset", NAV_HEIGHT)
+  },
+}
+
 // Copy a team-join URL (read off `data-claim-url`) to the clipboard.
 // Used by the team-show header so an admin can grab the team's join
 // link in one tap. Falls back to a transient flash dispatch if the
@@ -136,7 +153,7 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, ScrollAwareNav, CopyJoinLink, AutoCloseFlash},
+  hooks: {...colocatedHooks, ScrollAwareNav, HideNav, CopyJoinLink, AutoCloseFlash},
 })
 
 // Show progress bar on live navigation and form submits
