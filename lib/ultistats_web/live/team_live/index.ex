@@ -27,31 +27,41 @@ defmodule UltistatsWeb.TeamLive.Index do
         </div>
       </div>
 
-      <form
+      <div
         :if={length(@teams_with_stats) > 1}
-        phx-change="set_division_filter"
         class="flex flex-col gap-1 mt-4 mb-3"
       >
-        <label
-          for="teams-division-filter"
+        <span
+          id="teams-division-filter-label"
           class="text-[11px] uppercase tracking-wide text-base-content/60"
         >
           Division
-        </label>
-        <select
-          id="teams-division-filter"
-          name="division"
-          class="block w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content min-h-11 focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+        </span>
+        <div
+          role="radiogroup"
+          aria-labelledby="teams-division-filter-label"
+          class="flex flex-wrap items-center gap-1.5"
         >
-          <option
+          <button
             :for={{label, value} <- division_filter_options()}
-            value={value}
-            selected={value == @division_filter}
+            type="button"
+            phx-click="set_division_filter"
+            phx-value-division={value}
+            role="radio"
+            aria-checked={to_string(value == @division_filter)}
+            class={[
+              "min-h-7 px-2.5 py-0.5 rounded-full border text-[11px] font-medium",
+              "active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              if(value == @division_filter,
+                do: "border-primary bg-primary/10 text-primary",
+                else: "border-base-300 bg-base-100 text-base-content/70"
+              )
+            ]}
           >
             {label}
-          </option>
-        </select>
-      </form>
+          </button>
+        </div>
+      </div>
 
       <ul
         :if={@teams_with_stats != []}
