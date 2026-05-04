@@ -272,6 +272,17 @@ defmodule Ultistats.Games do
   end
 
   @doc """
+  Total number of points (in-progress and completed) for `game`. A
+  cheap aggregate; lets callers fast-path fresh games (count == 0) so
+  they can skip score / events / stoppage queries entirely.
+  """
+  def points_count(%Game{id: game_id}) do
+    Point
+    |> where([p], p.game_id == ^game_id)
+    |> Repo.aggregate(:count, :id)
+  end
+
+  @doc """
   Returns who starts the point with possession (`:ours` or `:theirs`).
 
   For point 1, the receiving team is the one that did **not** pull
@@ -634,6 +645,10 @@ defmodule Ultistats.Games do
 
   @doc "Resolved line size (players per point) for `game`. Falls back to USAU default 7."
   def line_size_for(%Game{} = game), do: fetch_ruleset_field(game, :line_size)
+
+  @doc "Resolved per-half timeout allowance for `game`. Falls back to 0."
+  def timeouts_per_half(%Game{} = game),
+    do: fetch_ruleset_field(game, :timeouts_per_half) || 0
 
   @doc """
   Returns nil when `line` has exactly `required` players, otherwise

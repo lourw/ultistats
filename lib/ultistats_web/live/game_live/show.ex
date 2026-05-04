@@ -56,40 +56,55 @@ defmodule UltistatsWeb.GameLive.Show do
       team_players = Teams.list_players_for_team(game.team_id)
       line_presets = Teams.list_line_presets_for_team(game.team_id)
       current_point = Games.current_point(game)
-      score = Games.score(game)
+      points_count = Games.points_count(game)
+
+      # Fresh-game fast path: with zero points and no in-progress point,
+      # every score/stoppage/points-played query is guaranteed empty. Skip
+      # them so the mount that follows `Start game` doesn't pay 5+
+      # round-trips for known-zero answers.
+      fresh? = points_count == 0 and is_nil(current_point)
+
+      score = if fresh?, do: %{ours: 0, theirs: 0}, else: Games.score(game)
       events = if current_point, do: Games.events_for_point(current_point), else: []
       possession = if current_point, do: derive_possession(game, current_point, events), else: nil
 
-      {:ok,
-       socket
-       |> assign(:page_title, "Game vs #{game.opponent_name}")
-       |> assign(:game, game)
-       |> assign(:team_players, team_players)
-       |> assign(:line_presets, line_presets)
-       |> assign(:current_point, current_point)
-       |> assign(:score, score)
-       |> assign(:events, events)
-       |> assign(:possession, possession)
-       |> assign(:selected_user_ids, MapSet.new())
-       |> assign(:selected_preset_id, nil)
-       |> assign(:current_passer_id, nil)
-       |> assign(:undo_stack, [])
-       |> assign(:redo_stack, [])
-       |> assign(:last_ended, nil)
-       |> assign(:throwaway_prompt, nil)
-       |> assign(:halftime_dismissed?, false)
-       # Disconnect-driven button-disable is wired via JS hook in a later
-       # task; assigns stays at false until the hook lands. The flash
-       # banner from `Layouts.flash_group/1` already covers visual feedback.
-       |> assign(:disconnected?, false)
-       |> assign(:line_picker_sort, :jersey)
-       |> assign(:split_by_position?, false)
-       |> assign(:timeout_active?, false)
-       |> assign(:halftime_active?, false)
-       |> assign(:halftime_recorded?, Games.halftime_recorded?(game))
-       |> assign(:timeouts_remaining, Games.timeouts_remaining(game))
-       |> assign(:call_prompt, nil)
-       |> assign_line_picker_state()}
+      halftime_recorded? = if fresh?, do: false, else: Games.halftime_recorded?(game)
+
+      timeouts_remaining =
+        if fresh?, do: Games.timeouts_per_half(game), else: Games.timeouts_remaining(game)
+
+      socket =
+        socket
+        |> assign(:page_title, "Game vs #{game.opponent_name}")
+        |> assign(:game, game)
+        |> assign(:team_players, team_players)
+        |> assign(:line_presets, line_presets)
+        |> assign(:current_point, current_point)
+        |> assign(:points_count, points_count)
+        |> assign(:score, score)
+        |> assign(:events, events)
+        |> assign(:possession, possession)
+        |> assign(:selected_user_ids, MapSet.new())
+        |> assign(:selected_preset_id, nil)
+        |> assign(:current_passer_id, nil)
+        |> assign(:undo_stack, [])
+        |> assign(:redo_stack, [])
+        |> assign(:last_ended, nil)
+        |> assign(:throwaway_prompt, nil)
+        |> assign(:halftime_dismissed?, false)
+        # Disconnect-driven button-disable is wired via JS hook in a later
+        # task; assigns stays at false until the hook lands. The flash
+        # banner from `Layouts.flash_group/1` already covers visual feedback.
+        |> assign(:disconnected?, false)
+        |> assign(:line_picker_sort, :jersey)
+        |> assign(:split_by_position?, false)
+        |> assign(:timeout_active?, false)
+        |> assign(:halftime_active?, false)
+        |> assign(:halftime_recorded?, halftime_recorded?)
+        |> assign(:timeouts_remaining, timeouts_remaining)
+        |> assign(:call_prompt, nil)
+
+      {:ok, assign_line_picker_state(socket)}
     end
   end
 
@@ -113,11 +128,20 @@ defmodule UltistatsWeb.GameLive.Show do
   # which players are selected does NOT need this.
   defp assign_line_picker_game_state(socket) do
     game = socket.assigns.game
-    next_seq = length_of_points(game) + 1
+    points_count = points_count(socket)
+    next_seq = points_count + 1
     required = Games.required_ratio_for_point(game, next_seq)
-    starting = Games.starting_possession_for_next_point(game)
     required_line_size = Games.line_size_for(game)
-    points_played = Games.points_played_by_user(game)
+
+    {starting, points_played} =
+      if points_count == 0 do
+        # Fresh game: no points exist, so the next point is point 1.
+        # `starting_possession` is purely derived from `game.first_pull`,
+        # and nobody has played yet.
+        {Games.starting_possession(game, %Point{sequence: 1}), %{}}
+      else
+        {Games.starting_possession_for_next_point(game), Games.points_played_by_user(game)}
+      end
 
     socket
     |> assign(:next_point_sequence, next_seq)
@@ -125,6 +149,17 @@ defmodule UltistatsWeb.GameLive.Show do
     |> assign(:starting_possession_preview, starting)
     |> assign(:required_line_size, required_line_size)
     |> assign(:points_played_by_user, points_played)
+  end
+
+  # Cached count from mount, fast-pathed for between-event renders. We
+  # keep it in sync (re-fetch via `Games.points_count/1`) on the few
+  # transitions that actually change the count (start_point,
+  # cancel_current_point, goal scored, undo_last_goal).
+  defp points_count(socket) do
+    case socket.assigns[:points_count] do
+      n when is_integer(n) -> n
+      _ -> Games.points_count(socket.assigns.game)
+    end
   end
 
   # Selection-derived picker assigns. Pure computation against current
@@ -1616,6 +1651,7 @@ defmodule UltistatsWeb.GameLive.Show do
         {:noreply,
          socket
          |> assign(:current_point, point)
+         |> assign(:points_count, (socket.assigns[:points_count] || 0) + 1)
          |> assign(:events, [])
          |> assign(:possession, Games.starting_possession(socket.assigns.game, point))
          |> assign(:current_passer_id, nil)
@@ -1666,6 +1702,7 @@ defmodule UltistatsWeb.GameLive.Show do
         {:noreply,
          socket
          |> assign(:current_point, nil)
+         |> assign(:points_count, max((socket.assigns[:points_count] || 1) - 1, 0))
          |> assign(:events, [])
          |> assign(:possession, nil)
          |> assign(:selected_user_ids, previous_user_ids)
