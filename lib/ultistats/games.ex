@@ -282,17 +282,25 @@ defmodule Ultistats.Games do
     receiving_side(game.first_pull)
   end
 
-  def starting_possession(%Game{id: game_id}, %Point{sequence: seq}) when seq > 1 do
-    prev =
-      Point
-      |> where([p], p.game_id == ^game_id and p.sequence == ^(seq - 1))
-      |> select([p], p.scoring_team)
-      |> Repo.one()
+  def starting_possession(%Game{id: game_id} = game, %Point{sequence: seq} = point)
+      when seq > 1 do
+    if first_second_half_point?(game, point) do
+      # Halftime swaps who pulls — the team that pulled at game start
+      # receives the second-half pull. So second-half-point-1's starting
+      # possession is `game.first_pull` itself (no swap).
+      game.first_pull
+    else
+      prev =
+        Point
+        |> where([p], p.game_id == ^game_id and p.sequence == ^(seq - 1))
+        |> select([p], p.scoring_team)
+        |> Repo.one()
 
-    case prev do
-      :ours -> :theirs
-      :theirs -> :ours
-      _ -> :ours
+      case prev do
+        :ours -> :theirs
+        :theirs -> :ours
+        _ -> :ours
+      end
     end
   end
 
@@ -722,18 +730,77 @@ defmodule Ultistats.Games do
   points invert the most recently scored point's `scoring_team`.
   """
   def starting_possession_for_next_point(%Game{} = game) do
-    last =
-      Point
-      |> where([p], p.game_id == ^game.id and not is_nil(p.scoring_team))
-      |> order_by([p], desc: p.sequence)
-      |> limit(1)
-      |> Repo.one()
+    cond do
+      next_point_is_first_second_half?(game) ->
+        game.first_pull
 
-    case last do
-      nil -> receiving_side(game.first_pull)
-      %Point{scoring_team: :ours} -> :theirs
-      %Point{scoring_team: :theirs} -> :ours
-      _ -> :ours
+      true ->
+        last =
+          Point
+          |> where([p], p.game_id == ^game.id and not is_nil(p.scoring_team))
+          |> order_by([p], desc: p.sequence)
+          |> limit(1)
+          |> Repo.one()
+
+        case last do
+          nil -> receiving_side(game.first_pull)
+          %Point{scoring_team: :ours} -> :theirs
+          %Point{scoring_team: :theirs} -> :ours
+          _ -> :ours
+        end
+    end
+  end
+
+  # Halftime occurred_at, or nil when no halftime event has been recorded.
+  defp halftime_at(%Game{id: game_id}) do
+    Event
+    |> where([e], e.game_id == ^game_id and e.type == :halftime and is_nil(e.deleted_at))
+    |> select([e], e.occurred_at)
+    |> Repo.one()
+  end
+
+  # True when no point has started after halftime — i.e., the next point
+  # to begin will be the first of the second half.
+  defp next_point_is_first_second_half?(%Game{id: game_id} = game) do
+    case halftime_at(game) do
+      nil ->
+        false
+
+      ts ->
+        not Repo.exists?(
+          from(p in Point,
+            where:
+              p.game_id == ^game_id and not is_nil(p.started_at) and
+                p.started_at > ^ts
+          )
+        )
+    end
+  end
+
+  # True when `point` is the first one whose `started_at` is after the
+  # halftime event — i.e., the first second-half point.
+  defp first_second_half_point?(%Game{id: game_id} = game, %Point{} = point) do
+    case halftime_at(game) do
+      nil ->
+        false
+
+      ts ->
+        cond do
+          is_nil(point.started_at) ->
+            false
+
+          DateTime.compare(point.started_at, ts) != :gt ->
+            false
+
+          true ->
+            not Repo.exists?(
+              from(p in Point,
+                where:
+                  p.game_id == ^game_id and not is_nil(p.started_at) and
+                    p.started_at > ^ts and p.sequence < ^point.sequence
+              )
+            )
+        end
     end
   end
 

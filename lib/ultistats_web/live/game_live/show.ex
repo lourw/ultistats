@@ -1895,7 +1895,8 @@ defmodule UltistatsWeb.GameLive.Show do
     {:noreply,
      socket
      |> assign(:timeout_active?, false)
-     |> assign(:halftime_active?, false)}
+     |> assign(:halftime_active?, false)
+     |> assign_line_picker_state()}
   end
 
   def handle_event("record_halftime", _params, socket) do
