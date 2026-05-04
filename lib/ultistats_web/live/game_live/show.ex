@@ -1708,7 +1708,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
     case Games.record_throw(point, type, passer_id, receiver_id) do
       {:ok, event} ->
-        events = Games.events_for_point(point)
+        events = socket.assigns.events ++ [event]
 
         socket =
           socket
@@ -1731,7 +1731,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
     case Games.record_throw(point, :pull, puller_id, nil) do
       {:ok, event} ->
-        events = Games.events_for_point(point)
+        events = socket.assigns.events ++ [event]
 
         {:noreply,
          socket
@@ -1751,7 +1751,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
     case Games.record_throw(point, :stall, passer_id, nil) do
       {:ok, event} ->
-        events = Games.events_for_point(point)
+        events = socket.assigns.events ++ [event]
 
         socket =
           socket
@@ -1791,7 +1791,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
     case Games.record_throw(point, type, passer_id, receiver_id) do
       {:ok, event} ->
-        events = Games.events_for_point(point)
+        events = socket.assigns.events ++ [event]
 
         {:noreply,
          socket
@@ -1810,7 +1810,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
     case Games.record_throw(point, :opponent_turnover, nil, nil) do
       {:ok, event} ->
-        events = Games.events_for_point(point)
+        events = socket.assigns.events ++ [event]
 
         {:noreply,
          socket
@@ -1845,7 +1845,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
       case Games.record_throw(point, type, nil, nil) do
         {:ok, event} ->
-          events = Games.events_for_point(point)
+          events = socket.assigns.events ++ [event]
 
           # Possession unchanged for calls; we still re-derive defensively
           # so the assign stays in sync if any future logic changes.
@@ -1883,9 +1883,10 @@ defmodule UltistatsWeb.GameLive.Show do
         socket = track_event_recorded(socket, event)
 
         events =
-          case socket.assigns.current_point do
-            %Point{} = point -> Games.events_for_point(point)
-            _ -> socket.assigns.events
+          if socket.assigns.current_point do
+            socket.assigns.events ++ [event]
+          else
+            socket.assigns.events
           end
 
         {:noreply,
@@ -1941,9 +1942,10 @@ defmodule UltistatsWeb.GameLive.Show do
         socket = track_event_recorded(socket, event)
 
         events =
-          case socket.assigns.current_point do
-            %Point{} = point -> Games.events_for_point(point)
-            _ -> socket.assigns.events
+          if socket.assigns.current_point do
+            socket.assigns.events ++ [event]
+          else
+            socket.assigns.events
           end
 
         {:noreply,
@@ -1967,10 +1969,18 @@ defmodule UltistatsWeb.GameLive.Show do
         {:noreply, socket}
 
       [event_id | rest_undo] ->
-        with %Event{} = event <- Repo.get(Event, event_id),
+        with %Event{} = event <- Enum.find(socket.assigns.events, &(&1.id == event_id)),
              {:ok, _} <- Games.soft_delete_event(event) do
+          events = Enum.reject(socket.assigns.events, &(&1.id == event_id))
+
           {:noreply,
-           after_history_change(socket, rest_undo, [event_id | socket.assigns.redo_stack])}
+           after_history_change(
+             socket,
+             rest_undo,
+             [event_id | socket.assigns.redo_stack],
+             events,
+             event.type
+           )}
         else
           _ -> {:noreply, put_flash(socket, :error, "Could not undo.")}
         end
@@ -2020,9 +2030,19 @@ defmodule UltistatsWeb.GameLive.Show do
 
       [event_id | rest_redo] ->
         with %Event{} = event <- Repo.get(Event, event_id),
-             {:ok, _} <- Games.restore_event(event) do
+             {:ok, restored} <- Games.restore_event(event) do
+          events =
+            (socket.assigns.events ++ [restored])
+            |> Enum.sort_by(& &1.sequence)
+
           {:noreply,
-           after_history_change(socket, [event_id | socket.assigns.undo_stack], rest_redo)}
+           after_history_change(
+             socket,
+             [event_id | socket.assigns.undo_stack],
+             rest_redo,
+             events,
+             restored.type
+           )}
         else
           _ -> {:noreply, put_flash(socket, :error, "Could not redo.")}
         end
@@ -2037,12 +2057,29 @@ defmodule UltistatsWeb.GameLive.Show do
   # stack (a fresh action invalidates any prior redos). Refreshes the
   # halftime/timeout-counter assigns so stoppages_bar reflects the new
   # event state.
-  defp track_event_recorded(socket, %Event{id: event_id}) do
+  # Only halftime/timeout events affect `halftime_recorded?` and
+  # `timeouts_remaining` — for ordinary throws (catch/drop/goal/etc.) we
+  # skip those two DB queries entirely. Real game events fire fast on
+  # the sideline so this matters per-tap.
+  @stoppage_event_types [
+    :halftime,
+    :halftime_resume,
+    :timeout_ours,
+    :timeout_theirs,
+    :timeout_resume
+  ]
+
+  defp track_event_recorded(socket, %Event{id: event_id, type: type}) do
     socket
     |> assign(:undo_stack, [event_id | socket.assigns.undo_stack])
     |> assign(:redo_stack, [])
-    |> assign_stoppage_state()
+    |> maybe_assign_stoppage_state(type)
   end
+
+  defp maybe_assign_stoppage_state(socket, type) when type in @stoppage_event_types,
+    do: assign_stoppage_state(socket)
+
+  defp maybe_assign_stoppage_state(socket, _), do: socket
 
   defp assign_stoppage_state(socket) do
     game = socket.assigns.game
@@ -2066,7 +2103,7 @@ defmodule UltistatsWeb.GameLive.Show do
         case Games.soft_delete_event(event) do
           {:ok, _} ->
             point = socket.assigns.current_point
-            events = Games.events_for_point(point)
+            events = Enum.reject(socket.assigns.events, &(&1.id == event_id))
 
             {:noreply,
              socket
@@ -2098,7 +2135,7 @@ defmodule UltistatsWeb.GameLive.Show do
       catch_event ->
         case Games.soft_delete_event(catch_event) do
           {:ok, _} ->
-            refreshed = Games.events_for_point(point)
+            refreshed = Enum.reject(socket.assigns.events, &(&1.id == catch_event.id))
 
             {:noreply,
              socket
@@ -2125,7 +2162,7 @@ defmodule UltistatsWeb.GameLive.Show do
 
     case Games.record_throw(point, type, passer_id, receiver_id) do
       {:ok, event} ->
-        events = Games.events_for_point(point)
+        events = socket.assigns.events ++ [event]
 
         {:noreply,
          socket
@@ -2153,10 +2190,10 @@ defmodule UltistatsWeb.GameLive.Show do
   # Re-syncs everything that derives from the events list after an undo
   # or redo: events, possession, current passer. Selection state
   # (receiver / defender pickers) is cleared so the user starts the
-  # next interaction fresh.
-  defp after_history_change(socket, undo_stack, redo_stack) do
+  # next interaction fresh. Stoppage state only refreshes when the
+  # deleted/restored event was a stoppage event.
+  defp after_history_change(socket, undo_stack, redo_stack, events, event_type) do
     point = socket.assigns.current_point
-    events = Games.events_for_point(point)
 
     socket
     |> assign(:undo_stack, undo_stack)
@@ -2165,7 +2202,7 @@ defmodule UltistatsWeb.GameLive.Show do
     |> assign(:possession, derive_possession(socket.assigns.game, point, events))
     |> assign(:current_passer_id, derive_current_passer(events))
     |> assign(:throwaway_prompt, nil)
-    |> assign_stoppage_state()
+    |> maybe_assign_stoppage_state(event_type)
   end
 
   # Walks the (live) events for a point and returns the current passer
