@@ -16,12 +16,12 @@ defmodule UltistatsWeb.LinePresetLive.Form do
         phx-submit="save"
         class="flex flex-col gap-3"
       >
-        <div class="flex flex-col gap-1">
-          <label for={@form[:name].id} class="block text-lg font-semibold text-base-content">
-            Line name
-          </label>
-          <.input field={@form[:name]} type="text" />
-        </div>
+        <.input
+          field={@form[:name]}
+          type="text"
+          label="Line name"
+          class="block w-full rounded-md border border-base-300 bg-base-100 px-3 py-1 text-base-content placeholder:text-base-content/50 min-h-9 focus:outline-2 focus:outline-offset-2 focus:outline-primary disabled:opacity-50"
+        />
         <.input field={@form[:team_id]} type="hidden" />
 
         <section class="flex flex-col gap-3">
