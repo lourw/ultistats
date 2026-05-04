@@ -1037,10 +1037,6 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :player_lookup, :map, required: true
 
   defp throwaway_prompt_strip(assigns) do
-    passer_label = passer_card_label(assigns.current_passer_id, assigns.player_lookup)
-
-    assigns = assign(assigns, :passer_label, passer_label)
-
     ~H"""
     <div class="space-y-1.5" role="dialog" aria-label="Disambiguate turnover">
       <div class="flex items-center gap-2 text-xs font-medium text-base-content/70">
@@ -1171,57 +1167,53 @@ defmodule UltistatsWeb.GameLive.Show do
     ~H"""
     <div
       :if={is_nil(@current_passer_id)}
-      class="rounded-lg border-2 border-dashed border-base-300 px-3 py-2 text-center"
+      class="rounded-md border border-dashed border-base-300 px-3 py-1.5 text-center"
       aria-label="No current passer"
     >
-      <p class="text-xs text-base-content/70 italic">Tap who has the disc</p>
+      <p class="text-xs text-base-content/60 italic">Tap who has the disc</p>
     </div>
 
     <div
       :if={not is_nil(@current_passer_id)}
       class={[
-        "rounded-lg px-3 py-2",
+        "rounded-md border px-3 py-1.5 flex items-center gap-2",
         if(@pending_throwaway?,
-          do: "bg-warning/15 ring-2 ring-warning",
-          else: "bg-success/15 ring-2 ring-success"
+          do: "border-warning/40 bg-warning/5",
+          else: "border-success/40 bg-success/5"
         )
       ]}
       aria-label={"Current passer: #{@label}"}
       data-current-passer={passer_data_id(@current_passer_id)}
     >
-      <div class="flex items-center gap-2">
-        <span
-          class={[
-            "tabular-nums font-semibold inline-flex items-center justify-center size-8 rounded-full text-sm",
-            if(@pending_throwaway?,
-              do: "bg-warning text-warning-content",
-              else: "bg-success text-success-content"
-            )
-          ]}
-          aria-hidden="true"
-        >
-          {passer_card_number(@current_passer_id, @player_lookup)}
-        </span>
-        <div class="flex-1 min-w-0">
-          <p class="text-sm font-semibold truncate leading-tight">{@label}</p>
-          <p class="text-[11px] text-base-content/70 leading-tight">
-            <%= if @pending_throwaway? do %>
-              has thrown it away
-            <% else %>
-              has the disc
-            <% end %>
-          </p>
-        </div>
-        <button
-          :if={@transient?}
-          type="button"
-          phx-click="clear_transient_passer"
-          aria-label="Clear current passer"
-          class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/60 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          <.icon name="hero-x-mark" class="size-4" />
-        </button>
-      </div>
+      <span
+        class={[
+          "tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full text-[11px] shrink-0",
+          if(@pending_throwaway?,
+            do: "bg-warning text-warning-content",
+            else: "bg-success text-success-content"
+          )
+        ]}
+        aria-hidden="true"
+      >
+        {passer_card_number(@current_passer_id, @player_lookup)}
+      </span>
+      <span class="font-medium text-sm truncate flex-1 leading-tight">{@label}</span>
+      <span class="text-[11px] text-base-content/60 leading-tight shrink-0">
+        <%= if @pending_throwaway? do %>
+          threw it away
+        <% else %>
+          has the disc
+        <% end %>
+      </span>
+      <button
+        :if={@transient?}
+        type="button"
+        phx-click="clear_transient_passer"
+        aria-label="Clear current passer"
+        class="-mr-1 min-h-7 min-w-7 inline-flex items-center justify-center rounded-md text-base-content/60 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
+        <.icon name="hero-x-mark" class="size-3.5" />
+      </button>
     </div>
     """
   end
@@ -2577,7 +2569,7 @@ defmodule UltistatsWeb.GameLive.Show do
   defp passer_card_label(user_id, lookup) when is_binary(user_id) do
     case Map.get(lookup, user_id) do
       nil -> "Unknown"
-      member -> "##{Teams.resolved_jersey_number(member)} #{User.display_name(member.user)}"
+      member -> User.display_name(member.user)
     end
   end
 
