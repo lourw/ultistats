@@ -245,20 +245,20 @@ defmodule UltistatsWeb.GameLive.Show do
         phx-hook="HideNav"
         class={[
           "flex flex-col -mx-4 -mt-6 -mb-6 transition-[height] duration-200 motion-reduce:transition-none",
-          surface_tint(@current_point, banner_state(@possession, @events))
+          surface_tint(banner_state(@current_point, @possession, @events))
         ]}
         style="height: calc(100dvh - var(--nav-offset, 0px) - env(safe-area-inset-bottom))"
       >
         <div class={[
           "border-b transition-colors duration-200 motion-reduce:transition-none",
-          top_bar_classes(@current_point, banner_state(@possession, @events))
+          top_bar_classes(banner_state(@current_point, @possession, @events))
         ]}>
           <.compact_header
             game={@game}
             score={@score}
             current_point={@current_point}
             possession={@possession}
-            banner_state={banner_state(@possession, @events)}
+            banner_state={banner_state(@current_point, @possession, @events)}
             halftime?={
               Games.halftime?(@game) and not @halftime_recorded? and
                 not @halftime_dismissed? and not @halftime_active?
@@ -343,7 +343,7 @@ defmodule UltistatsWeb.GameLive.Show do
   defp compact_header(assigns) do
     ~H"""
     <div
-      :if={@current_point}
+      :if={@banner_state}
       class={[
         "py-1 text-center text-xs font-semibold uppercase tracking-wide",
         possession_banner_classes(@banner_state)
@@ -491,7 +491,7 @@ defmodule UltistatsWeb.GameLive.Show do
   defp between_points_view(assigns) do
     ~H"""
     <section
-      class="flex-1 min-h-0 flex flex-col gap-2 px-4 py-3 overflow-hidden"
+      class="flex-1 min-h-0 flex flex-col gap-2 px-4 pb-3 overflow-hidden"
       aria-label="Line picker"
     >
       <div
@@ -2584,37 +2584,39 @@ defmodule UltistatsWeb.GameLive.Show do
   defp possession_label(:theirs), do: "They have the disc"
   defp possession_label(_), do: "Possession unknown"
 
-  # Tints the entire sticky top area by possession state. Between points
-  # (no current_point) we keep the neutral base.
-  defp top_bar_classes(nil, _), do: "bg-base-100/95 border-base-200"
-  defp top_bar_classes(_point, :ours), do: "bg-success/10 border-success/30"
-  defp top_bar_classes(_point, :theirs), do: "bg-error/10 border-error/30"
-  defp top_bar_classes(_point, :pulling), do: "bg-info/10 border-info/30"
-  defp top_bar_classes(_point, _), do: "bg-base-100/95 border-base-200"
+  # Tints the entire sticky top area by banner state.
+  defp top_bar_classes(:ours), do: "bg-success/10 border-success/30"
+  defp top_bar_classes(:theirs), do: "bg-error/10 border-error/30"
+  defp top_bar_classes(:pulling), do: "bg-info/10 border-info/30"
+  defp top_bar_classes(:pre_pull), do: "bg-info/10 border-info/30"
+  defp top_bar_classes(_), do: "bg-base-100/95 border-base-200"
 
-  # Whole-surface tint matching the top bar — only during an active
-  # point so the line picker keeps a neutral background.
-  defp surface_tint(nil, _), do: ""
-  defp surface_tint(_point, :ours), do: "bg-success/5"
-  defp surface_tint(_point, :theirs), do: "bg-error/5"
-  defp surface_tint(_point, :pulling), do: "bg-info/5"
-  defp surface_tint(_point, _), do: ""
+  # Whole-surface tint matching the top bar.
+  defp surface_tint(:ours), do: "bg-success/5"
+  defp surface_tint(:theirs), do: "bg-error/5"
+  defp surface_tint(:pulling), do: "bg-info/5"
+  defp surface_tint(:pre_pull), do: "bg-info/5"
+  defp surface_tint(_), do: ""
 
   defp possession_banner_classes(:ours), do: "bg-success/20 text-success"
   defp possession_banner_classes(:theirs), do: "bg-error/20 text-error"
   defp possession_banner_classes(:pulling), do: "bg-info/20 text-info"
+  defp possession_banner_classes(:pre_pull), do: "bg-info/20 text-info"
   defp possession_banner_classes(_), do: "bg-base-200 text-base-content/70"
 
   defp possession_banner_label(:ours), do: "Our possession"
   defp possession_banner_label(:theirs), do: "Their possession"
   defp possession_banner_label(:pulling), do: "Pulling"
+  defp possession_banner_label(:pre_pull), do: "Pre-pull"
   defp possession_banner_label(_), do: "Possession unknown"
 
-  # The banner state collapses possession + pull-pending into a single atom:
-  # `:pulling` while we're on D and the pull hasn't been recorded yet,
-  # otherwise the raw possession atom (`:ours` / `:theirs` / nil).
-  defp banner_state(:theirs, []), do: :pulling
-  defp banner_state(possession, _events), do: possession
+  # The banner state collapses current_point + possession + pull-pending
+  # into a single atom: `:pre_pull` between points, `:pulling` while we're
+  # on D and the pull hasn't been recorded yet, otherwise the raw
+  # possession atom (`:ours` / `:theirs`).
+  defp banner_state(nil, _possession, _events), do: :pre_pull
+  defp banner_state(_point, :theirs, []), do: :pulling
+  defp banner_state(_point, possession, _events), do: possession
 
   # Line-picker pull pill: "We pull" means we kick the disc to them, so
   # we start the point on defense. The receiving side (:ours == we have
