@@ -4,7 +4,6 @@ defmodule Ultistats.GamesTest do
   alias Ultistats.Games
   alias Ultistats.Games.{Event, Game, Point}
   alias Ultistats.Repo
-  alias Ultistats.Teams
 
   import Ultistats.GamesFixtures
   import Ultistats.TeamsFixtures
@@ -1050,12 +1049,11 @@ defmodule Ultistats.GamesTest do
       assert r.kind == :template
     end
 
-    test "create_ruleset/1 requires kind, timeouts_per_half, line_size, gender_ratio_rule" do
+    test "create_ruleset/1 requires team, kind, timeouts_per_half, line_size, gender_ratio_rule" do
       assert {:error, changeset} = Games.create_ruleset(%{})
       errors = errors_on(changeset)
 
-      # team_id is optional — system rulesets carry team_id: nil.
-      refute errors[:team_id]
+      assert errors[:team_id]
       assert errors[:timeouts_per_half]
       assert errors[:line_size]
       assert errors[:gender_ratio_rule]
@@ -1218,85 +1216,6 @@ defmodule Ultistats.GamesTest do
       assert is_nil(instance.name)
       assert instance.team_id == team.id
       assert instance.score_cap == 11
-    end
-  end
-
-  describe "system rulesets" do
-    alias Ultistats.Games.Ruleset
-    alias Ultistats.Release
-
-    import Ultistats.AccountsFixtures
-
-    test "Ruleset.changeset/2 accepts team_id: nil for a :template row" do
-      attrs = %{
-        name: "USAU Open",
-        kind: :template,
-        division: :open,
-        score_cap: 15,
-        halftime_target: 8,
-        soft_cap_minutes: 75,
-        hard_cap_minutes: 90,
-        timeouts_per_half: 2,
-        line_size: 7,
-        gender_ratio_rule: :none
-      }
-
-      changeset = Ruleset.changeset(%Ruleset{}, attrs)
-
-      assert changeset.valid?
-      assert {:ok, %Ruleset{team_id: nil}} = Ultistats.Repo.insert(changeset)
-    end
-
-    test "Release.seed_system_rulesets/0 is idempotent" do
-      :ok = Release.seed_system_rulesets()
-
-      first_pass =
-        from(r in Ruleset, where: is_nil(r.team_id)) |> Ultistats.Repo.all()
-
-      assert length(first_pass) == 3
-      assert Enum.all?(first_pass, &is_nil(&1.team_id))
-
-      :ok = Release.seed_system_rulesets()
-
-      second_pass =
-        from(r in Ruleset, where: is_nil(r.team_id)) |> Ultistats.Repo.all()
-
-      assert length(second_pass) == 3
-
-      assert Enum.map(first_pass, & &1.id) |> Enum.sort() ==
-               Enum.map(second_pass, & &1.id) |> Enum.sort()
-    end
-
-    test "list_rulesets_for_user/1 includes system rulesets for a user with no teams" do
-      user = user_fixture()
-      :ok = Release.seed_system_rulesets()
-
-      results = Games.list_rulesets_for_user(user.id)
-
-      names = results |> Enum.map(& &1.name) |> Enum.sort()
-      assert names == ["USAU Mixed", "USAU Open", "USAU Women's"]
-      assert Enum.all?(results, &is_nil(&1.team_id))
-    end
-
-    test "list_rulesets_for_user/1 returns the user's team rulesets plus system rulesets, no dupes" do
-      user = user_fixture()
-      team = team_fixture(%{name: "Owls"})
-      {:ok, _m} = Teams.add_team_member(team, user, %{role: :admin, is_player: true})
-      own = ruleset_fixture(%{team_id: team.id, name: "Owls Standard"})
-
-      :ok = Release.seed_system_rulesets()
-
-      results = Games.list_rulesets_for_user(user.id)
-      names = results |> Enum.map(& &1.name) |> Enum.sort()
-
-      assert "Owls Standard" in names
-      assert "USAU Open" in names
-      assert "USAU Women's" in names
-      assert "USAU Mixed" in names
-
-      ids = Enum.map(results, & &1.id)
-      assert length(ids) == length(Enum.uniq(ids))
-      assert own.id in ids
     end
   end
 end

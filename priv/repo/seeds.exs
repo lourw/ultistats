@@ -9,9 +9,6 @@
 alias Ultistats.{Games, Repo, Teams}
 alias Ultistats.Teams.Team
 
-# System rulesets (team_id = nil) — visible to every user. Idempotent.
-Ultistats.Release.seed_system_rulesets()
-
 if Repo.get_by(Ultistats.Accounts.User, email: "admin@admin.com") do
   IO.puts("Seeds: admin@admin.com already present, skipping")
 else

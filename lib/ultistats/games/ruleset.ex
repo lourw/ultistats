@@ -79,6 +79,7 @@ defmodule Ultistats.Games.Ruleset do
       :division
     ])
     |> validate_required([
+      :team_id,
       :kind,
       :timeouts_per_half,
       :line_size,
@@ -107,15 +108,7 @@ defmodule Ultistats.Games.Ruleset do
     |> validate_starting_counts_for_rule()
     |> validate_halftime_target_within_cap()
     |> validate_has_end_condition()
-    |> maybe_assoc_constraint_team()
-  end
-
-  defp maybe_assoc_constraint_team(changeset) do
-    if get_field(changeset, :team_id) do
-      assoc_constraint(changeset, :team)
-    else
-      changeset
-    end
+    |> assoc_constraint(:team)
   end
 
   defp validate_name_for_kind(changeset) do
