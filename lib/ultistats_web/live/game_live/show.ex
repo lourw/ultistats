@@ -290,6 +290,7 @@ defmodule UltistatsWeb.GameLive.Show do
               selected_user_ids={@selected_user_ids}
               selected_preset_id={@selected_preset_id}
               required_ratio={@required_ratio}
+              required_line_size={@required_line_size}
               starting_possession_preview={@starting_possession_preview}
               ratio_violation={@ratio_violation}
               points_played_by_user={@points_played_by_user}
@@ -353,7 +354,7 @@ defmodule UltistatsWeb.GameLive.Show do
             {possession_banner_helper(@banner_state, @starting_possession_preview)}
           </span>
         </div>
-        <details class="relative shrink-0">
+        <details id="tracker-app-menu" phx-hook="CloseOnOutsideClick" class="relative shrink-0">
           <summary
             aria-label="Open menu"
             class="list-none cursor-pointer min-h-9 min-w-9 inline-flex items-center justify-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
@@ -523,6 +524,7 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :selected_user_ids, :any, required: true
   attr :selected_preset_id, :any, required: true
   attr :required_ratio, :any, required: true
+  attr :required_line_size, :integer, required: true
   attr :starting_possession_preview, :atom, required: true
   attr :ratio_violation, :any, required: true
   attr :points_played_by_user, :map, required: true
@@ -533,72 +535,14 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :timeouts_remaining, :integer, required: true
 
   defp between_points_view(assigns) do
+    counts = selected_position_counts(assigns.team_players, assigns.selected_user_ids)
+    assigns = assign(assigns, :position_counts, counts)
+
     ~H"""
     <section
-      class="flex-1 min-h-0 mx-auto w-full max-w-2xl flex flex-col gap-2 px-4 pb-3 overflow-hidden"
+      class="flex-1 min-h-0 mx-auto w-full max-w-2xl flex flex-col gap-3 px-4 pt-2 pb-3 overflow-hidden"
       aria-label="Line picker"
     >
-      <details :if={@line_presets != []} class="group">
-        <summary class={[
-          "min-h-9 list-none cursor-pointer inline-flex w-full items-center gap-2 px-2.5 py-1",
-          "rounded-md border border-base-300 bg-base-100 text-xs font-medium",
-          "active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        ]}>
-          <.icon name="hero-list-bullet" class="size-3.5 shrink-0" />
-          <span class="truncate flex-1 text-left">
-            {preset_summary_label(@line_presets, @selected_preset_id)}
-          </span>
-          <.icon
-            name="hero-chevron-down"
-            class="size-3.5 shrink-0 transition-transform group-open:rotate-180 motion-reduce:transition-none"
-          />
-        </summary>
-        <ul class="mt-1 rounded-md border border-base-300 bg-base-100 divide-y divide-base-200 overflow-hidden">
-          <li>
-            <button
-              type="button"
-              phx-click="clear_preset"
-              aria-pressed={to_string(is_nil(@selected_preset_id))}
-              class={[
-                "w-full min-h-9 px-3 py-1 flex items-center gap-2 text-left text-xs italic",
-                "active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                if(is_nil(@selected_preset_id), do: "bg-primary/10 font-semibold", else: "")
-              ]}
-            >
-              <span class="flex-1 truncate text-base-content/70">None</span>
-              <.icon
-                :if={is_nil(@selected_preset_id)}
-                name="hero-check-circle-solid"
-                class="size-3.5 text-primary shrink-0"
-              />
-            </button>
-          </li>
-          <li :for={preset <- @line_presets}>
-            <button
-              type="button"
-              phx-click="select_preset"
-              phx-value-id={preset.id}
-              aria-pressed={to_string(@selected_preset_id == preset.id)}
-              class={[
-                "w-full min-h-9 px-3 py-1 flex items-center gap-2 text-left text-xs",
-                "active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                if(@selected_preset_id == preset.id, do: "bg-primary/10 font-semibold", else: "")
-              ]}
-            >
-              <span class="flex-1 truncate">{preset.name}</span>
-              <span class="tabular-nums text-[11px] text-base-content/60">
-                {length(preset.users)}
-              </span>
-              <.icon
-                :if={@selected_preset_id == preset.id}
-                name="hero-check-circle-solid"
-                class="size-3.5 text-primary shrink-0"
-              />
-            </button>
-          </li>
-        </ul>
-      </details>
-
       <%= if @team_players == [] do %>
         <div class="rounded-lg border-2 border-dashed border-base-300 p-6 text-center">
           <p class="text-base font-medium">No players on this team yet.</p>
@@ -607,9 +551,81 @@ defmodule UltistatsWeb.GameLive.Show do
           </p>
         </div>
       <% else %>
-        <.line_picker_sort_control sort={@sort} split_by_position?={@split_by_position?} />
+        <div class="flex items-center gap-2">
+          <h2 class="flex items-baseline gap-2 flex-wrap flex-1 min-w-0">
+            <span class="text-sm font-semibold">
+              Pick your {if @starting_possession_preview == :ours, do: "O", else: "D"}-line
+            </span>
+            <span aria-hidden="true" class="text-xs text-base-content/40">-</span>
+            <span
+              aria-live="polite"
+              class={[
+                "text-xs tabular-nums font-semibold",
+                if(MapSet.size(@selected_user_ids) == @required_line_size,
+                  do: "text-success",
+                  else: "text-base-content/60"
+                )
+              ]}
+            >
+              {MapSet.size(@selected_user_ids)} / {@required_line_size}
+            </span>
+            <span aria-hidden="true" class="text-xs text-base-content/40">-</span>
+            <span
+              aria-label="Selected position breakdown"
+              class="text-[11px] tabular-nums text-base-content/60"
+            >
+              H {@position_counts.handler} · C {@position_counts.cutter} · X {@position_counts.hybrid}
+            </span>
+          </h2>
+          <.line_picker_sort_popover sort={@sort} split_by_position?={@split_by_position?} />
+        </div>
 
-        <div id="game-line-picker" class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden space-y-4">
+        <div
+          :if={@line_presets != []}
+          role="group"
+          aria-label="Line presets"
+          class="flex flex-wrap items-center gap-1.5"
+        >
+          <button
+            type="button"
+            phx-click="clear_preset"
+            aria-pressed={to_string(is_nil(@selected_preset_id))}
+            class={[
+              "min-h-7 px-2.5 py-0.5 rounded-full border text-[11px] font-medium",
+              "active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              if(is_nil(@selected_preset_id),
+                do: "border-primary bg-primary/10 text-primary",
+                else: "border-base-300 bg-base-100 text-base-content/70"
+              )
+            ]}
+          >
+            None
+          </button>
+          <button
+            :for={preset <- @line_presets}
+            type="button"
+            phx-click="select_preset"
+            phx-value-id={preset.id}
+            aria-pressed={to_string(@selected_preset_id == preset.id)}
+            class={[
+              "min-h-7 px-2.5 py-0.5 rounded-full border text-[11px] font-medium",
+              "inline-flex items-center gap-1 max-w-full",
+              "active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              if(@selected_preset_id == preset.id,
+                do: "border-primary bg-primary/10 text-primary",
+                else: "border-base-300 bg-base-100"
+              )
+            ]}
+          >
+            <span class="truncate max-w-[10rem]">{preset.name}</span>
+            <span class="tabular-nums text-[10px] opacity-70">{length(preset.users)}</span>
+          </button>
+        </div>
+
+        <div
+          id="game-line-picker"
+          class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col gap-4 pb-6"
+        >
           <.line_picker_section
             :for={role <- [:male_matching, :female_matching]}
             :if={Enum.any?(@team_players, &(&1.user.gender_role == role))}
@@ -698,51 +714,60 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :sort, :atom, required: true
   attr :split_by_position?, :boolean, required: true
 
-  defp line_picker_sort_control(assigns) do
+  defp line_picker_sort_popover(assigns) do
     ~H"""
-    <div class="flex items-center gap-2 flex-wrap text-[11px]">
-      <div
-        class="flex items-center gap-1"
-        role="radiogroup"
-        aria-label="Sort players"
-      >
-        <span class="text-base-content/60 uppercase tracking-wide font-semibold mr-1">Sort</span>
-        <button
-          :for={
-            {key, label} <- [
-              {:jersey, "#"},
-              {:name, "Name"},
-              {:points, "Playtime"}
-            ]
-          }
-          type="button"
-          phx-click="change_sort"
-          phx-value-sort={Atom.to_string(key)}
-          role="radio"
-          aria-checked={to_string(@sort == key)}
-          class={[
-            "min-h-7 px-2 inline-flex items-center rounded-md font-medium",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            if(@sort == key,
-              do: "bg-primary text-primary-content",
-              else: "bg-base-200 text-base-content/70 active:bg-base-300"
-            )
-          ]}
-        >
-          {label}
-        </button>
-      </div>
+    <details class="relative shrink-0 group">
+      <summary class={[
+        "list-none cursor-pointer min-h-9 min-w-9 inline-flex items-center justify-center gap-1 px-2",
+        "rounded-md text-base-content/70 text-[11px] font-medium",
+        "active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      ]}>
+        <.icon name="hero-adjustments-horizontal" class="size-4" />
+        <span class="sr-only">Sort options</span>
+      </summary>
+      <div class={[
+        "absolute right-0 top-full mt-1 z-20 w-56 p-2 space-y-2",
+        "rounded-md border border-base-300 bg-base-100 shadow-lg text-[11px]"
+      ]}>
+        <div role="radiogroup" aria-label="Sort players" class="flex items-center gap-1">
+          <span class="text-base-content/60 uppercase tracking-wide font-semibold mr-1">Sort</span>
+          <button
+            :for={
+              {key, label} <- [
+                {:jersey, "#"},
+                {:name, "Name"},
+                {:points, "Playtime"}
+              ]
+            }
+            type="button"
+            phx-click="change_sort"
+            phx-value-sort={Atom.to_string(key)}
+            role="radio"
+            aria-checked={to_string(@sort == key)}
+            class={[
+              "min-h-7 px-2 inline-flex items-center rounded-md font-medium",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              if(@sort == key,
+                do: "bg-primary text-primary-content",
+                else: "bg-base-200 text-base-content/70 active:bg-base-300"
+              )
+            ]}
+          >
+            {label}
+          </button>
+        </div>
 
-      <label class="ml-auto inline-flex items-center gap-1.5 cursor-pointer">
-        <input
-          type="checkbox"
-          phx-click="toggle_split_by_position"
-          checked={@split_by_position?}
-          class="checkbox checkbox-xs checkbox-primary"
-        />
-        <span class="text-base-content/70">Split by position</span>
-      </label>
-    </div>
+        <label class="flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="checkbox"
+            phx-click="toggle_split_by_position"
+            checked={@split_by_position?}
+            class="checkbox checkbox-xs checkbox-primary"
+          />
+          <span class="text-base-content/70">Split by position</span>
+        </label>
+      </div>
+    </details>
     """
   end
 
@@ -1649,9 +1674,9 @@ defmodule UltistatsWeb.GameLive.Show do
           :if={@show_finish_game?}
           type="button"
           phx-click="finish_game"
-          data-confirm="Finish this game? You can't add more points after."
+          data-confirm="End this game? You can't add more points after."
           disabled={@disconnected?}
-          aria-label="Finish game"
+          aria-label="End game"
           class={[
             "min-h-9 px-2 py-1 rounded-md border border-error/40 text-error",
             "inline-flex items-center justify-center gap-1.5",
@@ -1662,7 +1687,7 @@ defmodule UltistatsWeb.GameLive.Show do
           ]}
         >
           <.icon name="hero-flag" class="size-4" />
-          <span>Finish</span>
+          <span>End Game</span>
         </button>
       </div>
     </div>
@@ -1677,9 +1702,6 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :disconnected?, :boolean, required: true
 
   defp bottom_action_bar(assigns) do
-    counts = selected_position_counts(assigns.team_players, assigns.selected_user_ids)
-    assigns = assign(assigns, :position_counts, counts)
-
     ~H"""
     <div
       :if={@game.status != :finished and is_nil(@current_point)}
@@ -1700,11 +1722,6 @@ defmodule UltistatsWeb.GameLive.Show do
           ]}
         >
           <span>Start point</span>
-          <span aria-hidden="true">-</span>
-          <span class="tabular-nums">
-            H {@position_counts.handler} · C {@position_counts.cutter} · X {@position_counts.hybrid}
-          </span>
-          <span aria-hidden="true">-</span>
           <span class="tabular-nums">
             {MapSet.size(@selected_user_ids)} / {@required_line_size}
           </span>
@@ -2854,13 +2871,4 @@ defmodule UltistatsWeb.GameLive.Show do
   defp position_pill_classes(:cutter), do: "bg-warning/15 text-warning"
   defp position_pill_classes(:hybrid), do: "bg-info/15 text-info"
   defp position_pill_classes(_), do: "bg-base-200 text-base-content/70"
-
-  defp preset_summary_label(_presets, nil), do: "Use preselected line"
-
-  defp preset_summary_label(presets, selected_id) do
-    case Enum.find(presets, &(&1.id == selected_id)) do
-      nil -> "Use preselected line"
-      preset -> preset.name
-    end
-  end
 end
