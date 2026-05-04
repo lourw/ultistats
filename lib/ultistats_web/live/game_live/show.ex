@@ -261,7 +261,6 @@ defmodule UltistatsWeb.GameLive.Show do
             undo_stack={@undo_stack}
             redo_stack={@redo_stack}
             last_ended={@last_ended}
-            transient_passer?={transient_passer?(@current_passer_id, @events)}
           />
         </div>
 
@@ -334,7 +333,6 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :undo_stack, :list, required: true
   attr :redo_stack, :list, required: true
   attr :last_ended, :any, required: true
-  attr :transient_passer?, :boolean, required: true
 
   defp compact_header(assigns) do
     ~H"""
@@ -426,19 +424,11 @@ defmodule UltistatsWeb.GameLive.Show do
           <button
             :if={@current_point}
             type="button"
-            phx-click={
-              cond do
-                @transient_passer? -> "undo"
-                @undo_stack == [] -> "cancel_current_point"
-                true -> "undo"
-              end
-            }
+            phx-click={if @undo_stack == [], do: "cancel_current_point", else: "undo"}
             aria-label={
-              cond do
-                @transient_passer? -> "Clear current passer"
-                @undo_stack == [] -> "Back to lineup (cancel point)"
-                true -> "Undo last event"
-              end
+              if @undo_stack == [],
+                do: "Back to lineup (cancel point)",
+                else: "Undo last event"
             }
             class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/70 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
@@ -801,6 +791,7 @@ defmodule UltistatsWeb.GameLive.Show do
           on_field={@on_field}
           player_lookup={@player_lookup}
           current_passer_id={@current_passer_id}
+          transient_passer?={transient_passer?(@current_passer_id, @events)}
           throwaway_prompt={@throwaway_prompt}
           disconnected?={@disconnected?}
         />
@@ -824,6 +815,7 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :on_field, :list, required: true
   attr :player_lookup, :map, required: true
   attr :current_passer_id, :any, required: true
+  attr :transient_passer?, :boolean, required: true
   attr :throwaway_prompt, :any, required: true
   attr :disconnected?, :boolean, required: true
 
@@ -841,6 +833,7 @@ defmodule UltistatsWeb.GameLive.Show do
         current_passer_id={@current_passer_id}
         player_lookup={@player_lookup}
         pending_throwaway?={not is_nil(@throwaway_prompt)}
+        transient?={@transient_passer?}
       />
 
       <.throwaway_prompt_strip
@@ -849,10 +842,6 @@ defmodule UltistatsWeb.GameLive.Show do
         current_passer_id={@current_passer_id}
         player_lookup={@player_lookup}
       />
-
-      <p :if={not @passer_set?} class="text-xs text-base-content/70" aria-live="polite">
-        Tap who has the disc.
-      </p>
 
       <.action_legend variant={:ours} />
 
@@ -978,7 +967,10 @@ defmodule UltistatsWeb.GameLive.Show do
         {@name}
       </span>
 
-      <div class="relative flex items-center gap-1 shrink-0">
+      <div class={[
+        "relative flex items-center gap-1 shrink-0",
+        not @passer_set? && "pointer-events-none"
+      ]}>
         <button
           type="button"
           phx-click="record_throw_for_player"
@@ -1170,6 +1162,7 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :current_passer_id, :any, required: true
   attr :player_lookup, :map, required: true
   attr :pending_throwaway?, :boolean, default: false
+  attr :transient?, :boolean, default: false
 
   defp current_passer_card(assigns) do
     label = passer_card_label(assigns.current_passer_id, assigns.player_lookup)
@@ -1219,6 +1212,15 @@ defmodule UltistatsWeb.GameLive.Show do
             <% end %>
           </p>
         </div>
+        <button
+          :if={@transient?}
+          type="button"
+          phx-click="clear_transient_passer"
+          aria-label="Clear current passer"
+          class="min-h-9 min-w-9 inline-flex items-center justify-center rounded-md text-base-content/60 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <.icon name="hero-x-mark" class="size-4" />
+        </button>
       </div>
     </div>
     """
@@ -2162,20 +2164,18 @@ defmodule UltistatsWeb.GameLive.Show do
   end
 
   def handle_event("undo", _params, socket) do
-    cond do
-      transient_passer?(socket.assigns.current_passer_id, socket.assigns.events) ->
-        prior = socket.assigns.current_passer_id
+    if socket.assigns.undo_stack == [] do
+      {:noreply, socket}
+    else
+      do_undo_event(socket)
+    end
+  end
 
-        {:noreply,
-         socket
-         |> assign(:current_passer_id, nil)
-         |> assign(:redo_stack, [{:passer, prior} | socket.assigns.redo_stack])}
-
-      socket.assigns.undo_stack == [] ->
-        {:noreply, socket}
-
-      true ->
-        do_undo_event(socket)
+  def handle_event("clear_transient_passer", _params, socket) do
+    if transient_passer?(socket.assigns.current_passer_id, socket.assigns.events) do
+      {:noreply, assign(socket, :current_passer_id, nil)}
+    else
+      {:noreply, socket}
     end
   end
 
@@ -2219,12 +2219,6 @@ defmodule UltistatsWeb.GameLive.Show do
     case socket.assigns.redo_stack do
       [] ->
         {:noreply, socket}
-
-      [{:passer, token} | rest_redo] ->
-        {:noreply,
-         socket
-         |> assign(:current_passer_id, token)
-         |> assign(:redo_stack, rest_redo)}
 
       [{:event, event_id} | rest_redo] ->
         with %Event{} = event <- Repo.get(Event, event_id),
