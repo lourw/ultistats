@@ -87,19 +87,12 @@ defmodule UltistatsWeb.DashboardLive.Index do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <.header>
-        Dashboard
-        <:subtitle :if={@selected_team}>
-          {@selected_team.name}
-        </:subtitle>
-      </.header>
-
       <%= cond do %>
         <% @teams == [] -> %>
           <.no_teams_state />
         <% true -> %>
           <div class="space-y-6">
-            <.team_switcher :if={length(@teams) > 1} teams={@teams} selected_team={@selected_team} />
+            <.team_hero :if={@selected_team} teams={@teams} selected_team={@selected_team} />
 
             <.recent_games_panel
               :if={@selected_team}
@@ -137,21 +130,48 @@ defmodule UltistatsWeb.DashboardLive.Index do
   attr :teams, :list, required: true
   attr :selected_team, :map, required: true
 
-  defp team_switcher(assigns) do
+  defp team_hero(assigns) do
+    assigns = assign(assigns, :switchable?, length(assigns.teams) > 1)
+
     ~H"""
-    <section aria-label="Team switcher" class="flex items-center gap-2">
-      <label for="dashboard-team-select" class="text-sm text-base-content/70">Team</label>
-      <form phx-change="switch_team">
+    <section aria-label="Team" class="relative">
+      <div class={[
+        "flex items-center gap-3 rounded-xl border border-base-300 bg-base-100 p-3",
+        "shadow-sm",
+        @switchable? &&
+          "transition-colors hover:bg-base-200 focus-within:ring-2 focus-within:ring-primary"
+      ]}>
+        <div
+          aria-hidden="true"
+          class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-lg font-bold tabular-nums"
+        >
+          {team_initials(@selected_team.name)}
+        </div>
+
+        <div class="min-w-0 flex-1">
+          <div class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
+            Team
+          </div>
+          <div class="truncate text-xl font-bold leading-tight">
+            {@selected_team.name}
+          </div>
+        </div>
+
+        <.icon
+          :if={@switchable?}
+          name="hero-chevron-up-down"
+          class="h-5 w-5 shrink-0 text-base-content/60"
+        />
+      </div>
+
+      <form :if={@switchable?} phx-change="switch_team" class="absolute inset-0">
+        <label for="dashboard-team-select" class="sr-only">Switch team</label>
         <select
           id="dashboard-team-select"
           name="team_id"
-          class="select select-sm select-bordered min-h-11"
+          class="absolute inset-0 h-full w-full cursor-pointer opacity-0"
         >
-          <option
-            :for={team <- @teams}
-            value={team.id}
-            selected={team.id == @selected_team.id}
-          >
+          <option :for={team <- @teams} value={team.id} selected={team.id == @selected_team.id}>
             {team.name}
           </option>
         </select>
@@ -159,6 +179,16 @@ defmodule UltistatsWeb.DashboardLive.Index do
     </section>
     """
   end
+
+  defp team_initials(name) when is_binary(name) do
+    name
+    |> String.split(~r/\s+/, trim: true)
+    |> Enum.take(2)
+    |> Enum.map_join(&String.slice(&1, 0, 1))
+    |> String.upcase()
+  end
+
+  defp team_initials(_), do: "?"
 
   attr :games, :list, required: true
   attr :selected_team, :map, required: true
