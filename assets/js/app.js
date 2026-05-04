@@ -71,18 +71,17 @@ const ScrollAwareNav = {
 }
 
 // Hide the global app nav while a LiveView is mounted (e.g. the live
-// game tracker, where every pixel of vertical space matters). Slides
-// the navbar offscreen and zeroes `--nav-offset` so dependent height
-// calcs reclaim the ~56px. Restores on navigation away.
+// game tracker, where every pixel of vertical space matters). The
+// state lives on <html> so LiveView's DOM patches never reset it
+// (LV stays inside <body>). The nav's transform is driven by the
+// `html.nav-hidden #app-nav` rule in app.css.
 const HideNav = {
   mounted() {
-    const nav = document.getElementById("app-nav")
-    if (nav) nav.classList.add("-translate-y-full")
+    document.documentElement.classList.add("nav-hidden")
     document.documentElement.style.setProperty("--nav-offset", "0px")
   },
   destroyed() {
-    const nav = document.getElementById("app-nav")
-    if (nav) nav.classList.remove("-translate-y-full")
+    document.documentElement.classList.remove("nav-hidden")
     document.documentElement.style.setProperty("--nav-offset", NAV_HEIGHT)
   },
 }

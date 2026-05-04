@@ -54,6 +54,12 @@ button[phx-submit]:active, [type="submit"]:active {
   transform: scale(0.96);
 }
 
+/* Driven by the HideNav hook so LiveView DOM patches don't reset the
+   navbar's transform when something else on the page re-renders. */
+html.nav-hidden #app-nav {
+  transform: translateY(-100%);
+}
+
 /* iOS safe-area utilities (UI_DESIGN.md §Layout). Tailwind v4 doesn't
    ship these. */
 @utility pt-safe { padding-top: env(safe-area-inset-top); }
