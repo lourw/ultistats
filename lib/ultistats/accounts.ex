@@ -22,7 +22,7 @@ defmodule Ultistats.Accounts do
   import Ecto.Query, warn: false
   alias Ultistats.Repo
 
-  alias Ultistats.Accounts.{User, UserToken, UserNotifier}
+  alias Ultistats.Accounts.{User, UserSettings, UserToken, UserNotifier}
   alias Ultistats.Games.Event
   alias Ultistats.Teams.TeamMembership
 
@@ -373,6 +373,41 @@ defmodule Ultistats.Accounts do
       {:ok, _changes} -> {:ok, %{teams: stub_team_ids}}
       {:error, _step, _value, _changes} -> {:error, :claim_failed}
     end
+  end
+
+  ## User settings
+
+  @doc """
+  Returns the `%UserSettings{}` row for `user`, creating it on first read
+  with the schema defaults so existing users pick up new settings without
+  a backfill.
+  """
+  def get_user_settings(%User{id: user_id}) do
+    case Repo.get_by(UserSettings, user_id: user_id) do
+      %UserSettings{} = s -> s
+      nil -> create_default_user_settings!(user_id)
+    end
+  end
+
+  defp create_default_user_settings!(user_id) do
+    %UserSettings{}
+    |> UserSettings.changeset(%{user_id: user_id})
+    |> Repo.insert!()
+  end
+
+  @doc "Updates `user`'s settings from `attrs`."
+  def update_user_settings(%User{} = user, attrs) do
+    user
+    |> get_user_settings()
+    |> UserSettings.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc "Returns a changeset for editing `user`'s settings."
+  def change_user_settings(%User{} = user, attrs \\ %{}) do
+    user
+    |> get_user_settings()
+    |> UserSettings.changeset(attrs)
   end
 
   ## Token helper

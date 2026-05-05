@@ -1,6 +1,7 @@
 defmodule UltistatsWeb.GameLive.Start do
   use UltistatsWeb, :live_view
 
+  alias Ultistats.Accounts
   alias Ultistats.Games
   alias Ultistats.Games.{Game, Ruleset}
   alias Ultistats.Teams
@@ -347,10 +348,14 @@ defmodule UltistatsWeb.GameLive.Start do
 
     case validate_picker(game_params, socket.assigns.team_rulesets) do
       :ok ->
+        user_settings = Accounts.get_user_settings(socket.assigns.current_scope.user)
+
         attrs =
           game_params
           |> merge_defaults()
           |> Map.put(:rule_overrides, parse_overrides(rule_overrides_params))
+          |> Map.put_new(:line_sort, user_settings.default_line_sort)
+          |> Map.put_new(:line_picker_sort, user_settings.default_line_picker_sort)
           |> normalize_ruleset_id()
 
         case Games.start_game(attrs) do

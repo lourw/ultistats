@@ -22,6 +22,14 @@
       Profile
     </.link>
     <.link
+      href={~p"/users/settings?tab=preferences"}
+      role="tab"
+      aria-selected={to_string(@active_tab == :preferences)}
+      class={settings_tab_classes(@active_tab == :preferences)}
+    >
+      Preferences
+    </.link>
+    <.link
       href={~p"/users/settings?tab=auth"}
       role="tab"
       aria-selected={to_string(@active_tab == :auth)}
@@ -30,6 +38,97 @@
       Auth
     </.link>
   </div>
+
+  <section
+    :if={@active_tab == :preferences}
+    class="mt-4"
+    aria-labelledby="tab-preferences"
+  >
+    <.form
+      :let={f}
+      for={@settings_changeset}
+      action={~p"/users/settings?tab=preferences"}
+      id="update_settings"
+      class="flex flex-col gap-3"
+    >
+      <input type="hidden" name="action" value="update_settings" />
+
+      <fieldset class="space-y-1">
+        <legend class="block text-sm font-medium text-base-content">
+          Default in-point sort
+        </legend>
+        <p class="text-xs text-base-content/70">
+          New games start the on-field player list sorted this way. You can still
+          change it per-game from the in-point sort menu.
+        </p>
+        <div class="inline-flex flex-wrap items-center gap-2 mt-1" role="radiogroup">
+          <label
+            :for={{label, value} <- [{"Jersey #", :jersey}, {"Name", :name}]}
+            class={[
+              "h-9 inline-flex items-center gap-2 px-3 rounded-md text-sm font-medium",
+              "border border-base-300 bg-base-100 text-base-content cursor-pointer select-none",
+              "active:bg-base-200",
+              "has-[:checked]:bg-primary/10 has-[:checked]:border-primary",
+              "focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary"
+            ]}
+          >
+            <input
+              type="radio"
+              name={f[:default_line_sort].name}
+              id={"#{f[:default_line_sort].id}_#{value}"}
+              value={value}
+              checked={
+                f[:default_line_sort].value == value or
+                  f[:default_line_sort].value == Atom.to_string(value)
+              }
+              class="accent-primary size-4 shrink-0"
+            />
+            <span>{label}</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset class="space-y-1">
+        <legend class="block text-sm font-medium text-base-content">
+          Default line picker sort
+        </legend>
+        <p class="text-xs text-base-content/70">
+          New games start the between-points line picker sorted this way.
+        </p>
+        <div class="inline-flex flex-wrap items-center gap-2 mt-1" role="radiogroup">
+          <label
+            :for={
+              {label, value} <- [{"Jersey #", :jersey}, {"Name", :name}, {"Playtime", :points}]
+            }
+            class={[
+              "h-9 inline-flex items-center gap-2 px-3 rounded-md text-sm font-medium",
+              "border border-base-300 bg-base-100 text-base-content cursor-pointer select-none",
+              "active:bg-base-200",
+              "has-[:checked]:bg-primary/10 has-[:checked]:border-primary",
+              "focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary"
+            ]}
+          >
+            <input
+              type="radio"
+              name={f[:default_line_picker_sort].name}
+              id={"#{f[:default_line_picker_sort].id}_#{value}"}
+              value={value}
+              checked={
+                f[:default_line_picker_sort].value == value or
+                  f[:default_line_picker_sort].value == Atom.to_string(value)
+              }
+              class="accent-primary size-4 shrink-0"
+            />
+            <span>{label}</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <footer class="mt-4 pt-4 border-t border-base-300 flex items-center gap-3">
+        <.button variant="primary" phx-disable-with="Saving...">Save preferences</.button>
+      </footer>
+    </.form>
+  </section>
 
   <section :if={@active_tab == :profile} class="mt-4" aria-labelledby="tab-profile">
     <.form

@@ -5,6 +5,8 @@ defmodule Ultistats.Games.Game do
   @formats [:usau_standard]
   @statuses [:in_progress, :finished, :abandoned]
   @first_pulls [:ours, :theirs]
+  @line_sorts [:jersey, :name]
+  @line_picker_sorts [:jersey, :name, :points]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -15,6 +17,8 @@ defmodule Ultistats.Games.Game do
     field :started_at, :utc_datetime
     field :ended_at, :utc_datetime
     field :first_pull, Ecto.Enum, values: @first_pulls
+    field :line_sort, Ecto.Enum, values: @line_sorts, default: :jersey
+    field :line_picker_sort, Ecto.Enum, values: @line_picker_sorts, default: :jersey
 
     belongs_to :team, Ultistats.Teams.Team
     belongs_to :ruleset, Ultistats.Games.Ruleset
@@ -32,6 +36,12 @@ defmodule Ultistats.Games.Game do
   @doc "Valid `:first_pull` enum values."
   def first_pulls, do: @first_pulls
 
+  @doc "Valid `:line_sort` enum values (the in-point on-field player order)."
+  def line_sorts, do: @line_sorts
+
+  @doc "Valid `:line_picker_sort` enum values (the between-points line picker order)."
+  def line_picker_sorts, do: @line_picker_sorts
+
   @doc false
   def changeset(game, attrs) do
     game
@@ -43,7 +53,9 @@ defmodule Ultistats.Games.Game do
       :status,
       :started_at,
       :ended_at,
-      :first_pull
+      :first_pull,
+      :line_sort,
+      :line_picker_sort
     ])
     |> validate_required([
       :team_id,
@@ -51,7 +63,9 @@ defmodule Ultistats.Games.Game do
       :format,
       :status,
       :started_at,
-      :first_pull
+      :first_pull,
+      :line_sort,
+      :line_picker_sort
     ])
     |> validate_length(:opponent_name, min: 1, max: 80)
     |> assoc_constraint(:team)

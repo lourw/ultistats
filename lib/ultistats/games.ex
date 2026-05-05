@@ -103,6 +103,20 @@ defmodule Ultistats.Games do
     |> Repo.update()
   end
 
+  @doc "Updates only the per-game in-point line sort preference."
+  def update_line_sort(%Game{} = game, sort) when sort in [:jersey, :name] do
+    game
+    |> Game.changeset(%{line_sort: sort})
+    |> Repo.update()
+  end
+
+  @doc "Updates only the per-game line-picker sort preference."
+  def update_line_picker_sort(%Game{} = game, sort) when sort in [:jersey, :name, :points] do
+    game
+    |> Game.changeset(%{line_picker_sort: sort})
+    |> Repo.update()
+  end
+
   @doc "Deletes a game (cascades to points and events via FK)."
   def delete_game(%Game{} = game) do
     Repo.delete(game)

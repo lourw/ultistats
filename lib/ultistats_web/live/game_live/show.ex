@@ -99,7 +99,8 @@ defmodule UltistatsWeb.GameLive.Show do
         # task; assigns stays at false until the hook lands. The flash
         # banner from `Layouts.flash_group/1` already covers visual feedback.
         |> assign(:disconnected?, false)
-        |> assign(:line_picker_sort, :jersey)
+        |> assign(:line_picker_sort, game.line_picker_sort)
+        |> assign(:in_point_sort, game.line_sort)
         |> assign(:split_by_position?, false)
         |> assign(:timeout_active?, false)
         |> assign(:halftime_active?, false)
@@ -278,6 +279,7 @@ defmodule UltistatsWeb.GameLive.Show do
               disconnected?={@disconnected?}
               call_prompt={@call_prompt}
               timeouts_remaining={@timeouts_remaining}
+              in_point_sort={@in_point_sort}
             />
           <% true -> %>
             <.between_points_view
@@ -714,15 +716,15 @@ defmodule UltistatsWeb.GameLive.Show do
         <span class="sr-only">Sort options</span>
       </summary>
       <div class={[
-        "absolute right-0 top-full mt-1 z-20 w-56 p-2 space-y-2",
+        "absolute right-0 top-full mt-1 z-20 w-44 p-2 space-y-2",
         "rounded-md border border-base-300 bg-base-100 shadow-lg text-[11px]"
       ]}>
-        <div role="radiogroup" aria-label="Sort players" class="flex items-center gap-1">
-          <span class="text-base-content/60 uppercase tracking-wide font-semibold mr-1">Sort</span>
+        <p class="text-base-content/60 uppercase tracking-wide font-semibold px-1">Sort</p>
+        <div role="radiogroup" aria-label="Sort players" class="flex flex-wrap items-center gap-2">
           <button
             :for={
               {key, label} <- [
-                {:jersey, "#"},
+                {:jersey, "Jersey #"},
                 {:name, "Name"},
                 {:points, "Playtime"}
               ]
@@ -745,7 +747,7 @@ defmodule UltistatsWeb.GameLive.Show do
           </button>
         </div>
 
-        <label class="flex items-center gap-1.5 cursor-pointer">
+        <label class="flex items-center gap-1.5 cursor-pointer pt-2 border-t border-base-200">
           <input
             type="checkbox"
             phx-click="toggle_split_by_position"
@@ -767,10 +769,16 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :disconnected?, :boolean, required: true
   attr :call_prompt, :any, required: true
   attr :timeouts_remaining, :integer, required: true
+  attr :in_point_sort, :atom, required: true
 
   defp in_point_view(assigns) do
     line_user_ids = line_user_ids(assigns.current_point)
-    on_field = Enum.filter(assigns.team_players, &(&1.user_id in line_user_ids))
+
+    on_field =
+      assigns.team_players
+      |> Enum.filter(&(&1.user_id in line_user_ids))
+      |> sort_on_field(assigns.in_point_sort)
+
     player_lookup = Map.new(assigns.team_players, &{&1.user_id, &1})
 
     assigns =
@@ -790,16 +798,19 @@ defmodule UltistatsWeb.GameLive.Show do
           current_passer_id={@current_passer_id}
           transient_passer?={transient_passer?(@current_passer_id, @events)}
           disconnected?={@disconnected?}
+          sort={@in_point_sort}
         />
       <% else %>
         <.their_possession_view
           on_field={@on_field}
           pull_pending?={@events == []}
           disconnected?={@disconnected?}
+          sort={@in_point_sort}
         />
       <% end %>
 
       <.calls_bar
+        :if={not (@possession == :theirs and @events == [])}
         disconnected?={@disconnected?}
         call_prompt={@call_prompt}
         timeouts_remaining={@timeouts_remaining}
@@ -813,6 +824,7 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :current_passer_id, :any, required: true
   attr :transient_passer?, :boolean, required: true
   attr :disconnected?, :boolean, required: true
+  attr :sort, :atom, required: true
 
   defp our_possession_view(assigns) do
     passer_set? = not is_nil(assigns.current_passer_id)
@@ -830,7 +842,12 @@ defmodule UltistatsWeb.GameLive.Show do
         transient?={@transient_passer?}
       />
 
-      <.action_legend variant={:ours} />
+      <div class="flex items-center gap-2">
+        <div class="flex-1 min-w-0">
+          <.action_legend variant={:ours} />
+        </div>
+        <.in_point_sort_popover sort={@sort} />
+      </div>
 
       <.action_player_grid
         on_field={@on_field}
@@ -870,16 +887,81 @@ defmodule UltistatsWeb.GameLive.Show do
     """
   end
 
-  defp opponent_action_classes do
+  defp opponent_action_classes(:turnover) do
     [
-      "min-h-9 px-2 py-1 rounded-md border border-base-300",
+      opponent_action_base_classes(),
+      "border-error/30 bg-error/10 text-error active:bg-error/20"
+    ]
+  end
+
+  defp opponent_action_classes(:goal) do
+    [
+      opponent_action_base_classes(),
+      "border-success/60 bg-success/30 text-base-content active:bg-success/40"
+    ]
+  end
+
+  defp opponent_action_base_classes do
+    [
+      "min-h-9 px-2 py-1 rounded-md border",
       "inline-flex items-center justify-center gap-1.5",
-      "text-sm font-semibold bg-base-100 text-base-content active:bg-base-200",
+      "text-sm font-semibold",
       "transition-[colors,opacity] motion-reduce:transition-none",
       "phx-click-loading:opacity-50",
       "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
       "disabled:opacity-50 disabled:cursor-not-allowed"
     ]
+  end
+
+  attr :sort, :atom, required: true
+
+  defp in_point_sort_popover(assigns) do
+    ~H"""
+    <details class="relative shrink-0 group">
+      <summary class={[
+        "list-none cursor-pointer min-h-9 min-w-9 inline-flex items-center justify-center px-2",
+        "rounded-md text-base-content/70",
+        "active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      ]}>
+        <.icon name="hero-adjustments-horizontal" class="size-4" />
+        <span class="sr-only">Sort players</span>
+      </summary>
+      <div class={[
+        "absolute right-0 top-full mt-1 z-20 w-44 p-2",
+        "rounded-md border border-base-300 bg-base-100 shadow-lg text-[11px]"
+      ]}>
+        <p class="text-base-content/60 uppercase tracking-wide font-semibold px-1 mb-1">Sort</p>
+        <div role="radiogroup" aria-label="Sort players" class="flex flex-wrap items-center gap-2">
+          <button
+            :for={{key, label} <- [{:jersey, "Jersey #"}, {:name, "Name"}]}
+            type="button"
+            phx-click="set_in_point_sort"
+            phx-value-sort={Atom.to_string(key)}
+            role="radio"
+            aria-checked={to_string(@sort == key)}
+            class={[
+              "min-h-7 px-2 inline-flex items-center rounded-md font-medium",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              if(@sort == key,
+                do: "bg-primary text-primary-content",
+                else: "bg-base-200 text-base-content/70 active:bg-base-300"
+              )
+            ]}
+          >
+            {label}
+          </button>
+        </div>
+      </div>
+    </details>
+    """
+  end
+
+  defp sort_on_field(members, :name) do
+    Enum.sort_by(members, &String.downcase(User.display_name(&1.user) || ""))
+  end
+
+  defp sort_on_field(members, _jersey) do
+    Enum.sort_by(members, &jersey_sort_key_for_picker/1)
   end
 
   defp passer_outcome_classes do
@@ -1144,6 +1226,7 @@ defmodule UltistatsWeb.GameLive.Show do
   attr :on_field, :list, required: true
   attr :pull_pending?, :boolean, default: false
   attr :disconnected?, :boolean, required: true
+  attr :sort, :atom, required: true
 
   defp their_possession_view(assigns) do
     ~H"""
@@ -1160,7 +1243,12 @@ defmodule UltistatsWeb.GameLive.Show do
         <% end %>
       </p>
 
-      <.action_legend :if={not @pull_pending?} variant={:theirs} />
+      <div class="flex items-center gap-2">
+        <div class="flex-1 min-w-0">
+          <.action_legend :if={not @pull_pending?} variant={:theirs} />
+        </div>
+        <.in_point_sort_popover sort={@sort} />
+      </div>
 
       <ul
         class="rounded-md border border-base-200 divide-y divide-base-200 overflow-hidden"
@@ -1206,16 +1294,19 @@ defmodule UltistatsWeb.GameLive.Show do
         <% end %>
       </ul>
 
-      <h3 class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60 pt-1">
+      <h3
+        :if={not @pull_pending?}
+        class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60 pt-1"
+      >
         Opponent actions
       </h3>
-      <div class="grid grid-cols-2 gap-2">
+      <div :if={not @pull_pending?} class="grid grid-cols-2 gap-2">
         <button
           type="button"
           phx-click="record_opponent_turnover"
           disabled={@disconnected?}
           aria-label="Record that the opponent turned the disc over"
-          class={opponent_action_classes()}
+          class={opponent_action_classes(:turnover)}
         >
           <.icon name="hero-arrow-uturn-right" class="size-4" />
           <span>Turnover</span>
@@ -1225,7 +1316,7 @@ defmodule UltistatsWeb.GameLive.Show do
           phx-click="record_opponent_goal"
           disabled={@disconnected?}
           aria-label="Record that the opponent scored"
-          class={opponent_action_classes()}
+          class={opponent_action_classes(:goal)}
         >
           <.icon name="hero-flag" class="size-4" />
           <span>Score</span>
@@ -1672,7 +1763,32 @@ defmodule UltistatsWeb.GameLive.Show do
         _ -> socket.assigns.line_picker_sort
       end
 
-    {:noreply, assign(socket, :line_picker_sort, parsed)}
+    case Games.update_line_picker_sort(socket.assigns.game, parsed) do
+      {:ok, game} ->
+        {:noreply,
+         socket
+         |> assign(:game, game)
+         |> assign(:line_picker_sort, parsed)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not save sort preference.")}
+    end
+  end
+
+  def handle_event("set_in_point_sort", %{"sort" => sort}, socket)
+      when sort in ["jersey", "name"] do
+    parsed = String.to_existing_atom(sort)
+
+    case Games.update_line_sort(socket.assigns.game, parsed) do
+      {:ok, game} ->
+        {:noreply,
+         socket
+         |> assign(:game, game)
+         |> assign(:in_point_sort, parsed)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not save sort preference.")}
+    end
   end
 
   def handle_event("clear_preset", _params, socket) do

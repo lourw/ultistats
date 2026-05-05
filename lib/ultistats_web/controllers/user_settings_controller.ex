@@ -6,6 +6,7 @@ defmodule UltistatsWeb.UserSettingsController do
 
   plug :assign_email_and_password_changesets
   plug :assign_profile_changeset
+  plug :assign_settings_changeset
   plug :assign_active_tab
 
   def edit(conn, _params) do
@@ -54,6 +55,21 @@ defmodule UltistatsWeb.UserSettingsController do
     end
   end
 
+  def update(conn, %{"action" => "update_settings"} = params) do
+    %{"user_settings" => settings_params} = params
+    user = conn.assigns.current_scope.user
+
+    case Accounts.update_user_settings(user, settings_params) do
+      {:ok, _settings} ->
+        conn
+        |> put_flash(:info, "Preferences updated.")
+        |> redirect(to: ~p"/users/settings?tab=preferences")
+
+      {:error, changeset} ->
+        render(conn, :edit, settings_changeset: changeset, active_tab: :preferences)
+    end
+  end
+
   def update(conn, %{"action" => "update_password"} = params) do
     %{"user" => user_params} = params
     user = conn.assigns.current_scope.user
@@ -97,8 +113,25 @@ defmodule UltistatsWeb.UserSettingsController do
     assign(conn, :profile_changeset, Accounts.change_user_profile(user))
   end
 
+  defp assign_settings_changeset(conn, _opts) do
+    user = conn.assigns.current_scope.user
+
+    settings = Accounts.get_user_settings(user)
+    changeset = Accounts.change_user_settings(user)
+
+    conn
+    |> assign(:user_settings, settings)
+    |> assign(:settings_changeset, Phoenix.Component.to_form(changeset, as: :user_settings))
+  end
+
   defp assign_active_tab(conn, _opts) do
-    active_tab = if conn.params["tab"] == "auth", do: :auth, else: :profile
+    active_tab =
+      case conn.params["tab"] do
+        "auth" -> :auth
+        "preferences" -> :preferences
+        _ -> :profile
+      end
+
     assign(conn, :active_tab, active_tab)
   end
 end

@@ -541,13 +541,13 @@ defmodule UltistatsWeb.TeamLive.Show do
         <span class="sr-only">Sort options</span>
       </summary>
       <div class={[
-        "absolute right-0 top-full mt-1 z-20 w-56 p-2 space-y-2",
+        "absolute right-0 top-full mt-1 z-20 w-44 p-2 space-y-2",
         "rounded-md border border-base-300 bg-base-100 shadow-lg text-[11px]"
       ]}>
-        <div role="radiogroup" aria-label="Sort members" class="flex items-center gap-1">
-          <span class="text-base-content/60 uppercase tracking-wide font-semibold mr-1">Sort</span>
+        <p class="text-base-content/60 uppercase tracking-wide font-semibold px-1">Sort</p>
+        <div role="radiogroup" aria-label="Sort members" class="flex flex-wrap items-center gap-2">
           <button
-            :for={{key, label} <- [{:jersey, "#"}, {:first_name, "Name"}]}
+            :for={{key, label} <- [{:jersey, "Jersey #"}, {:first_name, "Name"}]}
             type="button"
             phx-click="set_member_sort"
             phx-value-sort={Atom.to_string(key)}
@@ -566,7 +566,7 @@ defmodule UltistatsWeb.TeamLive.Show do
           </button>
         </div>
 
-        <label class="flex items-center gap-1.5 cursor-pointer">
+        <label class="flex items-center gap-1.5 cursor-pointer pt-2 border-t border-base-200">
           <input
             type="checkbox"
             phx-click="toggle_split_by_position"
@@ -693,13 +693,13 @@ defmodule UltistatsWeb.TeamLive.Show do
         <span class="sr-only">Sort options</span>
       </summary>
       <div class={[
-        "absolute right-0 top-full mt-1 z-20 w-56 p-2 space-y-2",
+        "absolute right-0 top-full mt-1 z-20 w-44 p-2 space-y-2",
         "rounded-md border border-base-300 bg-base-100 shadow-lg text-[11px]"
       ]}>
-        <div role="radiogroup" aria-label="Sort players" class="flex items-center gap-1">
-          <span class="text-base-content/60 uppercase tracking-wide font-semibold mr-1">Sort</span>
+        <p class="text-base-content/60 uppercase tracking-wide font-semibold px-1">Sort</p>
+        <div role="radiogroup" aria-label="Sort players" class="flex flex-wrap items-center gap-2">
           <button
-            :for={{key, label} <- [{:jersey, "#"}, {:name, "Name"}]}
+            :for={{key, label} <- [{:jersey, "Jersey #"}, {:name, "Name"}]}
             type="button"
             phx-click="set_preset_sort"
             phx-value-sort={Atom.to_string(key)}
@@ -718,7 +718,7 @@ defmodule UltistatsWeb.TeamLive.Show do
           </button>
         </div>
 
-        <label class="flex items-center gap-1.5 cursor-pointer">
+        <label class="flex items-center gap-1.5 cursor-pointer pt-2 border-t border-base-200">
           <input
             type="checkbox"
             phx-click="toggle_preset_split"
