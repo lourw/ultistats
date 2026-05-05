@@ -1123,7 +1123,7 @@ defmodule Ultistats.Games do
 
   defp bump_passer(acc, %{type: type, passer_user_id: uid}, roster, empty) do
     if MapSet.member?(roster, uid) do
-      Map.update(acc, uid, bump(empty, passer_stat(type)), &bump(&1, passer_stat(type)))
+      Map.update(acc, uid, bump(empty, passer_stats(type)), &bump(&1, passer_stats(type)))
     else
       acc
     end
@@ -1133,26 +1133,27 @@ defmodule Ultistats.Games do
 
   defp bump_receiver(acc, %{type: type, receiver_user_id: uid}, roster, empty) do
     if MapSet.member?(roster, uid) do
-      Map.update(acc, uid, bump(empty, receiver_stat(type)), &bump(&1, receiver_stat(type)))
+      Map.update(acc, uid, bump(empty, receiver_stats(type)), &bump(&1, receiver_stats(type)))
     else
       acc
     end
   end
 
-  defp passer_stat(:catch), do: nil
-  defp passer_stat(:goal), do: :assists
-  defp passer_stat(:throwaway), do: :throwaways
-  defp passer_stat(:drop), do: :throwaways
-  defp passer_stat(:block), do: :blocks
-  defp passer_stat(_), do: nil
+  # A goal is also a catch — for both the scorer (catching it in the
+  # endzone) and the assister (catching it before they threw).
+  defp passer_stats(:goal), do: [:assists, :catches]
+  defp passer_stats(:throwaway), do: [:throwaways]
+  defp passer_stats(:drop), do: [:throwaways]
+  defp passer_stats(:block), do: [:blocks]
+  defp passer_stats(_), do: []
 
-  defp receiver_stat(:catch), do: :catches
-  defp receiver_stat(:goal), do: :goals
-  defp receiver_stat(:drop), do: :drops
-  defp receiver_stat(_), do: nil
+  defp receiver_stats(:catch), do: [:catches]
+  defp receiver_stats(:goal), do: [:goals, :catches]
+  defp receiver_stats(:drop), do: [:drops]
+  defp receiver_stats(_), do: []
 
-  defp bump(tally, nil), do: tally
-  defp bump(tally, stat), do: Map.update!(tally, stat, &(&1 + 1))
+  defp bump(tally, []), do: tally
+  defp bump(tally, [stat | rest]), do: bump(Map.update!(tally, stat, &(&1 + 1)), rest)
 
   # Sort key: {0, n} for numeric jerseys (so they come first in number
   # order), {1, raw} for non-numeric strings (alphabetic among themselves

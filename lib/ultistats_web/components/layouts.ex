@@ -32,24 +32,24 @@ defmodule UltistatsWeb.Layouts do
       phx-hook="ScrollAwareNav"
       class="fixed inset-x-0 top-0 z-30 bg-base-100 border-b border-base-300 pt-safe transition-transform duration-200 motion-reduce:transition-none will-change-transform"
     >
-      <nav class="mx-auto max-w-2xl px-4 h-14 flex items-center justify-between gap-4">
-        <.link navigate={~p"/"} class="font-semibold text-base-content">
+      <nav class="mx-auto max-w-2xl px-4 h-14 flex items-center justify-between gap-2">
+        <.link navigate={~p"/"} class={[nav_link_classes(), "font-semibold"]}>
           Ultistats
         </.link>
-        <ul class="flex items-center gap-4 text-sm">
+        <ul class="flex items-center gap-1 text-sm">
           <%= if @current_scope do %>
             <li>
-              <.link navigate={~p"/teams"} class="hover:underline">Teams</.link>
+              <.link navigate={~p"/teams"} class={nav_link_classes()}>Teams</.link>
             </li>
             <li>
-              <.link navigate={~p"/games"} class="hover:underline">Games</.link>
+              <.link navigate={~p"/games"} class={nav_link_classes()}>Games</.link>
             </li>
             <li>
-              <.link href={~p"/users/settings"} class="hover:underline">Profile</.link>
+              <.link href={~p"/users/settings"} class={nav_link_classes()}>Profile</.link>
             </li>
           <% else %>
             <li>
-              <.link href={~p"/users/log-in"} class="hover:underline">Log in</.link>
+              <.link href={~p"/users/log-in"} class={nav_link_classes()}>Log in</.link>
             </li>
           <% end %>
         </ul>
@@ -75,6 +75,15 @@ defmodule UltistatsWeb.Layouts do
 
     <.flash_group flash={@flash} />
     """
+  end
+
+  defp nav_link_classes do
+    [
+      "min-h-9 inline-flex items-center px-2 rounded-md text-base-content",
+      "transition-[transform,colors] motion-reduce:transition-none",
+      "active:scale-95 active:bg-base-200",
+      "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+    ]
   end
 
   attr :flash, :map, required: true, doc: "the map of flash messages"

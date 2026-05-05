@@ -293,7 +293,7 @@ defmodule UltistatsWeb.TeamLive.Show do
                         <span class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0">
                           {display_jersey(user, @members_by_user_id) || "—"}
                         </span>
-                        <span class="font-medium text-sm truncate flex-1 leading-tight">
+                        <span class="font-medium text-sm truncate min-w-0 leading-tight">
                           {User.display_name(user)}
                         </span>
                         <span

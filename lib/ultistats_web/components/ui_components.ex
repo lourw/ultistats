@@ -774,7 +774,7 @@ defmodule UltistatsWeb.UIComponents do
     ~H"""
     <fieldset class={["space-y-1", @class]}>
       <legend class="sr-only">Position</legend>
-      <div class="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Position">
+      <div class="inline-flex flex-wrap gap-2" role="radiogroup" aria-label="Position">
         <label
           :for={{val, label, icon} <- @options}
           class={position_button_classes()}
@@ -799,9 +799,9 @@ defmodule UltistatsWeb.UIComponents do
 
   defp position_button_classes do
     [
-      "min-h-11 px-3 py-1.5 rounded-lg cursor-pointer select-none",
+      "min-h-9 px-2.5 py-1 rounded-md cursor-pointer select-none",
       "inline-flex items-center justify-center gap-1.5",
-      "text-sm font-semibold",
+      "text-xs font-semibold",
       "transition-colors motion-reduce:transition-none",
       "border border-base-300 bg-base-100 text-base-content active:bg-base-200",
       "has-[:checked]:bg-primary has-[:checked]:text-primary-content",
