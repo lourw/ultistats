@@ -23,7 +23,7 @@ defmodule UltistatsWeb.RulesetLive.Form do
         phx-change="validate"
         phx-submit="save"
         phx-debounce="300"
-        class="flex flex-col gap-3 max-w-xs"
+        class="flex flex-col gap-3"
       >
         <.input field={@form[:name]} type="text" label="Name" />
 
@@ -141,7 +141,7 @@ defmodule UltistatsWeb.RulesetLive.Form do
 
         <.input field={@form[:team_id]} type="hidden" />
 
-        <footer class="mt-4 flex items-center gap-3">
+        <footer class="mt-4 pt-4 border-t border-base-300 flex items-center gap-3">
           <.button phx-disable-with="Saving..." variant="primary">Save Ruleset</.button>
           <.button navigate={return_path(@return_to, @ruleset)}>Cancel</.button>
         </footer>
