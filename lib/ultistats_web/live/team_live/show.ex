@@ -112,55 +112,9 @@ defmodule UltistatsWeb.TeamLive.Show do
       </div>
 
       <section :if={@active_tab == :roster} class="mt-4 pb-6" aria-labelledby="tab-roster">
-        <div
-          :if={@players != [] or @non_players != []}
-          class="flex items-center gap-2 flex-wrap mb-6"
-        >
-          <div class="flex items-center gap-1" role="radiogroup" aria-label="Sort members">
-            <span class="text-[11px] uppercase tracking-wide text-base-content/60 mr-1">
-              Sort
-            </span>
-            <button
-              type="button"
-              phx-click="set_member_sort"
-              phx-value-sort="jersey"
-              aria-pressed={to_string(@member_sort == :jersey)}
-              class={[
-                sort_chip_classes(@member_sort == :jersey),
-                "phx-click-loading:bg-primary phx-click-loading:text-primary-content"
-              ]}
-            >
-              Jersey
-            </button>
-            <button
-              type="button"
-              phx-click="set_member_sort"
-              phx-value-sort="first_name"
-              aria-pressed={to_string(@member_sort == :first_name)}
-              class={[
-                sort_chip_classes(@member_sort == :first_name),
-                "phx-click-loading:bg-primary phx-click-loading:text-primary-content"
-              ]}
-            >
-              First name
-            </button>
-          </div>
-
-          <label class="ml-auto inline-flex items-center gap-1.5 cursor-pointer text-[11px]">
-            <input
-              type="checkbox"
-              phx-click="toggle_split_by_position"
-              checked={@split_by_position?}
-              class="checkbox checkbox-xs checkbox-primary"
-            />
-            <span class="text-base-content/70">Split by position</span>
-          </label>
-        </div>
-
         <div :if={@players != []} id="team-roster-players" class="space-y-4">
           <.roster_section
-            :for={role <- [:male_matching, :female_matching]}
-            :if={Enum.any?(@players, &(&1.user.gender_role == role))}
+            :for={role <- present_player_roles(@players)}
             role={role}
             members={
               @players
@@ -170,7 +124,14 @@ defmodule UltistatsWeb.TeamLive.Show do
             is_admin?={@is_admin?}
             current_user_id={@current_scope.user.id}
             split_by_position?={@split_by_position?}
-          />
+          >
+            <:trailing :if={role == hd(present_player_roles(@players))}>
+              <.roster_sort_popover
+                sort={@member_sort}
+                split_by_position?={@split_by_position?}
+              />
+            </:trailing>
+          </.roster_section>
         </div>
 
         <div :if={@non_players != []} class="mt-8">
@@ -436,6 +397,7 @@ defmodule UltistatsWeb.TeamLive.Show do
   attr :is_admin?, :boolean, required: true
   attr :current_user_id, :string, required: true
   attr :split_by_position?, :boolean, required: true
+  slot :trailing
 
   defp roster_section(assigns) do
     groups =
@@ -451,9 +413,10 @@ defmodule UltistatsWeb.TeamLive.Show do
     <section class="space-y-1">
       <h3 class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
         <span>{humanize_gender_role(@role)}</span>
-        <span class="tabular-nums text-base-content/50">
+        <span class="tabular-nums text-base-content/50 flex-1">
           {length(@members)}
         </span>
+        {render_slot(@trailing)}
       </h3>
 
       <div :for={{position, members} <- @groups} class="space-y-1">
@@ -563,13 +526,59 @@ defmodule UltistatsWeb.TeamLive.Show do
     ~p"/join/#{Teams.generate_team_join_token(team)}"
   end
 
-  defp sort_chip_classes(true),
-    do:
-      "min-h-9 inline-flex items-center px-2 rounded-md text-xs font-semibold bg-primary text-primary-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+  attr :sort, :atom, required: true
+  attr :split_by_position?, :boolean, required: true
 
-  defp sort_chip_classes(false),
-    do:
-      "min-h-9 inline-flex items-center px-2 rounded-md text-xs font-semibold border border-base-300 text-base-content/80 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+  defp roster_sort_popover(assigns) do
+    ~H"""
+    <details class="relative shrink-0 group">
+      <summary class={[
+        "list-none cursor-pointer min-h-9 min-w-9 inline-flex items-center justify-center gap-1 px-2",
+        "rounded-md text-base-content/70 text-[11px] font-medium",
+        "active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      ]}>
+        <.icon name="hero-adjustments-horizontal" class="size-4" />
+        <span class="sr-only">Sort options</span>
+      </summary>
+      <div class={[
+        "absolute right-0 top-full mt-1 z-20 w-56 p-2 space-y-2",
+        "rounded-md border border-base-300 bg-base-100 shadow-lg text-[11px]"
+      ]}>
+        <div role="radiogroup" aria-label="Sort members" class="flex items-center gap-1">
+          <span class="text-base-content/60 uppercase tracking-wide font-semibold mr-1">Sort</span>
+          <button
+            :for={{key, label} <- [{:jersey, "#"}, {:first_name, "Name"}]}
+            type="button"
+            phx-click="set_member_sort"
+            phx-value-sort={Atom.to_string(key)}
+            role="radio"
+            aria-checked={to_string(@sort == key)}
+            class={[
+              "min-h-7 px-2 inline-flex items-center rounded-md font-medium",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              if(@sort == key,
+                do: "bg-primary text-primary-content",
+                else: "bg-base-200 text-base-content/70 active:bg-base-300"
+              )
+            ]}
+          >
+            {label}
+          </button>
+        </div>
+
+        <label class="flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="checkbox"
+            phx-click="toggle_split_by_position"
+            checked={@split_by_position?}
+            class="checkbox checkbox-xs checkbox-primary"
+          />
+          <span class="text-base-content/70">Split by position</span>
+        </label>
+      </div>
+    </details>
+    """
+  end
 
   defp sort_members(members, :first_name),
     do: Enum.sort_by(members, &String.downcase(&1.user.first_name || ""))
@@ -631,6 +640,13 @@ defmodule UltistatsWeb.TeamLive.Show do
 
   defp role_count(preset, role) do
     Enum.count(preset.users, &(&1.gender_role == role))
+  end
+
+  defp present_player_roles(players) do
+    Enum.filter(
+      [:male_matching, :female_matching],
+      fn role -> Enum.any?(players, &(&1.user.gender_role == role)) end
+    )
   end
 
   defp position_count(preset, position, members_by_user_id) do

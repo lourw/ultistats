@@ -248,7 +248,7 @@ defmodule UltistatsWeb.CoreComponents do
         name={@name}
         class={[
           @class ||
-            "block w-full max-w-xs rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content min-h-11 focus:outline-2 focus:outline-offset-2 focus:outline-primary disabled:opacity-50",
+            "block w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content min-h-11 focus:outline-2 focus:outline-offset-2 focus:outline-primary disabled:opacity-50",
           @errors != [] && (@error_class || "border-error focus:outline-error")
         ]}
         multiple={@multiple}
@@ -297,7 +297,7 @@ defmodule UltistatsWeb.CoreComponents do
         value={Phoenix.HTML.Form.normalize_value(@type, @value)}
         class={[
           @class ||
-            "block w-full max-w-xs rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content placeholder:text-base-content/50 min-h-11 focus:outline-2 focus:outline-offset-2 focus:outline-primary disabled:opacity-50",
+            "block w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content placeholder:text-base-content/50 min-h-11 focus:outline-2 focus:outline-offset-2 focus:outline-primary disabled:opacity-50",
           @errors != [] && (@error_class || "border-error focus:outline-error")
         ]}
         {@rest}

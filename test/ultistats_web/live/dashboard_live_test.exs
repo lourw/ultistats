@@ -22,8 +22,8 @@ defmodule UltistatsWeb.DashboardLiveTest do
       conn = get(conn, ~p"/")
       html = html_response(conn, 200)
 
-      assert html =~ "Ultistats"
-      assert html =~ "stat tracking"
+      assert html =~ "Track every point"
+      assert html =~ "stat tracker"
     end
 
     test "authenticated user is redirected to /dashboard", %{conn: _conn} do

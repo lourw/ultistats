@@ -23,7 +23,7 @@ defmodule UltistatsWeb.RulesetLive.Form do
         phx-change="validate"
         phx-submit="save"
         phx-debounce="300"
-        class="flex flex-col gap-3"
+        class="flex flex-col gap-3 max-w-xs"
       >
         <.input field={@form[:name]} type="text" label="Name" />
 
