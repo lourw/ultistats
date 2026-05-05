@@ -216,6 +216,13 @@ defmodule UltistatsWeb.TeamLive.Show do
       </section>
 
       <section :if={@active_tab == :presets} class="mt-4 pb-6" aria-labelledby="tab-presets">
+        <div :if={@line_presets != []} class="flex justify-end mb-2">
+          <.preset_sort_popover
+            sort={@preset_sort}
+            split_by_position?={@preset_split_by_position?}
+          />
+        </div>
+
         <ul
           :if={@line_presets != []}
           id="team-line-presets"
@@ -236,7 +243,7 @@ defmodule UltistatsWeb.TeamLive.Show do
                 </span>
                 <span
                   class="text-[11px] tabular-nums text-base-content/60 shrink-0 inline-flex items-center gap-1.5"
-                  aria-label={"#{role_count(preset, :male_matching)} male-matching, #{role_count(preset, :female_matching)} female-matching"}
+                  aria-label={"#{role_count(preset, :male_matching)} male-matching, #{role_count(preset, :female_matching)} female-matching, #{position_count(preset, :handler, @members_by_user_id)} handler, #{position_count(preset, :cutter, @members_by_user_id)} cutter, #{position_count(preset, :hybrid, @members_by_user_id)} hybrid"}
                 >
                   <span class="font-semibold" aria-hidden="true">M</span> {role_count(
                     preset,
@@ -245,6 +252,22 @@ defmodule UltistatsWeb.TeamLive.Show do
                   <span class="font-semibold" aria-hidden="true">F</span> {role_count(
                     preset,
                     :female_matching
+                  )}
+                  <span aria-hidden="true" class="text-base-content/30">·</span>
+                  <span class="font-semibold" aria-hidden="true">H</span> {position_count(
+                    preset,
+                    :handler,
+                    @members_by_user_id
+                  )}
+                  <span class="font-semibold" aria-hidden="true">C</span> {position_count(
+                    preset,
+                    :cutter,
+                    @members_by_user_id
+                  )}
+                  <span class="font-semibold" aria-hidden="true">X</span> {position_count(
+                    preset,
+                    :hybrid,
+                    @members_by_user_id
                   )}
                 </span>
                 <.link
@@ -269,32 +292,64 @@ defmodule UltistatsWeb.TeamLive.Show do
                   class="space-y-1"
                 >
                   <h3 class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
-                    <span class="text-sm leading-none" aria-hidden="true">
-                      {gender_glyph(role)}
-                    </span>
                     <span>{humanize_gender_role(role)}</span>
                     <span class="tabular-nums text-base-content/50">
                       {role_count(preset, role)}
                     </span>
                   </h3>
-                  <ul class="space-y-0.5">
-                    <li
-                      :for={
-                        user <-
-                          preset.users
-                          |> Enum.filter(&(&1.gender_role == role))
-                          |> Enum.sort_by(&user_jersey_sort_key(&1, @members_by_user_id))
-                      }
-                      class="min-h-9 flex items-center gap-2"
+
+                  <div
+                    :for={
+                      {position, users} <-
+                        preset_role_groups(
+                          preset,
+                          role,
+                          @preset_sort,
+                          @preset_split_by_position?,
+                          @members_by_user_id
+                        )
+                    }
+                    class="space-y-1"
+                  >
+                    <h4
+                      :if={@preset_split_by_position?}
+                      class="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-base-content/50"
                     >
-                      <span class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0">
-                        {display_jersey(user, @members_by_user_id) || "—"}
+                      <span class={[
+                        "inline-flex items-center justify-center size-4 rounded-full text-[10px] font-semibold",
+                        position_pill_classes(position)
+                      ]}>
+                        {position_letter(position)}
                       </span>
-                      <span class="font-medium text-sm truncate leading-tight">
-                        {User.display_name(user)}
-                      </span>
-                    </li>
-                  </ul>
+                      <span>{humanize_position(position) || "Unspecified"}</span>
+                    </h4>
+
+                    <ul class="space-y-0.5">
+                      <li
+                        :for={user <- users}
+                        class="min-h-9 flex items-center gap-2"
+                      >
+                        <span class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0">
+                          {display_jersey(user, @members_by_user_id) || "—"}
+                        </span>
+                        <span class="font-medium text-sm truncate flex-1 leading-tight">
+                          {User.display_name(user)}
+                        </span>
+                        <span
+                          :if={pos = display_position(user, @members_by_user_id)}
+                          class={[
+                            "inline-flex items-center justify-center size-5 rounded-full shrink-0",
+                            "text-[10px] font-semibold tabular-nums",
+                            position_pill_classes(pos)
+                          ]}
+                          aria-label={humanize_position(pos)}
+                          title={humanize_position(pos)}
+                        >
+                          {position_letter(pos)}
+                        </span>
+                      </li>
+                    </ul>
+                  </div>
                 </section>
               </div>
 
@@ -334,6 +389,8 @@ defmodule UltistatsWeb.TeamLive.Show do
        |> assign(:active_tab, :roster)
        |> assign(:member_sort, :jersey)
        |> assign(:split_by_position?, false)
+       |> assign(:preset_sort, :jersey)
+       |> assign(:preset_split_by_position?, false)
        |> assign(:players, players)
        |> assign(:non_players, non_players)
        |> assign(:members_by_user_id, members_by_user_id)
@@ -364,6 +421,16 @@ defmodule UltistatsWeb.TeamLive.Show do
     {:noreply, assign(socket, :split_by_position?, not socket.assigns.split_by_position?)}
   end
 
+  def handle_event("set_preset_sort", %{"sort" => sort}, socket)
+      when sort in ["jersey", "name"] do
+    {:noreply, assign(socket, :preset_sort, String.to_existing_atom(sort))}
+  end
+
+  def handle_event("toggle_preset_split", _params, socket) do
+    {:noreply,
+     assign(socket, :preset_split_by_position?, not socket.assigns.preset_split_by_position?)}
+  end
+
   attr :role, :atom, required: true, values: [:male_matching, :female_matching]
   attr :members, :list, required: true
   attr :is_admin?, :boolean, required: true
@@ -383,7 +450,6 @@ defmodule UltistatsWeb.TeamLive.Show do
     ~H"""
     <section class="space-y-1">
       <h3 class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
-        <span class="text-xs font-bold leading-none" aria-hidden="true">{gender_glyph(@role)}</span>
         <span>{humanize_gender_role(@role)}</span>
         <span class="tabular-nums text-base-content/50">
           {length(@members)}
@@ -535,6 +601,13 @@ defmodule UltistatsWeb.TeamLive.Show do
     end
   end
 
+  defp display_position(%User{} = user, members_by_user_id) do
+    case Map.get(members_by_user_id, user.id) do
+      nil -> user.position
+      member -> Teams.resolved_position(member)
+    end
+  end
+
   defp user_jersey_sort_key(%User{} = user, members_by_user_id) do
     case display_jersey(user, members_by_user_id) do
       nil ->
@@ -560,9 +633,88 @@ defmodule UltistatsWeb.TeamLive.Show do
     Enum.count(preset.users, &(&1.gender_role == role))
   end
 
-  defp gender_glyph(:female_matching), do: "F"
-  defp gender_glyph(:male_matching), do: "M"
-  defp gender_glyph(_), do: ""
+  defp position_count(preset, position, members_by_user_id) do
+    Enum.count(preset.users, &(display_position(&1, members_by_user_id) == position))
+  end
+
+  defp preset_role_groups(preset, role, sort, split?, members_by_user_id) do
+    sorted =
+      preset.users
+      |> Enum.filter(&(&1.gender_role == role))
+      |> Enum.sort_by(&user_sort_key(&1, sort, members_by_user_id))
+
+    if split? do
+      sorted
+      |> Enum.group_by(&(display_position(&1, members_by_user_id) || :unspecified))
+      |> Enum.sort_by(fn {pos, _} -> position_order(pos) end)
+    else
+      [{nil, sorted}]
+    end
+  end
+
+  defp user_sort_key(user, :name, _lookup),
+    do: {0, String.downcase(User.display_name(user) || "")}
+
+  defp user_sort_key(user, _jersey, lookup), do: user_jersey_sort_key(user, lookup)
+
+  defp position_order(:handler), do: 0
+  defp position_order(:cutter), do: 1
+  defp position_order(:hybrid), do: 2
+  defp position_order(_), do: 3
+
+  attr :sort, :atom, required: true
+  attr :split_by_position?, :boolean, required: true
+
+  defp preset_sort_popover(assigns) do
+    ~H"""
+    <details class="relative shrink-0 group">
+      <summary class={[
+        "list-none cursor-pointer min-h-9 min-w-9 inline-flex items-center justify-center gap-1 px-2",
+        "rounded-md text-base-content/70 text-[11px] font-medium",
+        "active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      ]}>
+        <.icon name="hero-adjustments-horizontal" class="size-4" />
+        <span class="sr-only">Sort options</span>
+      </summary>
+      <div class={[
+        "absolute right-0 top-full mt-1 z-20 w-56 p-2 space-y-2",
+        "rounded-md border border-base-300 bg-base-100 shadow-lg text-[11px]"
+      ]}>
+        <div role="radiogroup" aria-label="Sort players" class="flex items-center gap-1">
+          <span class="text-base-content/60 uppercase tracking-wide font-semibold mr-1">Sort</span>
+          <button
+            :for={{key, label} <- [{:jersey, "#"}, {:name, "Name"}]}
+            type="button"
+            phx-click="set_preset_sort"
+            phx-value-sort={Atom.to_string(key)}
+            role="radio"
+            aria-checked={to_string(@sort == key)}
+            class={[
+              "min-h-7 px-2 inline-flex items-center rounded-md font-medium",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              if(@sort == key,
+                do: "bg-primary text-primary-content",
+                else: "bg-base-200 text-base-content/70 active:bg-base-300"
+              )
+            ]}
+          >
+            {label}
+          </button>
+        </div>
+
+        <label class="flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="checkbox"
+            phx-click="toggle_preset_split"
+            checked={@split_by_position?}
+            class="checkbox checkbox-xs checkbox-primary"
+          />
+          <span class="text-base-content/70">Split by position</span>
+        </label>
+      </div>
+    </details>
+    """
+  end
 
   defp humanize_gender_role(:female_matching), do: "Female-matching"
   defp humanize_gender_role(:male_matching), do: "Male-matching"

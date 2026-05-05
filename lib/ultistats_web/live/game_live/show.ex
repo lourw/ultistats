@@ -2504,10 +2504,6 @@ defmodule UltistatsWeb.GameLive.Show do
   defp line_user_ids(%{our_line_snapshot: %{"user_ids" => ids}}) when is_list(ids), do: ids
   defp line_user_ids(_), do: []
 
-  defp gender_glyph(:female_matching), do: "F"
-  defp gender_glyph(:male_matching), do: "M"
-  defp gender_glyph(_), do: ""
-
   defp possession_label(:ours), do: "On offense"
   defp possession_label(:theirs), do: "On defense"
   defp possession_label(_), do: "Possession unknown"
@@ -2603,7 +2599,6 @@ defmodule UltistatsWeb.GameLive.Show do
     ~H"""
     <section class="space-y-1">
       <h3 class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-base-content/60 px-1">
-        <span class="text-xs font-bold leading-none" aria-hidden="true">{gender_glyph(@role)}</span>
         <span>{role_label(@role)}</span>
         <span class="tabular-nums text-base-content/50">
           {@selected_in_section} of {length(@players)}

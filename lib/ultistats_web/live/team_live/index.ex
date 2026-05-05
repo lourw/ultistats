@@ -66,7 +66,7 @@ defmodule UltistatsWeb.TeamLive.Index do
       <ul
         :if={@teams_with_stats != []}
         id="teams-list"
-        class="-mx-4 border-y border-base-200 divide-y divide-base-200"
+        class="rounded-md border border-base-200 divide-y divide-base-200 overflow-hidden"
       >
         <li
           :for={%{team: team, stats: s} <- visible_teams(@teams_with_stats, @division_filter)}

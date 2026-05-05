@@ -83,18 +83,18 @@ defmodule UltistatsWeb.GameLive.Index do
         <ul
           :if={@games != []}
           id="games-list"
-          class="-mx-4 border-y border-base-200 divide-y divide-base-200"
+          class="rounded-md border border-base-200 divide-y divide-base-200 overflow-hidden"
         >
           <li
             :for={game <- @games}
             id={"game-#{game.id}"}
-            class="min-h-9 flex items-stretch gap-1 pr-2"
+            class="min-h-14 flex items-stretch gap-1 pr-2"
           >
             <.link
               navigate={~p"/games/#{game.id}"}
-              class="flex-1 min-w-0 flex items-center gap-2 px-4 py-1.5 hover:bg-base-200 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              class="flex-1 min-w-0 flex items-center gap-2 px-4 py-2.5 hover:bg-base-200 active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
-              <div class="flex-1 min-w-0">
+              <div class="flex-1 min-w-0 space-y-1">
                 <div class="font-medium text-sm truncate leading-tight">
                   {team_name(game)} vs {game.opponent_name}
                 </div>
@@ -136,69 +136,56 @@ defmodule UltistatsWeb.GameLive.Index do
       </section>
 
       <section :if={@active_tab == :rulesets} class="mt-4 pb-24" aria-labelledby="tab-rulesets">
-        <div :if={length(@teams) > 1} class="flex flex-col gap-3 mb-3">
-          <form phx-change="set_division_filter" class="flex flex-col gap-1">
-            <label
-              for="ruleset-division-filter"
-              class="text-[11px] uppercase tracking-wide text-base-content/60"
+        <div :if={length(@rulesets) > 1} class="flex flex-col gap-1 mb-3">
+          <span
+            id="ruleset-division-filter-label"
+            class="text-[11px] uppercase tracking-wide text-base-content/60"
+          >
+            Division
+          </span>
+          <div
+            role="radiogroup"
+            aria-labelledby="ruleset-division-filter-label"
+            class="flex flex-wrap items-center gap-1.5"
+          >
+            <button
+              :for={{label, value} <- division_filter_options()}
+              type="button"
+              phx-click="set_division_filter"
+              phx-value-division={value}
+              role="radio"
+              aria-checked={to_string(value == @division_filter)}
+              class={[
+                "min-h-7 px-2.5 py-0.5 rounded-full border text-[11px] font-medium",
+                "active:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                if(value == @division_filter,
+                  do: "border-primary bg-primary/10 text-primary",
+                  else: "border-base-300 bg-base-100 text-base-content/70"
+                )
+              ]}
             >
-              Division
-            </label>
-            <select
-              id="ruleset-division-filter"
-              name="division"
-              class="block w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content min-h-11 focus:outline-2 focus:outline-offset-2 focus:outline-primary"
-            >
-              <option
-                :for={{label, value} <- division_filter_options()}
-                value={value}
-                selected={value == @division_filter}
-              >
-                {label}
-              </option>
-            </select>
-          </form>
-
-          <form phx-change="select_ruleset_team" class="flex flex-col gap-1">
-            <label
-              for="ruleset-team-select"
-              class="text-[11px] uppercase tracking-wide text-base-content/60"
-            >
-              Team
-            </label>
-            <select
-              id="ruleset-team-select"
-              name="team_id"
-              class="block w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-base-content min-h-11 focus:outline-2 focus:outline-offset-2 focus:outline-primary"
-            >
-              <option
-                :for={team <- filter_teams_by_division(@teams, @division_filter)}
-                value={team.id}
-                selected={team.id == @new_ruleset_team_id}
-              >
-                {team.name}
-              </option>
-            </select>
-          </form>
+              {label}
+            </button>
+          </div>
         </div>
 
         <ul
           :if={@rulesets != []}
           id="rulesets-list"
-          class="-mx-4 border-y border-base-200 divide-y divide-base-200"
+          class="rounded-md border border-base-200 divide-y divide-base-200 overflow-hidden"
         >
           <li
-            :for={r <- @rulesets}
+            :for={r <- visible_rulesets(@rulesets, @division_filter)}
             id={"ruleset-#{r.id}"}
-            class="min-h-9 flex items-center gap-2 px-4 py-0.5"
+            class="min-h-14 flex items-center gap-2 px-3 py-2"
           >
             <span class="tabular-nums font-semibold inline-flex items-center justify-center size-6 rounded-full bg-base-200 text-base-content text-[11px] shrink-0">
               {score_cap_badge(r.score_cap)}
             </span>
-            <div class="flex-1 min-w-0">
+            <div class="flex-1 min-w-0 space-y-1">
               <div class="font-medium text-sm truncate leading-tight">{r.name}</div>
               <div class="text-[11px] text-base-content/60 truncate leading-tight">
-                {team_label(r)}
+                {ruleset_summary_line(r)}
               </div>
             </div>
             <.link
@@ -257,28 +244,9 @@ defmodule UltistatsWeb.GameLive.Index do
     {:noreply, assign(socket, :active_tab, :rulesets)}
   end
 
-  def handle_event("select_ruleset_team", %{"team_id" => team_id}, socket) do
-    {:noreply, assign(socket, :new_ruleset_team_id, team_id)}
-  end
-
   def handle_event("set_division_filter", %{"division" => division}, socket)
       when division in ["all", "open", "mixed", "womens"] do
-    filtered = filter_teams_by_division(socket.assigns.teams, division)
-
-    new_team_id =
-      if Enum.any?(filtered, &(&1.id == socket.assigns.new_ruleset_team_id)) do
-        socket.assigns.new_ruleset_team_id
-      else
-        case filtered do
-          [first | _] -> first.id
-          [] -> nil
-        end
-      end
-
-    {:noreply,
-     socket
-     |> assign(:division_filter, division)
-     |> assign(:new_ruleset_team_id, new_team_id)}
+    {:noreply, assign(socket, :division_filter, division)}
   end
 
   def handle_event("delete_game", %{"id" => game_id}, socket) do
@@ -320,9 +288,6 @@ defmodule UltistatsWeb.GameLive.Index do
   defp team_name(%{team: %{name: name}}), do: name
   defp team_name(_), do: "—"
 
-  defp team_label(%{team: %{name: name}}) when is_binary(name), do: name
-  defp team_label(_), do: "—"
-
   defp score_cap_badge(nil), do: "—"
   defp score_cap_badge(n) when is_integer(n), do: Integer.to_string(n)
 
@@ -354,11 +319,26 @@ defmodule UltistatsWeb.GameLive.Index do
     [{"All divisions", "all"}, {"Open", "open"}, {"Women's", "womens"}, {"Mixed", "mixed"}]
   end
 
-  defp filter_teams_by_division(teams, "all"), do: teams
+  defp visible_rulesets(rulesets, "all"), do: rulesets
 
-  defp filter_teams_by_division(teams, division)
-       when division in ["open", "womens", "mixed"] do
+  defp visible_rulesets(rulesets, division) when division in ["open", "womens", "mixed"] do
     atom = String.to_existing_atom(division)
-    Enum.filter(teams, &(&1.division == atom))
+    Enum.filter(rulesets, &(&1.division == atom))
   end
+
+  defp ruleset_summary_line(r) do
+    [
+      "to #{score_cap_badge(r.score_cap)}",
+      "half #{value_or_dash(r.halftime_target)}",
+      "soft #{minutes(r.soft_cap_minutes)}",
+      "hard #{minutes(r.hard_cap_minutes)}"
+    ]
+    |> Enum.join(" · ")
+  end
+
+  defp value_or_dash(nil), do: "—"
+  defp value_or_dash(n) when is_integer(n), do: Integer.to_string(n)
+
+  defp minutes(nil), do: "—"
+  defp minutes(n) when is_integer(n), do: "#{n}m"
 end

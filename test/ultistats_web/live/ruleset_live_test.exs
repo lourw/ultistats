@@ -14,60 +14,8 @@ defmodule UltistatsWeb.RulesetLiveTest do
     :ok
   end
 
-  describe "Index" do
+  describe "Show — delete" do
     setup :register_and_log_in_user
-
-    test "lists templates only — :game_instance rows are not surfaced", %{
-      conn: conn,
-      user: user
-    } do
-      team = team_fixture(%{name: "Home"})
-      add_to_team(team, user)
-      template = ruleset_fixture(%{team_id: team.id, name: "Hat League"})
-      _instance = ruleset_fixture(%{team_id: team.id, kind: :game_instance, name: nil})
-
-      {:ok, _live, html} = live(conn, ~p"/rulesets")
-
-      assert html =~ template.name
-      refute html =~ "(per-game instance)"
-    end
-
-    test "Edit link routes to the form for admins", %{conn: conn, user: user} do
-      team = team_fixture()
-      add_to_team(team, user)
-      ruleset = ruleset_fixture(%{team_id: team.id, name: "Hat League"})
-
-      {:ok, live, _html} = live(conn, ~p"/rulesets")
-
-      assert live
-             |> element("a[href='/rulesets/#{ruleset.id}/edit']")
-             |> has_element?()
-    end
-
-    test "non-admin sees no Edit link", %{conn: conn, user: user} do
-      team = team_fixture()
-      add_to_team(team, user, :member)
-      ruleset = ruleset_fixture(%{team_id: team.id, name: "Hat League"})
-
-      {:ok, live, _html} = live(conn, ~p"/rulesets")
-
-      refute live
-             |> element("a[href='/rulesets/#{ruleset.id}/edit']")
-             |> has_element?()
-    end
-
-    test "rulesets across teams the user is NOT on are excluded", %{conn: conn, user: user} do
-      mine = team_fixture(%{name: "Mine"})
-      other = team_fixture(%{name: "Other"})
-      add_to_team(mine, user)
-      _own = ruleset_fixture(%{team_id: mine.id, name: "Mine ruleset"})
-      _stranger = ruleset_fixture(%{team_id: other.id, name: "Stranger ruleset"})
-
-      {:ok, _live, html} = live(conn, ~p"/rulesets")
-
-      assert html =~ "Mine ruleset"
-      refute html =~ "Stranger ruleset"
-    end
 
     test "Delete from the show page removes the ruleset when no games reference it", %{
       conn: conn,
@@ -113,13 +61,21 @@ defmodule UltistatsWeb.RulesetLiveTest do
   describe "New form — admin" do
     setup :register_and_log_in_user
 
-    test "happy-path: creates a ruleset and redirects to the index", %{conn: conn, user: user} do
+    test "happy-path: creates a ruleset and redirects to the team page", %{
+      conn: conn,
+      user: user
+    } do
       team = team_fixture(%{division: :mixed})
       add_to_team(team, user)
 
       {:ok, live, _html} = live(conn, ~p"/rulesets/new?team_id=#{team.id}")
 
-      assert {:ok, _index_live, _html} =
+      # Default division is :open; switch to :mixed so the gender_ratio fields render.
+      live
+      |> form("#ruleset-form", ruleset: %{division: "mixed"})
+      |> render_change()
+
+      assert {:ok, _team_live, _html} =
                live
                |> form("#ruleset-form",
                  ruleset: %{
@@ -128,13 +84,14 @@ defmodule UltistatsWeb.RulesetLiveTest do
                    halftime_target: "7",
                    timeouts_per_half: "1",
                    line_size: "7",
+                   division: "mixed",
                    gender_ratio_rule: "alternating",
                    starting_male_count: "4",
                    starting_female_count: "3"
                  }
                )
                |> render_submit()
-               |> follow_redirect(conn, ~p"/rulesets")
+               |> follow_redirect(conn, ~p"/teams/#{team.id}")
 
       [ruleset] = Games.list_rulesets_for_team(team)
       assert ruleset.name == "Hat League"
@@ -194,7 +151,7 @@ defmodule UltistatsWeb.RulesetLiveTest do
 
       {:ok, live, _html} = live(conn, ~p"/rulesets/#{ruleset.id}/edit")
 
-      assert {:ok, _index_live, _html} =
+      assert {:ok, _team_live, _html} =
                live
                |> form("#ruleset-form",
                  ruleset: %{
@@ -209,7 +166,7 @@ defmodule UltistatsWeb.RulesetLiveTest do
                  }
                )
                |> render_submit()
-               |> follow_redirect(conn, ~p"/rulesets")
+               |> follow_redirect(conn, ~p"/teams/#{team.id}")
 
       reloaded = Games.get_ruleset!(ruleset.id)
       assert reloaded.score_cap == 11

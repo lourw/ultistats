@@ -19,14 +19,6 @@ defmodule UltistatsWeb.UserSettingsControllerTest do
       assert redirected_to(conn) == ~p"/users/log-in"
     end
 
-    @tag token_authenticated_at: DateTime.add(DateTime.utc_now(:second), -11, :minute)
-    test "redirects if user is not in sudo mode", %{conn: conn} do
-      conn = get(conn, ~p"/users/settings")
-      assert redirected_to(conn) == ~p"/users/log-in"
-
-      assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
-               "You must re-authenticate to access this page."
-    end
   end
 
   describe "PUT /users/settings (change password form)" do

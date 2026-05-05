@@ -4,9 +4,6 @@ defmodule UltistatsWeb.UserSettingsController do
   alias Ultistats.Accounts
   alias UltistatsWeb.UserAuth
 
-  import UltistatsWeb.UserAuth, only: [require_sudo_mode: 2]
-
-  plug :require_sudo_mode
   plug :assign_email_and_password_changesets
   plug :assign_profile_changeset
   plug :assign_active_tab

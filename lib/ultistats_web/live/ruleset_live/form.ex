@@ -92,12 +92,25 @@ defmodule UltistatsWeb.RulesetLive.Form do
           inputmode="numeric"
         />
 
-        <.input
-          field={@form[:division]}
-          type="select"
-          label="Division"
-          options={division_options()}
-        />
+        <fieldset class="space-y-1">
+          <legend class="block text-sm font-medium text-base-content">Division</legend>
+          <div class="inline-flex flex-wrap items-center gap-2" role="radiogroup">
+            <label
+              :for={{label, value} <- division_options()}
+              class={division_radio_label_classes(division(@form) == Atom.to_string(value))}
+            >
+              <input
+                type="radio"
+                name={@form[:division].name}
+                id={"#{@form[:division].id}_#{value}"}
+                value={value}
+                checked={division(@form) == Atom.to_string(value)}
+                class="accent-primary size-5 shrink-0"
+              />
+              <span class="text-sm leading-none">{label}</span>
+            </label>
+          </div>
+        </fieldset>
 
         <div :if={division(@form) == "mixed"} class="space-y-1 mb-2">
           <p class="block text-sm font-medium text-base-content">Gender ratio rule</p>
@@ -146,8 +159,7 @@ defmodule UltistatsWeb.RulesetLive.Form do
   end
 
   defp return_to("show"), do: "show"
-  defp return_to("team"), do: "team"
-  defp return_to(_), do: "index"
+  defp return_to(_), do: "team"
 
   defp apply_action(socket, :edit, %{"id" => id}) do
     ruleset = Games.get_ruleset!(id)
@@ -187,12 +199,10 @@ defmodule UltistatsWeb.RulesetLive.Form do
         |> Phoenix.LiveView.push_navigate(to: ~p"/teams/#{team_id}")
 
       true ->
-        team = Teams.get_team!(team_id)
-
         ruleset = %Ruleset{
           team_id: team_id,
           kind: :template,
-          division: team.division || :open,
+          division: :open,
           timeouts_per_half: 2,
           line_size: 7,
           gender_ratio_rule: :endzone,
@@ -313,15 +323,26 @@ defmodule UltistatsWeb.RulesetLive.Form do
     |> Map.put("starting_female_count", "")
   end
 
-  defp return_path("index", _ruleset), do: ~p"/rulesets"
   defp return_path("show", ruleset), do: ~p"/rulesets/#{ruleset}"
 
   defp return_path("team", %Ruleset{team_id: team_id}) when is_binary(team_id),
     do: ~p"/teams/#{team_id}"
 
-  defp return_path("team", _ruleset), do: ~p"/rulesets"
+  defp return_path("team", _ruleset), do: ~p"/games"
 
   defp division_options do
     [{"Open", :open}, {"Women's", :womens}, {"Mixed", :mixed}]
+  end
+
+  defp division_radio_label_classes(selected?) do
+    [
+      "min-h-11 inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium",
+      "border border-base-300 cursor-pointer select-none",
+      "focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary",
+      if(selected?,
+        do: "bg-primary/10 border-primary text-base-content",
+        else: "bg-base-100 text-base-content active:bg-base-200"
+      )
+    ]
   end
 end

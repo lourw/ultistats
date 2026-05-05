@@ -261,7 +261,7 @@ defmodule UltistatsWeb.GameLive.Start do
     requested_team_id = params["team_id"]
 
     selected_team_id = pick_team_id(teams, requested_team_id)
-    division = team_division(teams, selected_team_id)
+    division = "open"
 
     game = %Game{
       team_id: selected_team_id,
@@ -274,7 +274,7 @@ defmodule UltistatsWeb.GameLive.Start do
      |> assign(:page_title, "Start a game")
      |> assign(:teams, teams)
      |> assign(:cancel_team_id, selected_team_id)
-     |> assign(:team_rulesets, list_rulesets(selected_team_id, division))
+     |> assign(:team_rulesets, list_rulesets(selected_team_id))
      |> assign(:selected_ruleset_id, "")
      |> assign(:division, division)
      |> assign(:rule_overrides, defaults_for_division(division))
@@ -294,18 +294,20 @@ defmodule UltistatsWeb.GameLive.Start do
 
     new_ruleset_id = Map.get(game_params, "ruleset_id", "")
 
-    division =
-      if new_team_id != socket.assigns.cancel_team_id do
-        team_division(socket.assigns.teams, new_team_id)
-      else
-        socket.assigns.division
-      end
-
     team_rulesets =
       if new_team_id != socket.assigns.cancel_team_id do
-        list_rulesets(new_team_id, division)
+        list_rulesets(new_team_id)
       else
         socket.assigns.team_rulesets
+      end
+
+    # When the user picks a ruleset, snap division to match it so the
+    # ratio fields render appropriately.
+    division =
+      if new_ruleset_id != socket.assigns.selected_ruleset_id do
+        ruleset_division(new_ruleset_id, team_rulesets) || socket.assigns.division
+      else
+        socket.assigns.division
       end
 
     rule_overrides =
@@ -390,7 +392,7 @@ defmodule UltistatsWeb.GameLive.Start do
           |> Map.put("starting_female_count", "")
       end
 
-    team_rulesets = list_rulesets(socket.assigns.cancel_team_id, division)
+    team_rulesets = list_rulesets(socket.assigns.cancel_team_id)
 
     {:noreply,
      socket
@@ -459,26 +461,12 @@ defmodule UltistatsWeb.GameLive.Start do
   defp list_rulesets(nil), do: []
   defp list_rulesets(team_id) when is_binary(team_id), do: Games.list_rulesets_for_team(team_id)
 
-  defp list_rulesets(nil, _division), do: []
+  defp ruleset_division("", _rulesets), do: nil
 
-  defp list_rulesets(team_id, division)
-       when is_binary(team_id) and division in ["open", "mixed", "womens"] do
-    Games.list_rulesets_for_team(team_id, String.to_existing_atom(division))
-  end
-
-  defp list_rulesets(team_id, division)
-       when is_binary(team_id) and division in [:open, :mixed, :womens] do
-    Games.list_rulesets_for_team(team_id, division)
-  end
-
-  defp list_rulesets(team_id, _division), do: list_rulesets(team_id)
-
-  defp team_division(_teams, nil), do: "open"
-
-  defp team_division(teams, team_id) do
-    case Enum.find(teams, &(&1.id == team_id)) do
-      %{division: division} when not is_nil(division) -> Atom.to_string(division)
-      _ -> "open"
+  defp ruleset_division(ruleset_id, rulesets) when is_binary(ruleset_id) do
+    case Enum.find(rulesets, &(&1.id == ruleset_id)) do
+      %Ruleset{division: division} when not is_nil(division) -> Atom.to_string(division)
+      _ -> nil
     end
   end
 
