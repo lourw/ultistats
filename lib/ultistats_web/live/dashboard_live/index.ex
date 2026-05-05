@@ -11,8 +11,8 @@ defmodule UltistatsWeb.DashboardLive.Index do
   """
   use UltistatsWeb, :live_view
 
-  alias Ultistats.Accounts.User
   alias Ultistats.{Games, Teams}
+  alias UltistatsWeb.Components.StatsTable
 
   @impl true
   def mount(_params, _session, socket) do
@@ -25,6 +25,9 @@ defmodule UltistatsWeb.DashboardLive.Index do
      |> assign(:teams, teams)
      |> assign(:selected_team, nil)
      |> assign(:leaderboard, [])
+     |> assign(:sorted_leaderboard, [])
+     |> assign(:sort_by, :goals)
+     |> assign(:sort_dir, :desc)
      |> assign(:recent_games, [])}
   end
 
@@ -42,20 +45,45 @@ defmodule UltistatsWeb.DashboardLive.Index do
          socket
          |> assign(:selected_team, nil)
          |> assign(:leaderboard, [])
+         |> assign(:sorted_leaderboard, [])
          |> assign(:recent_games, [])}
 
       {:ok, %_{} = team} ->
+        leaderboard = Games.leaderboard_for_team(team)
+
         {:noreply,
          socket
          |> assign(:selected_team, team)
-         |> assign(:leaderboard, Games.leaderboard_for_team(team))
-         |> assign(:recent_games, team |> Games.list_games_for_team() |> Enum.take(5))}
+         |> assign(:leaderboard, leaderboard)
+         |> assign(:recent_games, team |> Games.list_games_for_team() |> Enum.take(5))
+         |> assign_sorted_leaderboard()}
     end
   end
 
   @impl true
   def handle_event("switch_team", %{"team_id" => id}, socket) do
     {:noreply, push_patch(socket, to: ~p"/dashboard?team_id=#{id}")}
+  end
+
+  def handle_event("sort", %{"key" => key}, socket) do
+    key_atom = String.to_existing_atom(key)
+
+    if key_atom in StatsTable.sortable_keys() do
+      {sort_by, sort_dir} =
+        StatsTable.next_sort(key_atom, socket.assigns.sort_by, socket.assigns.sort_dir)
+
+      {:noreply,
+       socket
+       |> assign(sort_by: sort_by, sort_dir: sort_dir)
+       |> assign_sorted_leaderboard()}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  defp assign_sorted_leaderboard(socket) do
+    %{leaderboard: leaderboard, sort_by: by, sort_dir: dir} = socket.assigns
+    assign(socket, :sorted_leaderboard, StatsTable.sort_players(leaderboard, by, dir))
   end
 
   # Picks the team to render based on the URL param, the user's
@@ -102,7 +130,11 @@ defmodule UltistatsWeb.DashboardLive.Index do
 
             <.leaderboard_panel
               :if={@selected_team}
+              selected_team={@selected_team}
               leaderboard={@leaderboard}
+              sorted_leaderboard={@sorted_leaderboard}
+              sort_by={@sort_by}
+              sort_dir={@sort_dir}
               recent_games={@recent_games}
             />
           </div>
@@ -252,19 +284,30 @@ defmodule UltistatsWeb.DashboardLive.Index do
     """
   end
 
+  attr :selected_team, :map, required: true
   attr :leaderboard, :list, required: true
+  attr :sorted_leaderboard, :list, required: true
+  attr :sort_by, :atom, required: true
+  attr :sort_dir, :atom, required: true
   attr :recent_games, :list, required: true
 
   defp leaderboard_panel(assigns) do
     ~H"""
     <section aria-label="Leaderboard" class="space-y-2">
-      <div class="flex items-baseline justify-between">
+      <div class="flex items-baseline justify-between gap-3">
         <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/70">
           Leaderboard
         </h2>
-        <span class="text-xs text-base-content/60 tabular-nums">
-          {length(@leaderboard)} players
-        </span>
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-base-content/60 tabular-nums">
+            {length(@leaderboard)} players
+          </span>
+          <StatsTable.csv_link
+            :if={@leaderboard != []}
+            path={leaderboard_csv_path(@selected_team, @sort_by, @sort_dir)}
+            label="Export"
+          />
+        </div>
       </div>
 
       <%= cond do %>
@@ -274,75 +317,26 @@ defmodule UltistatsWeb.DashboardLive.Index do
           </div>
         <% all_zero?(@leaderboard) and @recent_games != [] -> %>
           <p class="text-sm text-base-content/70">No stats recorded yet.</p>
-          <.leaderboard_table leaderboard={@leaderboard} />
-        <% @recent_games == [] -> %>
-          <.leaderboard_table leaderboard={@leaderboard} />
+          <StatsTable.stats_table
+            id="dashboard-leaderboard"
+            players={@sorted_leaderboard}
+            sort_by={@sort_by}
+            sort_dir={@sort_dir}
+          />
         <% true -> %>
-          <.leaderboard_table leaderboard={@leaderboard} />
+          <StatsTable.stats_table
+            id="dashboard-leaderboard"
+            players={@sorted_leaderboard}
+            sort_by={@sort_by}
+            sort_dir={@sort_dir}
+          />
       <% end %>
     </section>
     """
   end
 
-  attr :leaderboard, :list, required: true
-
-  defp leaderboard_table(assigns) do
-    ~H"""
-    <div class="overflow-x-auto rounded-lg border border-base-200">
-      <table id="dashboard-leaderboard" class="w-full border-collapse text-left text-sm">
-        <thead class="border-b border-base-200 bg-base-200/50 text-base-content/70 font-semibold">
-          <tr>
-            <th scope="col" class="p-3 w-12 text-right tabular-nums">#</th>
-            <th scope="col" class="p-3">Player</th>
-            <th scope="col" class="p-3 text-right tabular-nums">
-              <abbr title="Goals" class="no-underline">G</abbr>
-            </th>
-            <th scope="col" class="p-3 text-right tabular-nums">
-              <abbr title="Assists" class="no-underline">A</abbr>
-            </th>
-            <th scope="col" class="p-3 text-right tabular-nums">
-              <abbr title="Catches" class="no-underline">C</abbr>
-            </th>
-            <th scope="col" class="p-3 text-right tabular-nums">
-              <abbr title="Drops" class="no-underline">D</abbr>
-            </th>
-            <th scope="col" class="p-3 text-right tabular-nums">
-              <abbr title="Throwaways" class="no-underline">TA</abbr>
-            </th>
-            <th scope="col" class="p-3 text-right tabular-nums">
-              <abbr title="Blocks" class="no-underline">B</abbr>
-            </th>
-            <th scope="col" class="p-3 text-right tabular-nums whitespace-nowrap">
-              Pts played
-            </th>
-          </tr>
-        </thead>
-        <tbody class="text-base-content">
-          <tr
-            :for={row <- @leaderboard}
-            class={[
-              "border-b border-base-200 last:border-b-0",
-              row_zero?(row) && "text-base-content/60"
-            ]}
-          >
-            <td class="p-3 text-right tabular-nums font-semibold">
-              {jersey_label(row.membership.jersey_number)}
-            </td>
-            <td class="p-3">
-              <span class="font-medium">{User.display_name(row.user)}</span>
-            </td>
-            <td class="p-3 text-right tabular-nums">{row.goals}</td>
-            <td class="p-3 text-right tabular-nums">{row.assists}</td>
-            <td class="p-3 text-right tabular-nums">{row.catches}</td>
-            <td class="p-3 text-right tabular-nums">{row.drops}</td>
-            <td class="p-3 text-right tabular-nums">{row.throwaways}</td>
-            <td class="p-3 text-right tabular-nums">{row.blocks}</td>
-            <td class="p-3 text-right tabular-nums">{row.points_played}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    """
+  defp leaderboard_csv_path(team, sort_by, sort_dir) do
+    ~p"/teams/#{team.id}/leaderboard.csv?sort=#{sort_by}&dir=#{sort_dir}"
   end
 
   ## ---------------------------------------------------------------------
@@ -372,10 +366,6 @@ defmodule UltistatsWeb.DashboardLive.Index do
   defp format_started_at(%DateTime{} = dt) do
     Calendar.strftime(dt, "%b %-d · %H:%M")
   end
-
-  defp jersey_label(nil), do: "—"
-  defp jersey_label(""), do: "—"
-  defp jersey_label(n) when is_binary(n), do: n
 
   defp row_zero?(row) do
     row.goals == 0 and row.assists == 0 and row.catches == 0 and row.drops == 0 and

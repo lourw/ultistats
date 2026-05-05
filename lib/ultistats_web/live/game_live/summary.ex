@@ -9,8 +9,8 @@ defmodule UltistatsWeb.GameLive.Summary do
   """
   use UltistatsWeb, :live_view
 
-  alias Ultistats.Accounts.User
   alias Ultistats.{Games, Teams}
+  alias UltistatsWeb.Components.StatsTable
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
@@ -29,8 +29,33 @@ defmodule UltistatsWeb.GameLive.Summary do
        socket
        |> assign(:page_title, "Summary · vs #{game.opponent_name}")
        |> assign(:game, game)
-       |> assign(:summary, summary)}
+       |> assign(:summary, summary)
+       |> assign(:sort_by, :goals)
+       |> assign(:sort_dir, :desc)
+       |> assign_sorted_players()}
     end
+  end
+
+  @impl true
+  def handle_event("sort", %{"key" => key}, socket) do
+    key_atom = String.to_existing_atom(key)
+
+    if key_atom in StatsTable.sortable_keys() do
+      {sort_by, sort_dir} =
+        StatsTable.next_sort(key_atom, socket.assigns.sort_by, socket.assigns.sort_dir)
+
+      {:noreply,
+       socket
+       |> assign(sort_by: sort_by, sort_dir: sort_dir)
+       |> assign_sorted_players()}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  defp assign_sorted_players(socket) do
+    %{summary: summary, sort_by: by, sort_dir: dir} = socket.assigns
+    assign(socket, :sorted_players, StatsTable.sort_players(summary.players, by, dir))
   end
 
   ## ---------------------------------------------------------------------
@@ -45,19 +70,31 @@ defmodule UltistatsWeb.GameLive.Summary do
         <.summary_header game={@game} score={@summary.score} />
 
         <section aria-label="Per-player tallies" class="space-y-2">
-          <div class="flex items-baseline justify-between">
+          <div class="flex items-baseline justify-between gap-3">
             <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/70">
               Per-player tallies
             </h2>
-            <span class="text-xs text-base-content/60 tabular-nums">
-              {length(@summary.players)} players
-            </span>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-base-content/60 tabular-nums">
+                {length(@summary.players)} players
+              </span>
+              <StatsTable.csv_link
+                :if={@summary.players != []}
+                path={csv_path(@game, @sort_by, @sort_dir)}
+                label="Export"
+              />
+            </div>
           </div>
 
           <%= if @summary.players == [] do %>
             <.empty_state game={@game} />
           <% else %>
-            <.tally_table players={@summary.players} />
+            <StatsTable.stats_table
+              id="game-summary-tallies"
+              players={@sorted_players}
+              sort_by={@sort_by}
+              sort_dir={@sort_dir}
+            />
           <% end %>
         </section>
 
@@ -181,73 +218,6 @@ defmodule UltistatsWeb.GameLive.Summary do
       classes: "bg-base-200 text-base-content/70"
     }
 
-  attr :players, :list, required: true
-
-  defp tally_table(assigns) do
-    ~H"""
-    <%!--
-      375px viewport: the table can horizontal-scroll if the names get
-      long. We don't sticky any columns — the score and stats are the
-      important data, and the chip-style player labels remain readable
-      at narrow widths.
-    --%>
-    <div class="overflow-x-auto rounded-lg border border-base-200">
-      <table class="w-full border-collapse text-left text-sm">
-        <thead class="border-b border-base-200 bg-base-200/50 text-base-content/70 font-semibold">
-          <tr>
-            <th scope="col" class="p-3 w-12 text-right tabular-nums">#</th>
-            <th scope="col" class="p-3">Player</th>
-            <th scope="col" class="p-3 text-right tabular-nums" title="Goals">
-              <abbr title="Goals" class="no-underline">G</abbr>
-            </th>
-            <th scope="col" class="p-3 text-right tabular-nums" title="Assists">
-              <abbr title="Assists" class="no-underline">A</abbr>
-            </th>
-            <th scope="col" class="p-3 text-right tabular-nums" title="Catches">
-              <abbr title="Catches" class="no-underline">C</abbr>
-            </th>
-            <th scope="col" class="p-3 text-right tabular-nums" title="Drops">
-              <abbr title="Drops" class="no-underline">D</abbr>
-            </th>
-            <th scope="col" class="p-3 text-right tabular-nums" title="Throwaways">
-              <abbr title="Throwaways" class="no-underline">TA</abbr>
-            </th>
-            <th scope="col" class="p-3 text-right tabular-nums" title="Blocks">
-              <abbr title="Blocks" class="no-underline">B</abbr>
-            </th>
-            <th scope="col" class="p-3 text-right tabular-nums whitespace-nowrap">
-              Pts played
-            </th>
-          </tr>
-        </thead>
-        <tbody class="text-base-content">
-          <tr
-            :for={row <- @players}
-            class={[
-              "border-b border-base-200 last:border-b-0",
-              row_zero?(row) && "text-base-content/60"
-            ]}
-          >
-            <td class="p-3 text-right tabular-nums font-semibold">
-              {jersey_label(Teams.resolved_jersey_number(row.membership))}
-            </td>
-            <td class="p-3">
-              <span class="font-medium">{User.display_name(row.user)}</span>
-            </td>
-            <td class="p-3 text-right tabular-nums">{row.goals}</td>
-            <td class="p-3 text-right tabular-nums">{row.assists}</td>
-            <td class="p-3 text-right tabular-nums">{row.catches}</td>
-            <td class="p-3 text-right tabular-nums">{row.drops}</td>
-            <td class="p-3 text-right tabular-nums">{row.throwaways}</td>
-            <td class="p-3 text-right tabular-nums">{row.blocks}</td>
-            <td class="p-3 text-right tabular-nums">{row.points_played}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    """
-  end
-
   attr :game, :map, required: true
 
   defp empty_state(assigns) do
@@ -296,14 +266,9 @@ defmodule UltistatsWeb.GameLive.Summary do
   ## helpers
   ## ---------------------------------------------------------------------
 
-  defp row_zero?(row) do
-    row.goals == 0 and row.assists == 0 and row.catches == 0 and row.drops == 0 and
-      row.throwaways == 0 and row.blocks == 0 and row.points_played == 0
+  defp csv_path(game, sort_by, sort_dir) do
+    ~p"/games/#{game.id}/summary.csv?sort=#{sort_by}&dir=#{sort_dir}"
   end
-
-  defp jersey_label(nil), do: "—"
-  defp jersey_label(""), do: "—"
-  defp jersey_label(n) when is_binary(n), do: n
 
   defp format_subtitle(%{format: format} = game) do
     base = humanize_format(format)

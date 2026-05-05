@@ -45,6 +45,9 @@ defmodule UltistatsWeb.Router do
   scope "/", UltistatsWeb do
     pipe_through [:browser, :require_authenticated_user, :require_complete_profile]
 
+    get "/games/:id/summary.csv", StatsExportController, :game_summary
+    get "/teams/:id/leaderboard.csv", StatsExportController, :team_leaderboard
+
     live_session :authenticated,
       on_mount: [{UltistatsWeb.UserAuth, :ensure_authenticated}] do
       live "/dashboard", DashboardLive.Index, :index
