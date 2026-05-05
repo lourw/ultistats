@@ -18,7 +18,6 @@ defmodule UltistatsWeb.UserSettingsControllerTest do
       conn = get(conn, ~p"/users/settings")
       assert redirected_to(conn) == ~p"/users/log-in"
     end
-
   end
 
   describe "PUT /users/settings (change password form)" do
